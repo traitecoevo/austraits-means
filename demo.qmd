@@ -253,3 +253,93 @@ p_mm
 # ggsave("outputs/mixed_effects_models2.png", p_mm, width = 12, height = 5)
 
 ``` 
+
+# Modified LMM with random intercept & slope model using brms
+
+```{r}
+library(brms)
+
+model_intercept_slope2_brms <- brm(
+  y ~ x_mn + x_c + (x_c | species),
+  data = data2,
+  family = gaussian(),
+  chains = 3,
+  iter = 2000,
+  warmup = 1000,
+  cores = 3
+)
+
+summary(model_intercept_slope2_brms)
+parameters(model_intercept_slope2)
+```
+
+# Example fitting with custom stan model via rstan
+
+```{r}
+library(rstan)
+
+# Prepare data for Stan
+stan_data <- list(
+  N = nrow(data2),
+  J = length(unique(data2$species)),
+  species = as.integer(as.factor(data2$species)),
+  x_mn = data2$x_mn,
+  x_c = data2$x_c,
+  y = data2$y
+)
+
+# Define Stan model
+stan_model_code <- "
+data {
+  int<lower=0> N;              // number of observations
+  int<lower=0> J;              // number of species
+  array[N] int<lower=1,upper=J> species;  // species indicator
+  vector[N] x_mn;              // group mean predictor
+  vector[N] x_c;               // centered predictor
+  vector[N] y;                 // response variable
+}
+parameters {
+  real beta_0;                 // intercept
+  real beta_mn;                // coefficient for x_mn
+  real beta_c;                 // coefficient for x_c
+  vector[J] u_0;               // random intercepts
+  vector[J] u_c;               // random slopes
+  real<lower=0> sigma_u0;      // sd of random intercepts
+  real<lower=0> sigma_uc;      // sd of random slopes
+  real<lower=0> sigma;         // residual sd
+}
+model {
+  vector[N] mu;
+
+  // Priors
+  beta_0 ~ normal(0, 10);
+  beta_mn ~ normal(0, 10);
+  beta_c ~ normal(0, 10);
+  sigma_u0 ~ cauchy(0, 5);
+  sigma_uc ~ cauchy(0, 5);
+  sigma ~ cauchy(0, 5);
+  u_0 ~ normal(0, sigma_u0);
+  u_c ~ normal(0, sigma_uc);
+
+  // Likelihood
+  for (i in 1:N) {
+    mu[i] = beta_0 + u_0[species[i]] + beta_mn * x_mn[i] + (beta_c + u_c[species[i]]) * x_c[i];
+  }
+  y ~ normal(mu, sigma);
+}
+"
+
+# Fit model
+model_intercept_slope2_stan <- stan(
+  model_code = stan_model_code,
+  data = stan_data,
+  chains = 3,
+  iter = 2000,
+  warmup = 1000,
+  cores = 3
+)
+
+print(model_intercept_slope2_stan, pars = c("beta_0", "beta_mn", "beta_c", "sigma_u0", "sigma_uc", "sigma"))
+summary(model_intercept_slope2_brms)
+parameters(model_intercept_slope2)
+```
