@@ -1,0 +1,463 @@
+---
+title: "Analysis of trait variation in Australia: Analysis"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+# Background & aims
+
+1.  
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(glmmTMB)
+library(easystats)
+library(broom.mixed)
+
+data_traits_climate_raw <- arrow::read_parquet("data-processed/data_traits_climate.parquet") |>
+  select(decimal_longitude:life_stage, growth_form_simpler, life_history, woody) |>
+  mutate(value = ifelse(trait_name == "leaf_delta13C", (-8 - value) / (1 + (value / 1000)), value)) %>%
+  mutate(
+    log_annual_precipitation = log(annual_precipitation),
+    log_value = log(value)
+  )
+
+# Let's also collect the mean rainfall and temp for each species, and devitations of each from their respective mean. Only taking one record per cell to avoid pseudoreplication.
+data_spp_climates <- data_traits_climate_raw |>
+  group_by(taxon_name, cell) |>
+  summarise(
+    log_annual_precipitation = mean(log_annual_precipitation),
+    average_temperature = mean(average_temperature)
+  ) |>  ungroup() |>
+  group_by(taxon_name) |>
+  summarise(
+    ncell = n(),
+    log_annual_precipitation_mn = mean(log_annual_precipitation),
+    average_temperature_mn = mean(average_temperature),
+  ) 
+
+data_traits_climate <- data_traits_climate_raw |>
+  left_join(data_spp_climates, by = "taxon_name") |>
+  mutate(
+    log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn,
+    log_temperature_c = average_temperature - average_temperature_mn
+  )
+
+```
+
+# new approach - a single model
+
+```{r}
+data_model <- data_traits_climate |> filter(
+  !is.na(log_value) & woody == "woody",
+  trait_name == "leaf_mass_per_area"
+)
+
+fit5 <- glmmTMB(log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + (log_annual_precipitation_c | taxon_name), data = data_model)
+
+data_fit5 <- estimate_expectation(fit5) |>
+  as_tibble() |>
+  mutate(
+    log_value = Predicted,
+    value = exp(Predicted),
+    CI_low = exp(CI_low),
+    CI_high = exp(CI_high)
+  )
+
+data_fit5_global <-
+  estimate_means(fit5, by = "log_annual_precipitation_mn") |>
+  as_tibble() |>
+  select(log_annual_precipitation = log_annual_precipitation_mn, log_value = Mean) |>
+  mutate(
+    annual_precipitation = exp(log_annual_precipitation),
+    value = exp(log_value),
+    taxon_name = "average"
+  )
+
+data_fit5_mn <- estimate_expectation(fit5,
+  data = data_fit5 |> mutate(log_annual_precipitation_c = 0)
+) |>
+  as_tibble() |>
+  mutate(
+    log_value_mn = Predicted,
+    value_mn = exp(Predicted),
+    CI_low_mn = exp(CI_low),
+    CI_high_mn = exp(CI_high)
+  ) |>
+  select(
+    log_annual_precipitation_mn, taxon_name,
+    log_value_mn, value_mn, CI_low_mn, CI_high_mn
+  ) |>
+  distinct()
+
+data_fit5_all <-
+  data_fit5 |>
+  select(-SE, -Residuals) |>
+  left_join(
+    by = c("log_annual_precipitation_mn", "taxon_name"),
+    data_fit5_mn
+  ) |>
+  mutate(
+    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
+    annual_precipitation = exp(log_annual_precipitation),
+    annual_precipitation_mn = exp(log_annual_precipitation_mn),
+  )
+
+taxa <- data_model |>
+  filter(ncell > 1) |>
+  pull(taxon_name) |>
+  unique() |>
+  sample(10)
+
+taxa <- c("Eucalyptus tectifica", "Myristica insipida", "Grevillea huegelii", "Ichnocarpus frutescens", "Leptospermum scoparium", "Styphelia humifusa", "Hakea gibbosa", "Acronychia vestita")
+
+data_model_taxa <- data_model |>
+  filter(taxon_name %in% taxa) |>
+  mutate(taxon2 = taxon_name)
+
+data_fit5_taxa <- data_fit5_all |>
+  filter(taxon_name %in% taxa) |>
+  mutate(
+    taxon2 = taxon_name
+  )
+
+data_fit5_taxa_mn <- data_fit5_taxa |>
+  select(taxon2, annual_precipitation_mn, value_mn, CI_low_mn, CI_high_mn) |>
+  distinct()
+
+p_fit <-
+  data_fit5_all |>
+  ggplot(aes(annual_precipitation, value, group = taxon_name)) +
+  # raw data
+  geom_point(alpha = 0.5, col = "grey", data = data_model, stroke = 0) +
+  # fitted lines
+  geom_line(alpha = 0.5, col = "black", linewidth = 0.25) +
+  # highlight certain species
+  geom_ribbon(aes(group = taxon2, ymin = CI_low, ymax = CI_high), col = NA, fill = "purple", alpha = 0.5, show.legend = FALSE, data = data_fit5_taxa) +
+  geom_line(aes(group = taxon2), col = "purple", alpha = 1, show.legend = FALSE, data = data_fit5_taxa) +
+  geom_point(aes(group = taxon2), col = "orange", show.legend = FALSE, data = data_model_taxa, size = 1) +
+  geom_point(aes(x = annual_precipitation_mn, y = value_mn, group = taxon2), alpha = 0.5, data = data_fit5_taxa_mn, col = "red") +
+  geom_errorbar(aes(x = annual_precipitation_mn, y = value_mn, group = taxon2, ymin = CI_low_mn, ymax = CI_high_mn), width = 0, alpha = 0.5, data = data_fit5_taxa_mn, col = "red") +
+
+  # geom_line(data = data_fit5_global, col = "red") +
+  scale_x_log10() +
+  scale_y_log10(limits = c(10, 1000)) +
+  theme_classic() +
+  labs(y = "Leaf mass per area (g/m2, log scale)", x = "annual rainfall (mm/yr, log scale)", title = "Model-averages for within species trends") +
+#  theme(legend.position = "none") +
+  facet_wrap(~taxon2, ncol = 4)
+
+ggsave("outputs/LMA_MAP_8.png", p_fit, width = 12, height = 6)
+```
+
+```{r}
+# model across species means
+parameters(fit2)
+
+data_fit2 <- estimate_expectation(fit2) |>
+  as_tibble()|>
+  mutate(
+    annual_precipitation = exp(log_annual_precipitation),
+    value = exp(Predicted)
+  )
+ 
+data_fit2_global <- estimate_means(fit2, by = "log_annual_precipitation") |>
+  as_tibble() |>
+  select(log_annual_precipitation, log_value = Mean) |>
+  mutate(
+    annual_precipitation = exp(log_annual_precipitation),
+    value = exp(log_value),
+    taxon_name = "average"
+  )
+
+data_fit2_taxa <- 
+  data_fit2 |>
+  filter(taxon_name %in% taxa) |>
+  mutate(taxon2 = taxon_name)
+
+p_fit <-
+  data_fit2_all |>
+  ggplot(aes(annual_precipitation, value, group = taxon_name)) +
+  # raw data
+  geom_point(alpha = 0.5, col = "grey", data = data_model, stroke = 0) +
+  # fitted lines
+  geom_line(alpha = 0.5, col = "black", linewidth = 0.25) +
+  # highlight certain species
+  geom_point(aes(group = taxon2), col = "orange", show.legend = FALSE, data = data_model_taxa, size = 1) +
+  geom_line(aes(group = taxon2), col = "orange", alpha = 1, show.legend = FALSE, data = data_fit2_taxa) +
+  geom_line(data = data_fit2_global, col = "red") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = trait, x = "annual rainfall") +
+  theme(legend.position = "none") +
+  facet_wrap(~taxon2)
+
+ggsave("multiplot_fitted3-classic.png", p_fit)
+```
+# Extra
+```{r}
+# plot fitted lines
+
+data_fit <- estimate_expectation(fit2) |>
+  as_tibble() |>
+  mutate(across(c("log_annual_precipitation", "Predicted"), exp))
+
+p_fit <- data_fit |>
+  ggplot(aes(log_annual_precipitation, Predicted, group = taxon_name)) +
+  geom_line() +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = "Leaf mass per area", x = "annual rainfall")
+
+ggsave("pfit.png", p_fit)
+```
+
+
+Wood density
+
+```{r}
+data_model <- data_traits_climate |>
+  filter(woody, trait_name == "wood_density") |>
+  mutate(log_value = log(value), log_annual_precipitation = log(wc2.1_2.5m_bio_12))
+
+library(glmmTMB)
+
+fit0 <- glmmTMB(log_value ~ log_annual_precipitation, data = data_model)
+fit1 <- glmmTMB(log_value ~ log_annual_precipitation + (1 | taxon_name), data = data_model)
+fit2 <- glmmTMB(log_value ~ log_annual_precipitation + (log_annual_precipitation | taxon_name), data = data_model)
+
+# strong support for random slopes
+anova(fit0, fit1, fit2)
+
+# mixed effect model slopes (by species) flatter than species agnostic fit
+parameters(fit0)
+parameters(fit2)
+
+random_slopes_fit2 <- broom.mixed::tidy(fit2, effects = "ran_vals") |>
+  filter(term == "log_annual_precipitation") |>
+  select(level, estimate) |>
+  rename(taxon_name = level, random_slope = estimate)
+
+pt <- random_slopes_fit2 |>
+  ggplot(aes(random_slope)) +
+  geom_histogram()
+ggsave("tmp.png", pt)
+
+
+# plot fitted lines
+library(easystats)
+
+data_fit <- estimate_expectation(fit2) |>
+  as_tibble() |>
+  mutate(across(c("log_annual_precipitation", "Predicted"), exp))
+
+p_fit <- data_fit |>
+  ggplot(aes(log_annual_precipitation, Predicted, group = taxon_name)) +
+  geom_line() +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = "Wood desnity", x = "annual rainfall")
+
+ggsave("pfit_WD.png", p_fit)
+```
+
+Leaf area
+
+```{r}
+data_model <- data_traits_climate |>
+  filter(woody, trait_name == "leaf_area") |>
+  mutate(
+  log_value = log(value), 
+  log_annual_precipitation = log(wc2.1_2.5m_bio_12))
+
+fit0 <- glmmTMB(log_value ~ log_annual_precipitation, data = data_model)
+fit1 <- glmmTMB(log_value ~ log_annual_precipitation + (1 | taxon_name), data = data_model)
+fit2 <- glmmTMB(log_value ~ log_annual_precipitation + (log_annual_precipitation | taxon_name), data = data_model)
+
+# strong support for random slopes
+anova(fit0, fit1, fit2)
+
+# mixed effect model slopes (by species) flatter than species agnostic fit
+parameters(fit0)
+parameters(fit2)
+
+random_slopes <- broom.mixed::tidy(fit2, effects = "ran_vals") |>
+  filter(term == "log_annual_precipitation") |>
+  select(level, estimate) |>
+  rename(taxon_name = level, random_slope = estimate)
+
+pt <- random_slopes |>
+  ggplot(aes(random_slope)) +
+  geom_histogram()
+ggsave("tmp.png", pt)
+
+# plot fitted lines
+
+data_fit <- estimate_expectation(fit2) |>
+  as_tibble() |>
+  mutate(across(c("log_annual_precipitation", "Predicted"), exp))
+
+p_fit <- data_fit |>
+  ggplot(aes(log_annual_precipitation, Predicted, group = taxon_name)) +
+  geom_line() +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = "Leaf size", x = "annual rainfall")
+
+ggsave("pfit_Leaf_size.png", p_fit)
+```
+
+Try removing means
+```{r}
+data_model <-
+  data_traits_climate |>
+  filter(woody, trait_name == "leaf_area") |>
+  mutate(
+    log_value = log(value),
+    log_annual_precipitation = log(wc2.1_2.5m_bio_12)
+  ) |>
+  group_by(taxon_name) |>
+  mutate(
+    log_annual_precipitation_mn = mean(log_annual_precipitation),
+    log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn
+  ) |>
+  ungroup()
+
+fit0 <- glmmTMB(log_value ~ log_annual_precipitation, data = data_model)
+
+# Cenetred model
+fit2 <- glmmTMB(log_value ~ log_annual_precipitation_c + (log_annual_precipitation_c | taxon_name), data = data_model)
+
+# Estimate values at species means
+fit3 <- glmmTMB(log_value ~ log_annual_precipitation + (log_annual_precipitation | taxon_name), data = data_model)
+
+data_centers <- data_model |>
+  select(taxon_name, log_annual_precipitation = log_annual_precipitation_mn) |>
+  distinct()
+
+pred_centers <- estimate_prediction(fit3, data_centers) |>
+  as_tibble() |>
+  rename(log_value = Predicted)
+
+# model across species means
+fit4 <- glmmTMB(log_value ~ log_annual_precipitation, data = pred_centers)
+
+data_fit4 <- estimate_prediction(fit4, data = pred_centers |> select(taxon_name, log_annual_precipitation, log_value)) |>
+  as_tibble()
+
+parameters(fit4)
+
+p_fit <-
+  pred_centers |>
+  ggplot(aes(log_annual_precipitation, log_value)) +
+  geom_point() +
+  geom_line(data = data_fit4, aes(y = Predicted)) +
+  theme_classic() +
+  labs(y = "Leaf size", x = "annual rainfall")
+ggsave("tmp.png", p_fit)
+
+
+# plot fitted lines for Cenetred model
+
+data_fit <- estimate_expectation(fit2) |>
+  as_tibble() |>
+  mutate(across(c("log_annual_precipitation_c", "Predicted"), exp))
+
+p_fit <- data_fit |>
+  ggplot(aes(log_annual_precipitation_c, Predicted, group = taxon_name)) +
+  geom_line() +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = "Leaf size", x = "cenetred annual rainfall")
+
+ggsave("pfit_Leaf_size_c.png", p_fit)
+```
+
+
+
+## Compare two methods
+
+Compare species slopes in 2 methods
+
+```{r}
+# Centered version
+species_slopes_c <-
+  broom.mixed::tidy(fit2, effects = "ran_vals") |>
+  filter(term == "log_annual_precipitation_c") |>
+  select(level, estimate) |>
+  rename(taxon_name = level, slope_c = estimate)
+
+# non-centered version
+B_fixed <- parameters(fit3) |>
+  as_tibble() |>
+  filter(Parameter == "log_annual_precipitation") |>
+  pull(Coefficient)
+
+species_slopes_r <-
+  broom.mixed::tidy(fit3, effects = "ran_vals") |>
+  filter(term == "log_annual_precipitation") |>
+  select(level, estimate) |>
+  rename(taxon_name = level, slope_r = estimate) |>
+  mutate(slope_r = slope_r + B_fixed)
+
+species_slopes <- left_join(species_slopes_r, species_slopes_c)
+
+p <- ggplot(species_slopes, aes(slope_c, slope_r)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  geom_smooth(method = "lm", col = "red")
+ggsave("tmp.png", p)
+```
+
+Fixed effects:  Average fixed effect slopes differ a lot
+
+```{r}
+# In pooled model -- slope = 1.28
+parameters(fit0)
+
+# In random effects model - slope = 0.51
+parameters(fit3)
+
+# Across species means -- slope = 1.64
+parameters(fit4)
+
+# Range of within species slopes - mean slope = -0.06 ([-0.20, 0.09])
+parameters(fit2)
+
+stats::quantile(species_slopes_c$slope_c, probs = c(0.05, 0.5, 0.9))
+```
+
+
+
+Plots
+```{r}
+
+
+
+
+data_spp_climates |>
+  arrange(desc(wc2.1_2.5m_bio_12_range)) |>
+  ggplot(aes(x = wc2.1_2.5m_bio_12_p50, y = wc2.1_2.5m_bio_12_range)) +
+  geom_point(col = "grey") +
+  geom_point(aes(col = growth_form)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_wrap(~growth_form)
+```
+```{r}
+p <- data_traits_climate |> 
+  ggplot(aes(wc2.1_2.5m_bio_12, value, col= woody)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_wrap(~trait_name, scale = "free")
+ggsave("plot.png", p)
+```

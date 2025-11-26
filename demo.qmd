@@ -1,0 +1,255 @@
+---
+title: "Errors using LMMs when one or more predictors correlate with the group or unit effects"
+format: html
+---
+
+We're fitting linear mixed effects models to quantify variation in some outcome, e.g. trait, with respect to environment within and across species. However, we found that a standard linear mixed effects model gives a biased result. In particular, when traits have a flat response within species, but positive across species, a linear mixed effects model will suggest that the within  species traits are also positive. 
+
+This bias arises because of an effect described in the reference below. 
+- Based on Bafumi, J., & Gelman, A. (2011). Fitting Multilevel Models When Predictors and Group Effects Correlate. SSRN Electronic Journal. https://doi.org/10.2139/ssrn.1010095
+
+This document attempts to illustrate the bias using simulated data. 
+
+```{r}
+library(tidyverse)
+library(easystats)
+library(glmmTMB)
+library(patchwork)
+
+```
+
+# Generate data
+
+We're going to generate two datasets. 
+
+- `data1`: satisifies assumptions of a standard random effects model setup. In particular groups do not differ in their average x values, `x_mn`
+- `data2`: does not satisify assumptions of a standard random effects model setup, as groups differ in their average x values `x_mn` and group intercepts are correlated with `x_mn`. 
+
+## Data1
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Simulate data
+n_species <- 8 # Number of species
+n_obs <- 80 # Number of obs
+
+# Create a dataset
+data1 <- tibble(
+  species_id = rep(1:n_species, each = n_obs / n_species), # 10 species
+  x = runif(n_obs, 1, 10), # X variable
+  x_mn = 5.5,
+  x_c = x - x_mn
+)
+
+# Assign random intercepts and slopes per group
+random_intercepts1 <- rnorm(n_species, mean = 50, sd = 10) # Varying intercepts
+random_slopes1 <- rnorm(n_species, mean = 3, sd = 3) # Varying slopes
+
+# Generate test y based on random effects
+data1 <- data |>
+  mutate(
+    species = letters[species_id], # Convert species to a factor
+    intercept = random_intercepts1[species_id],
+    slope = random_slopes1[species_id],
+    y_mn = intercept + slope * x,
+    y = y_mn + rnorm(n_obs, 0, 3) # Adding noise
+  )
+
+
+plot_1_true <-
+  ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = y_mn), size = 0.5) +
+  labs(title = "True relationships") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+plot_1_true
+```
+
+## Data2
+
+```{r}
+set.seed(125)
+# Simulate data
+n_species <- 8 # Number of species
+n_obs <- 80 # Number of obs
+
+# Create a dataset
+data2 <- tibble(
+  species_id = rep(1:n_species, each = n_obs / n_species), # 10 species
+  x_c = runif(n_obs, -6, 6) # X variable
+)
+
+# Generate random x_mn for groups
+x_mn <- rnorm(n_species, mean = 50, sd = 20) |> sort()
+random_intercepts2 <- rnorm(n_species, mean = 5, sd = 1.5)
+
+# Generate on average flatter than main fixed effect
+random_slopes2 <- rnorm(n_species, mean = 0.05, sd = 0.1) # Varying slopes
+
+fixed_effect_slope <- 0.3
+
+# Generate test y based on random effects
+data2 <- data2 |>
+  mutate(
+    species = letters[species_id], # Convert species to a factor
+    intercept = random_intercepts2[species_id],
+    slope = random_slopes2[species_id],
+    x_mn = x_mn[species_id],
+    x = x_mn + x_c,
+    y_mn = intercept + x_mn * fixed_effect_slope + slope * x_c,
+    y = y_mn + rnorm(n_obs, 0, 1.5) # Adding noise
+  )
+
+plot_2_true <-
+  ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = y_mn), size = 0.5) +
+  labs(title = "True relationships") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+plot_2_true
+```
+
+# LMM works for data1
+
+This section demonstrates that a linear mixed effects model works well for data1, where the assumptions are satisfied. We fit three models, a null model with just fixed effect, a random intercept model, and a random intercept and slope model. We expect the final model to do best, as that reflects the underlying generating process. 
+
+```{r}
+# Simple model
+model_0 <- glmmTMB(y ~ x, data = data1)
+
+# Random intercept model
+model_intercept <- glmmTMB(y ~ x + (1 | species), data = data1)
+
+# Random intercept & slope model
+model_intercept_slope <- glmmTMB(y ~ x + (x | species), data = data1)
+
+parameters(model_intercept_slope)
+```
+
+The parameters of the fitted model suggests it does a reasonable job at recovering estimates of true parameters. 
+- intercept: true mean equals 50, sd = 20
+- slope: true value mean = 3, sd = 3
+
+We can also make some plots to highlight that the Random slopes and intercepts model is much closer to the true relationships. Also indicated is the average error being the difference between the group level slopes and their true values. 
+
+```{r}
+# No random effects
+means_all <- estimate_expectation(model_0, by = "x")
+
+p0 <-
+  ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  labs(title = "Standard model:\n\t\t y ~ x") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Random intercept model
+means_j <- estimate_expectation(model_intercept)
+means_all <- estimate_expectation(model_intercept, by = "x")
+
+p1 <-
+  ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(data = means_j, aes(y = Predicted), size = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  labs(title = "Random Intercepts:\n\t\t y ~ x + (1 | species)") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Random slope and intercepts
+means_j <- estimate_expectation(model_intercept_slope)
+means_all <- estimate_expectation(model_intercept_slope, by = "x")
+
+p3 <-
+  ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(data = means_j, aes(y = Predicted), size = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  labs(title = "Random slope & intercepts:\n\t\t y ~ x + (x | species)") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Combine plots
+p_fits_1 <- plot_1_true + p0 + p1 + p3
+
+p_fits_1
+# ggsave("outputs/mixed_effects_models.png", p_all, width = 12, height = 5)
+
+``` 
+
+# Modified LMM is better works for data2
+
+Now we show that with data2, the modified LMM fits MUCH better than a standard LMM. In both cases, we fit random slopes and intercepts model, reflecting the data generation process. 
+
+In this dataset the true values of parameters are
+
+- overall slope = 0.3
+- within species slope: mean 0.05, sd = 0.1
+- overall intercept: mean = 5,
+- within species intercept: mean = 0,  sd = 1.5
+
+```{r}
+# Standard LMM with random intercept & slope model
+model_intercept_slope1 <- glmmTMB(y ~ x + (x | species), data = data2)
+# Modified LMM with random intercept & slope model
+model_intercept_slope2 <- glmmTMB(y ~ x_mn + x_c + (x_c | species), data = data2)
+
+parameters(model_intercept_slope1)
+parameters(model_intercept_slope2)
+```
+
+The standard model fails on multiple fronts 
+
+- there were convergence errors fitting the standard LMM
+- attributes the variation between groups to the intercept rather than the slope.  
+- CI for fitted parameters does not contain the true values, whereas the modified model does.
+
+
+And to illustrate with some plots: 
+
+```{r}
+p2 <- 
+  ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = y_mn), size = 0.5) +
+  labs(title = "True relationships") +
+  ylim(c(10, 30)) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Random slope and intercepts
+means_j1 <- estimate_expectation(model_intercept_slope1)
+
+p3 <- ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(data = means_j1, aes(y = Predicted), size = 0.5) +
+  labs(title = "Classic mixed model:\n\t\t y ~ x + (x | species)") +
+  ylim(c(10, 30)) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# Random slope and intercepts
+means_j2 <- estimate_expectation(model_intercept_slope2) |>
+  mutate(x = x_mn + x_c)
+
+p4 <-
+  ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
+  geom_point(alpha = 0.5) +
+  geom_line(data = means_j2, aes(y = Predicted), size = 0.5) +
+  labs(title = "Modified mixed model:\n\t\t y ~ x_mn + x_c + (x_c | species)") +
+  theme_classic() +
+  ylim(c(10, 30)) +
+  theme(legend.position = "none")
+
+# Combine plots
+p_mm <- p2 + p3 + p4
+p_mm
+# ggsave("outputs/mixed_effects_models2.png", p_mm, width = 12, height = 5)
+
+``` 

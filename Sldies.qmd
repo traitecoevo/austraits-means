@@ -1,0 +1,71 @@
+---
+title: "Analysis of trait variation in Australia: Analysis"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+# Background & aims
+
+1.  
+
+# Setup
+
+```{r}
+library(tidyverse)
+
+austraits <-
+  readRDS(file = "downloads//austraits//austraits-7.0.0.rds") |>
+  austraits::flatten_database()
+```
+
+```{r}
+nrow(austraits)
+
+x <- austraits |>
+  group_by(taxon_name, trait_name) |>
+  count()
+
+
+data_grid <- expand_grid(taxon_name = austraits$taxon_name |> unique(), trait_name = austraits$trait_name |> unique()) |>
+  left_join(x) |>
+  mutate(n = replace_na(n, 0))
+
+data_trait_counts <- data_grid |>
+  group_by(trait_name) |>
+  summarise(n_spp = sum(n > 0), .groups = "drop") |>
+  arrange(desc(n_spp)) |>
+  left_join(austraits |> select(trait_name, unit) |> distinct()) |>
+  mutate(type = ifelse(is.na(unit), "categorical", "numeric")) |> 
+  group_by(type) |> mutate(rank = row_number())  |>
+  ungroup()
+
+data_trait_counts |>
+ggplot(aes(rank, n_spp, group = type, col = type)) +
+geom_line() +
+xlim(c(0, 100)) +
+theme_minimal() +
+labs(
+  title = "Coverage by taxa in Austraits v7.0.0",
+  x = "Rank",
+  y = "Number of taxa"
+)
+
+ggsave("outputs/coverage.png", width = 5, height =3)
+```
+
+Top ten
+
+```{r}
+data_trait_counts |>
+  filter(type == "numeric") |>
+  slice_max(n_spp, n = 10) |> pull(trait_name) |>
+  paste(collapse = ", ")
+
+data_trait_counts |>
+  filter(type == "categorical") |>
+  slice_max(n_spp, n = 10) |> pull(trait_name) |>
+  paste(collapse = ", ")
+
+
+```

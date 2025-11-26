@@ -1,0 +1,201 @@
+---
+title: "Analysis of trait variation in Australia: Analysis"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+# Background & aims
+
+1.  
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(arrow)
+library(sf)
+library(ozmaps)
+```
+
+
+Example for a species
+
+```{r}
+data_traits_climate_raw <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet")
+
+data_traits_climate_euc <-
+  data_traits_climate_raw |>
+  filter(genus == "Eucalyptus") |>
+  collect()
+
+taxon <- "Daviesia latifolia"
+taxon <- "Abrotanella nivigena"
+data_spp <- data_traits_climate_raw |>
+  filter(taxon_name == taxon) |>
+  collect()
+
+data_traits_climate_raw |>
+  filter(
+    decimal_longitude == 134.1,
+    decimal_latitude == -25.7
+  ) |>
+  collect()
+
+
+
+data_spp_med <- data_spp |>
+  locate_medoid_2d()
+
+data_spp_med
+
+plot_spp(data_spp, data_spp_med, taxon, file = "outputs/medoid_example.png")
+
+```
+
+How different is the result if we kick out all the Perth, Adelaide, Canberra samples? -- same good
+
+```{r}
+med1 <- data_spp |>
+  locate_medoid_2d()
+
+med2 <- data_spp |>
+  filter(decimal_longitude > 140) |>
+  locate_medoid_2d()
+
+bind_rows(med1, med2)
+```
+
+# Deploy for lot of species
+
+running for all 766 Eucalyptus species takes about 74 seconds -> 0.1 seconds per species
+For 30k species, would take about 50 minutes, or 5 mins with 10 cores
+
+Single core version
+```{r, eval=FALSE}
+library(tictoc)
+tic()
+data_taxa <- data_traits_climate_raw |>
+  filter(genus == "Eucalyptus") |>
+  nest(data = -c("taxon_name", "genus") |>
+  mutate(
+    medoid = map(data, ~ locate_medoid_2d(.x))
+  )
+toc()
+```
+
+multicore with furrr (51seconds)
+```{r, eval=FALSE}
+library(furrr)
+ncores <- parallel::detectCores() - 4
+options(mc.cores = ncores)
+plan(multisession, workers = ncores)
+data_taxa <- data_traits_climate_raw |>
+  filter(genus == "Eucalyptus") |>
+  nest(data = -c("taxon_name", "genus")) |>
+  mutate(
+    medoid = future_map(data, locate_medoid_2d)
+  )
+```
+
+Excute for all, saving results
+
+```{r}
+taxa <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet")|>
+  select(original_name, taxon_name, genus) |>
+  distinct() |>
+  collect() |>
+  filter(!is.na(taxon_name)) |>
+  filter(!taxon_name|> str_detect("/"))
+
+output_dir <- "~/Downloads/climate_centres/"
+file.path(output_dir, "data") |> dir.create(showWarnings = FALSE, recursive = TRUE)
+file.path(output_dir, "figures") |> dir.create(showWarnings = FALSE, recursive = TRUE)
+
+source("R/locate_medoid_2d.R")
+taxon <- "Daviesia latifolia"
+taxon <- taxa$taxon_name[17278]
+process_taxon_medoid(taxon, overwrite = TRUE)
+
+library(furrr)
+ncores <- parallel::detectCores() - 2
+options(mc.cores = ncores)
+plan(multisession, workers = ncores)
+taxa$taxon_name |>
+#  future_walk(~ process_taxon_medoid(.x, overwrite = FALSE))
+  walk(~ process_taxon_medoid(.x, overwrite = FALSE))
+
+taxa$taxon_name[1774]
+```
+
+```{r}
+taxon <- "Daviesia latifolia"
+
+# check number of records per species
+data_taxon_all <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
+  select(taxon_name) |>
+  collect() |>
+  table()
+
+data_taxon_all |> sort(decreasing = TRUE) -> x
+
+head(x)
+# taxon_name
+# Lycium ferocissimum Pteridium esculentum Hypochaeris radicata Microlaena stipoides  Lomandra longifolia      Cirsium vulgare 
+              123542                72259                69412                59678                59066                57283 
+
+x[x > 20000] |> length() #78
+
+```
+
+```{r}
+data_taxon_all <- 
+  arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
+    filter(taxon_name %in% taxa$taxon_name) |>
+    collect()
+
+data1 <- 
+  data_taxon_all |>
+  filter(decimal_longitude |> between(134.09, 134.11),
+        decimal_latitude |> between(-25.71, -25.69)) 
+
+data2<- 
+  data_taxon_all |>
+  filter(decimal_longitude |> between(134.48 , 134.49),
+        decimal_latitude |> between(-25.74, -25.73)) 
+
+bind_rows(data1, data2) |> write_csv("outputs/issues_central_aus.csv")
+
+134.4894          -25.735
+```
+
+
+# Interactive map of points
+
+```{r}
+
+library(leaflet)
+
+taxon <- "Daviesia latifolia"
+data_spp <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
+  filter(taxon_name == taxon) |>
+  select(taxon_name, decimal_longitude, decimal_latitude, annual_precipitation, average_temperature) |>
+  collect()
+
+leaflet(data_spp) |>
+  addTiles() |>
+  addCircleMarkers( lng = ~decimal_longitude, lat = ~decimal_latitude,
+    radius = 4, stroke = FALSE, fillOpacity = 0.5, color = "red", popup = ~ paste0(
+      "Precip: ", annual_precipitation,
+      "<br>Temp: ", average_temperature
+    )
+  )
+```
+
+# Compare with NVIS dominant species
+
+
+```{r}
+data/NVISv7.0/outputs
+```

@@ -1,0 +1,183 @@
+---
+title: "Analysis of trait variation in Australia: Dataset creation"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+# Background & aims
+
+1.  
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(APCalign)
+library(terra) # used to extract and process rasters
+library(glmmTMB)
+library(easystats)
+
+
+data <- read_csv("data/AVH_records/AVH_plant_height_data_check_for_units_20251117.csv") |>
+  filter(first_order == "keep", second_order == "keep", is.na(flag_value)) |>
+  select(any_of(c("family", "species", "decimalLongitude", "decimalLatitude", "height_with_units", "units", "trait_name", "minimum_aligned", "maximum_aligned", "mean_aligned", "species_minimum", "species_maximum", "species_mean", "occurrenceRemarks", "habitat", "eventDate", "year", "recordNumber", "institutionCode", "row_number")))
+
+data |> select(any_of(c("minimum_aligned", "maximum_aligned", "mean_aligned"))) |> mutate(across(where(is.double), ~ !(is.na(.x)))) %>% mutate(n = . |> rowSums()) |> pull(n) |> table()
+
+
+```
+
+
+## Get climate covariates
+
+Load climate covariates from worldclim
+
+- BIO_1: "Annual Mean Temperature" — the average temperature (°C) over the year for a location.
+- BIO_12 is a bioclimatic variable representing "Annual Precipitation." 
+
+
+```{r}
+vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
+
+# Australia
+australia <- terra::rast("data/australia.tif")
+
+# Stacked raster of climate predictors, cropped to Australia
+stacked_rasters <-
+  # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
+  file.path("data/spatial/climate/worldclim/wc2.1_2.5m_bio", vars) |>
+  terra::rast() |>
+  terra::crop(australia)
+```
+
+
+```{r}
+austraits_geo <-
+  data |>
+  # Remove problematic values
+  filter(
+    !is.na(decimalLatitude), !is.na(decimalLongitude)
+  )
+
+# Add climate data
+trait_data_vect <-
+  austraits_geo |>
+  select("decimalLongitude", "decimalLatitude") |>
+  terra::vect(
+    geom = c("decimalLongitude", "decimalLatitude"),
+    crs = terra::crs(stacked_rasters)
+  )
+
+data_traits_climate <-
+  terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
+  as_tibble() |>
+  bind_cols(austraits_geo) |>
+  rename(decimal_longitude = `decimalLongitude`, decimal_latitude = `decimalLatitude`, annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1) |>
+  select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything()) |>
+  mutate(
+    taxon_name = species,
+    log_annual_precipitation = log(annual_precipitation),
+  ) |>
+  # Let's also collect the mean rinafall for each species, and a value of rainfall centered around the mean
+  group_by(taxon_name) |>
+  mutate(
+    log_annual_precipitation_mn = mean(log_annual_precipitation),
+    log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn
+  ) |>
+  ungroup() |>
+  group_by(taxon_name, trait_name) |>
+  mutate(
+    log_value_c = log_value - mean(log_value)
+  ) |>
+  ungroup()
+
+
+```
+
+Fit model
+
+
+```{r}
+data_model <- data_traits_climate |> filter(!is.na(log_value) & !is.na(log_annual_precipitation), family == "Myrtaceae")
+
+fit5 <- glmmTMB(log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + (log_annual_precipitation_c | taxon_name), data = data_model)
+
+# Extract random effects from the fitted model
+random_effects <- ranef(fit5)$cond$taxon_name
+print(random_effects)
+
+```
+
+
+Make a plot
+```{r}
+parameters(fit5)
+
+data_fit5 <- estimate_expectation(fit5) |>
+  as_tibble()
+
+data_fit5_global <-
+  estimate_means(fit5, by = "log_annual_precipitation_mn") |>
+  as_tibble() |>
+  select(log_annual_precipitation = log_annual_precipitation_mn, log_value = Mean) |>
+  mutate(
+    annual_precipitation = exp(log_annual_precipitation),
+    value = exp(log_value),
+    taxon_name = "average"
+  )
+
+data_fit5_mn <- estimate_expectation(fit5,
+  data = data_fit5 |> mutate(log_annual_precipitation_c = 0)
+) |>
+  as_tibble() |>
+  select(log_annual_precipitation_mn, taxon_name, log_value_mn = Predicted) |>
+  distinct()
+
+data_fit5_all <-
+  data_fit5 |>
+  rename(log_value = Predicted) |>
+  select(-SE, -Residuals) |>
+  left_join(
+    by = c("log_annual_precipitation_mn", "taxon_name"),
+    data_fit5_mn
+  ) |>
+  mutate(
+    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
+    annual_precipitation = exp(log_annual_precipitation),
+    annual_precipitation_mn = exp(log_annual_precipitation_mn),
+    value = exp(log_value),
+    value_mn = exp(log_value_mn),
+  )
+
+taxa <- c("Eucalyptus globulus", "Eucalyptus camaldulensis", "Melaleuca quinquenervia", "Corymbia citriodora", "Leptospermum laevigatum")
+
+data_model_taxa <- data_model |>
+  filter(taxon_name %in% taxa) |>
+  mutate(taxon2 = taxon_name)
+
+data_fit5_taxa <- data_fit5_all |>
+  filter(taxon_name %in% taxa) |>
+  mutate(taxon2 = taxon_name)
+
+p_fit <-
+  data_fit5_all |>
+  ggplot(aes(annual_precipitation, value, group = taxon_name)) +
+  # raw data
+  geom_point(alpha = 0.5, col = "grey", data = data_model, stroke = 0) +
+  # fitted lines
+  geom_line(alpha = 0.5, col = "black", linewidth = 0.25) +
+  # highlight certain species
+  geom_point(aes(group = taxon2), col = "orange", show.legend = FALSE, data = data_model_taxa, size = 1) +
+  geom_point(aes(x = annual_precipitation_mn, y = value_mn, group = taxon2), alpha = 0.5, data = data_fit5_taxa, col = "red") +
+  geom_line(aes(group = taxon2), col = "purple", alpha = 1, show.legend = FALSE, data = data_fit5_taxa) +
+  geom_line(data = data_fit5_global, col = "red") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  labs(y = "height", x = "annual rainfall") +
+  theme(legend.position = "none") + 
+  facet_wrap(~taxon2)
+
+ggsave(p_fit, filename = "p_fit.png", width = 8, height = 6)
+```

@@ -1,0 +1,236 @@
+---
+title: "Analysis of trait variation in Australia: Dataset creation"
+format: html
+editor_options:
+  chunk_output_type: console
+---
+
+# Background & aims
+
+1.  
+
+# Setup
+
+```{r}
+library(tidyverse)
+library(APCalign)
+library(terra)
+library(terra) # used to extract and process rasters
+library(tictoc) # used to track time processes take
+
+# For climate medoids
+library(arrow)
+library(sf)
+library(ozmaps)
+library(furrr)
+
+```
+
+# Datasets
+
+Reusing data from Cornsters annuals project. To save duplicating that, I'm just going to create a symbolic link to those datasets, to those directories. 
+
+```
+ln -s ../Cornsters-australian_annuals/data data
+ln -s ../Cornsters-australian_annuals/downloads downloads 
+```
+
+## Get climate covariates
+
+Load climate covariates from worldclim
+
+- BIO_1: "Annual Mean Temperature" — the average temperature (°C) over the year for a location.
+- BIO_12 is a bioclimatic variable representing "Annual Precipitation." 
+
+```{r}
+vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
+
+# Australia
+australia <- terra::rast("data/australia.tif")
+
+# Stacked raster of climate predictors, cropped to Australia
+stacked_rasters <-
+  # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
+  file.path("data/climate", vars) |>
+  terra::rast() |>
+  terra::crop(australia)
+```
+
+
+## GBIF
+
+Load cleaned GBIF/ALA dataset as tibble, create a dataset spanning known species obervations, link to climate layers
+
+```{r}
+output <- "data-processed/gbif_data_climates.parquet"
+
+if (!file.exists(output)) {
+  data_gbif <- arrow::read_parquet("data/GBIF/2025/GBIF_aus_clean_0001494-250914085247600.parquet") |>
+    janitor::clean_names()
+
+  data_gbif_vect <-
+    data_gbif |>
+    terra::vect(
+      geom = c("decimal_longitude", "decimal_latitude"),
+      crs = terra::crs(stacked_rasters)
+    )
+
+  data_gbif_climate <-
+    terra::extract(x = stacked_rasters, y = data_gbif_vect, method = "simple", xy = TRUE, ID = FALSE, dataframe = TRUE) |>
+    as_tibble() |>
+    select(x, y, everything())
+
+  # fixing taxonomy in GBIF
+  aligned_species_list <- arrow::read_parquet("data/GBIF/2025/gbif_names_aligned_2025.parquet")
+
+  data_gbif_cleaned <-
+    data_gbif |>
+    rename(original_name = species) |>
+    select(-taxon_rank) |>
+    left_join(by = "original_name", aligned_species_list) |>
+    bind_cols(data_gbif_climate |> select(-x, -y)) |>
+    select(original_name, taxon_name = accepted_name, genus, scientific_name, starts_with("decimal"), annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1, everything()) |>
+    # Rogue points to remove
+    filter(!is.na(annual_precipitation), !is.na(average_temperature), annual_precipitation > 0) |>
+    filter(
+      !(decimal_longitude == 134.1 & decimal_latitude == -25.7)
+    ) |>
+    mutate(
+      log_annual_precipitation = log(annual_precipitation),
+      log_annual_precipitation_centered = (log_annual_precipitation - mean(log_annual_precipitation)) / sd(log_annual_precipitation),
+      average_temperature_centered = (average_temperature - mean(average_temperature)) / sd(average_temperature),
+    ) |>
+    relocate(contains("_centered"), .after = "average_temperature")
+
+  arrow::write_parquet(data_gbif_cleaned, output)
+}
+
+data_gbif_cleaned <- arrow::read_parquet(output)
+```
+
+### Climate centres
+
+Calculating the centre of @D distribtion (medoid)
+
+```{r}
+output <- "data-processed/data_spp_climates-medoid.parquet"
+
+if (!file.exists(output)) {
+
+  source("R/locate_medoid_2d.R")
+
+  # Example for a species
+  taxon <- "Daviesia latifolia"
+  process_taxon_medoid(taxon, overwrite = TRUE)
+
+  # Deploy for lot of species
+  output_dir <- "~/Downloads/climate_centres/"
+  file.path(output_dir, "data") |> dir.create(showWarnings = FALSE, recursive = TRUE)
+  file.path(output_dir, "figures") |> dir.create(showWarnings = FALSE, recursive = TRUE)
+
+  taxa <-  arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
+    select(taxon_name, genus) |>
+    distinct() |>
+    collect() |>
+    filter(!is.na(taxon_name)) |>
+    filter(!taxon_name|> str_detect("/"))
+
+  ncores <- parallel::detectCores() - 2
+  options(mc.cores = ncores)
+  plan(multisession, workers = ncores)
+  taxa$taxon_name |>
+  #  future_walk(~ process_taxon_medoid(.x, overwrite = FALSE))
+    walk(~ process_taxon_medoid(.x, overwrite = FALSE))
+
+  # Now compile for all the species
+  read_taxon <- function(taxon) {
+      file.path(output_dir, "data", paste0(taxon, ".rds")) |> readRDS()
+  }
+
+  data_spp_medoids <- taxa$taxon_name |> furrr::future_map(read_taxon) |> bind_rows()
+
+  data_spp_medoids |> arrow::write_parquet(output)
+}
+
+```
+
+Alternatively: A simple calculation (not used)
+
+```{r, eval = FALSE}
+output <- "data-processed/data_spp_climates-simple.parquet"
+
+if (!file.exists(output)) {
+  data_spp_climates <-
+    data_gbif_cleaned |>
+    group_by(taxon_name, genus, scientific_name) |>
+    summarize(
+      n = n(),
+      across(where(is.numeric), list(
+        p50 = ~ quantile(.x, 0.50, na.rm = TRUE),
+        p05 = ~ quantile(.x, 0.05, na.rm = TRUE),
+        p95 = ~ quantile(.x, 0.95, na.rm = TRUE)
+      ), .names = "{.col}_{.fn}"),
+      .groups = "drop"
+    ) |>
+    arrange(taxon_name) |>
+    mutate(
+      decimal_longitude_range = decimal_longitude_p95 - decimal_longitude_p05,
+      decimal_latitude_range = decimal_latitude_p95 - decimal_latitude_p05,
+      average_temperature_range = average_temperature_p95 - average_temperature_p05,
+      annual_precipitation_range = annual_precipitation_p95 / annual_precipitation_p05
+    )
+
+  arrow::write_parquet(data_spp_climates, "data-processed/data_spp_climates-simple.parquet")
+}
+```
+
+
+## AusTraits
+
+```{r}
+traits <- c(
+  "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass",
+  "leaf_N_per_area", "leaf_P_per_area",
+  "seed_dry_mass", "wood_density", "leaf_P_per_dry_mass", "leaf_delta13C"
+)
+
+output <- "data-processed/austraits_geo_climates.parquet"
+
+if (!file.exists(output)) {
+  austraits <- readRDS("data/austraits/austraits-7.0.0.rds") |>
+    austraits::flatten_database()
+
+  austraits_geo <-
+    austraits |>
+    filter(
+      trait_name %in% traits,
+      basis_of_record == "field",
+      !is.na(`latitude (deg)`), !is.na(`longitude (deg)`)
+    ) |>
+    mutate(across(c("latitude (deg)", "longitude (deg)", value), ~ suppressWarnings(as.numeric(.x)))) |>
+    # Remove problematic values
+    filter(
+      !is.na(`latitude (deg)`), !is.na(`longitude (deg)`),
+      !(trait_name == "leaf_delta13C" & value < 20)
+    )
+
+  # Add climate data
+  trait_data_vect <-
+    austraits_geo |>
+    select("longitude (deg)", "latitude (deg)") |>
+    terra::vect(
+      geom = c("longitude (deg)", "latitude (deg)"),
+      crs = terra::crs(stacked_rasters)
+    )
+
+  data_traits_climate <-
+    terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, xy = FALSE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
+    as_tibble() |>
+    bind_cols(austraits_geo) |>
+    rename(decimal_longitude = `longitude (deg)`, decimal_latitude = `latitude (deg)`, annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1) |>
+    select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything())
+
+  arrow::write_parquet(data_traits_climate, "data-processed/data_traits_climate.parquet")
+}
+
+```
