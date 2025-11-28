@@ -246,9 +246,11 @@ p2 <-
 
 # Random slope and intercepts
 means_j1 <- estimate_expectation(model_intercept_slope1)
+means_all <- estimate_expectation(model_intercept_slope1, by = "x")
 
 p3 <- ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
   geom_line(data = means_j1, aes(y = Predicted), size = 0.5) +
   labs(title = "Classic mixed model:\n\t\t y ~ x + (x | species)") +
   ylim(c(10, 30)) +
@@ -258,10 +260,13 @@ p3 <- ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
 # Random slope and intercepts
 means_j2 <- estimate_expectation(model_intercept_slope2) |>
   mutate(x = x_mn + x_c)
+# generate estimate for the common slope
+means_all <- estimate_expectation(model_intercept_slope2, by = "x_mn")
 
 p4 <-
   ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", size = 0.5) +
   geom_line(data = means_j2, aes(y = Predicted), size = 0.5) +
   labs(title = "Modified mixed model:\n\t\t y ~ x_mn + x_c + (x_c | sp)") +
   theme_classic() +
@@ -271,9 +276,11 @@ p4 <-
 # Random slope and intercepts
 means_j3 <- estimate_expectation(model_intercept_slope3) |>
   mutate(x = x_mn + x_c)
+means_all <- estimate_expectation(model_intercept_slope3, by = "x_mn")
 
 p5 <-
   ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
+geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", size = 0.5) +
   geom_point(alpha = 0.5) +
   geom_line(data = means_j3, aes(y = Predicted), size = 0.5) +
   labs(title = "Modified mixed, uncorr intercept & slope:\n\t\t y ~ x_mn + x_c + (1 | sp) + (0 + x_c | sp)") +
