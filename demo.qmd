@@ -21,8 +21,8 @@ library(patchwork)
 
 We're going to generate two datasets.
 
--   `data1`: satisfies assumptions of a standard random effects model setup. In particular groups do not differ in their average x values, `x_mn`
--   `data2`: does not satisfy assumptions of a standard random effects model setup, as groups differ in their average x values `x_mn` and group intercepts are correlated with `x_mn`.
+-   `data1`: satisfies assumptions of a standard random effects model setup. In particular groups do not differ in their average x values, `x_mn`.
+-   `data2`: does not satisfy assumptions of a standard random effects model setup, as groups differ in their average x values `x_mn` and group intercepts are correlated with `x_mn`. Importantly, in both cases intercepts and slopes vary by group, but intercepts and slopes are independent. Spoiler alert, this matters because the standard way of writing an LMM specifies CORRELATED intercepts and slopes.
 
 ## Data1
 
@@ -297,7 +297,9 @@ p_mm
 
 Note the within-species slope. In the Classic LMM, the slope INCREASES as the intercept increases. For the modified mixed model with correlated intercept and slope, the slope DECREASES as the intercept increases. In the last model where we assume independence of intercepts and slopes, the within species slopes follow the between species slope.
 
-this needs testing across a range of simulation parameters.
+This needs testing across a range of simulation parameters.
+
+Also extracting the slope and intercept estimates and plotting them against the simulated parameters would be useful.
 
 # Modified LMM with random intercept & slope model using brms
 
