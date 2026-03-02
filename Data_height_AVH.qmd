@@ -161,16 +161,16 @@ $\log(H_{i[s]}) = (\beta_0 +\gamma_{0[s]}) + \beta_{m} \cdot \log(P_{m[s]}) + (\
 
 where 
 
-- $\beta_0$ is the overall intercept,
-- $\gamma_{0[s]}$ is the species-specific random intercept (deviation from overall average log height),
-- $\beta_{m}$ is the change in log height with mean precipitation across species,
-- $\beta_c$ is the average within-species change in log height with log precipitation, and
-- $\gamma_{c[s]}$ is the species-specific random slope (deviation from average response to precipitation).
 - $H_{i[s]}$ is the height of individual $i$ in species $s$,
-- $P_{i[s]}$ is the precipitation at the location of individual $i$ in species $s$, and
-- $P_{m[s]}$ is the mean precipitation for species $s$.
+- $\beta_0$ is the overall global intercept,
+- $\gamma_{0[s]}$ is the species-specific random intercept (i.e. deviation from $\beta_0$),
+- $\beta_{m}$ is the change across species, in the species average log height with species average log precipitation (i.e., change in height at the centre of a species distribution with change in precipitation at the centre of a species distribution),
+- $\beta_c$ is the overall average within-species change in log height with log precipitation,
+- $\gamma_{c[s]}$ is the species-specific random slope (deviation from $\beta_c$),
+- $P_{m[s]}$ is the mean precipitation for species $s$,and 
+- $P_{i[s]}$ is the precipitation at the location of individual $i$ in species $s$.
 
-The average height at any point in any species distribution can be calculated from the fitted model parameters and the equation above.
+The average height at any point in any species distribution can then be calculated from the fitted model parameters and the equation above.
 
 When fitting the model, we filtered the data to species with more than a minimum number of records (`n_min = 5`) to ensure enough data to reliably estimate species-specific responses. This reduces dataset coverage from around 19,000 species to around 10,500 species. All models were fit using the `glmmTMB` package.
 
@@ -247,14 +247,14 @@ ggsave(p_fit_all, filename = "outputs/height/fit_all.png", width = 8, height = 6
 We now look more closely at variation among species in their response to rainfall. The plot below shows fitted relationships between height and rainfall for a subset of species, highlighting those with the strongest positive response to rainfall (i.e., the largest values of $\gamma_{s}$). For illustration, we focus on the top 9 Eucalyptus species with the strongest positive rainfall response; however, the same approach can be applied to any subset of species, or all species if desired.
 
 ```{r}
-top9_taxa <- fits$random_effects_r |>
+top_taxa <- fits$random_effects_r |>
   arrange(desc(g_c)) |>
   filter(grepl("Eucalyptus", taxon_name)) |>
   slice_head(n = 9) |>
   pull(taxon_name)
 
 p_fit_taxa <-
-  plot_fitted_highlight_taxa(fits$data_model, fits$data_fitted_r, top9_taxa) +
+  plot_fitted_highlight_taxa(fits$data_model, fits$data_fitted_r, top_taxa) +
   facet_wrap(~taxon2)
 
 ggsave(p_fit_taxa, filename = "outputs/height/fit_taxa_top_9_eucs.png", width = 10, height = 10)
@@ -285,32 +285,37 @@ data_table_output <-
     n = n(),
     height_range = paste(min(value), max(value), sep = "-"),
     log_P_m = first(log_annual_precipitation_mn),
+    log_P_range = sprintf("%0.2f-%0.2f", min(log_annual_precipitation), max(log_annual_precipitation))
   ) |>
   bind_cols(pars_global) |>
   left_join(by = "taxon_name", fits$random_effects_r |> select(taxon_name, g_0, g_c)) |>
-  # Check if needed.
-  mutate(height_2 = exp(B_0 + g_0 + B_m * log_P_m)) |>
   left_join(
     by = "taxon_name",
     fits$data_fitted_r$mn |>
       select(taxon_name, log_annual_precipitation_mn, H_predicted_mn = estimate, conf.low, conf.high) |>
+      # This will be the same as log_P_m, including to check alignment
       rename(log_P_m2 = log_annual_precipitation_mn)
   ) |>
   filter(!is.na(log_P_m2))
 
 # Sanity check - the predicted height at the mean precipitation should match the estimate from the fitted model
-assertthat::assert_that(all(data_table_output$log_P_m - data_table_output$log_P_m2 < 1e-3))
-assertthat::assert_that(all(data_table_output$height_2 - data_table_output$H_predicted_mn < 1e-3))
-
-data_export <- 
+# Calculate Check if needed.
+data_table_output |> 
+  mutate(
+    height_2 = exp(B_0 + g_0 + B_m * log_P_m),
+    height_check  = height_2 - H_predicted_mn
+    ) |> pull(height_check) -> x
+assertthat::assert_that(all(x < 1e-6))
+assertthat::assert_that(all(data_table_output$log_P_m - data_table_output$log_P_m2 < 1e-6))
+## after checking, we can remove the redundant columns
+data_export <-
   data_table_output |>
-  select(-height_2, -log_P_m2) 
+  select(-height_2, -log_P_m2)
 
 data_export
 ```
 
-Save to file,
-and also save metadata describing the columns in the output table.
+Save to file, and also save metadata describing the columns in the output table.
 
 ```{r}
 data_export_meta <-
@@ -324,6 +329,7 @@ data_export_meta <-
       "number of observations for the species",
       "range of heights observed for the species",
       "log of mean annual precipitation (mm) at species centre",
+      "range of log mean annual precipitation (mm) across species distribution",
       "global intercept parameter for the model",
       "global slope parameter for mean precipitation response",
       "global slope parameter for within species precipitation response",
@@ -341,5 +347,4 @@ data_export |>
 data_export_meta |>
   write_csv("outputs/height/species_height_climate_response_meta.csv")
 ```
-
 
