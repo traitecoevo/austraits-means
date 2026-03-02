@@ -51,7 +51,6 @@ data_spp_med <- data_spp |>
 data_spp_med
 
 plot_spp(data_spp, data_spp_med, taxon, file = "outputs/medoid_example.png")
-
 ```
 
 How different is the result if we kick out all the Perth, Adelaide, Canberra samples? -- same good
@@ -129,6 +128,20 @@ taxa$taxon_name |>
 taxa$taxon_name[1774]
 ```
 
+# extract medoid results into a single file
+```{r}
+output_dir <- "~/Downloads/climate_centres/"
+files <- list.files(file.path(output_dir, "data"), full.names = TRUE)
+
+medoids_all <- map_df(files, readRDS)
+
+arrow::write_parquet(medoids_all, file.path("data-processed", "climate_centres.parquet"))
+
+
+```
+
+
+# Extra
 ```{r}
 taxon <- "Daviesia latifolia"
 
