@@ -1,183 +1,345 @@
 ---
-title: "Analysis of trait variation in Australia: Dataset creation"
-format: html
+title: "Analysis of height variation in Australia: Dataset creation"
+author: Daniel Falster & Elizabeth Wenk
+date: 2026-02-28
+format:
+  html:
+    embed-resources: true
+    toc: true
+    smooth-scroll: true
+  docx: default
 editor_options:
   chunk_output_type: console
 ---
+This analysis focuses on understanding variation in plant height within and across species in Australia in relation to two climatic variables: annual precipitation (mm/yr) and average temperature (°C). The dataset used for this analysis is derived from the Australasian Virtual Herbarium (AVH). We extracted records of height from the "occurrence remarks" field in the AVH dataset, which contains a variety of information about plant specimens, often including measurements of population height. We then linked these height records to climate data from WorldClim, which provides high-resolution climate data for global land areas. Climate data were extracted for the locations where specimens were collected, allowing us to analyse how height varies with climatic conditions. By fitting a custom statistical model, we extracted species-specific responses to climatic variables and investigated how these responses vary across species. These within-species responses are compared with changes in average species height at the centre of each species' distribution. Combined, this analysis provides insights into how plant height varies across climatic conditions in Australia, and how this variation is structured within and across species.
 
-# Background & aims
+## Dataset creation
 
-1.  
+The code below describes the process of creating the dataset used for the analysis. It involves loading the AVH data, extracting height records, linking these records to climate data, and preparing the dataset for analysis.
 
-# Setup
-
-```{r}
+```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(APCalign)
 library(terra) # used to extract and process rasters
 library(glmmTMB)
 library(easystats)
+library(memoise)
+library(ggrastr)
+library(patchwork)
+source("R/process_fitted_model.R")
 
+options(marginaleffects_safe = FALSE)
+```
 
-data <- read_csv("data/AVH_records/AVH_plant_height_data_check_for_units_20251117.csv") |>
-  filter(first_order == "keep", second_order == "keep", is.na(flag_value)) |>
-  select(any_of(c("family", "species", "decimalLongitude", "decimalLatitude", "height_with_units", "units", "trait_name", "minimum_aligned", "maximum_aligned", "mean_aligned", "species_minimum", "species_maximum", "species_mean", "occurrenceRemarks", "habitat", "eventDate", "year", "recordNumber", "institutionCode", "row_number")))
+## Prepare data
 
-data |> select(any_of(c("minimum_aligned", "maximum_aligned", "mean_aligned"))) |> mutate(across(where(is.double), ~ !(is.na(.x)))) %>% mutate(n = . |> rowSums()) |> pull(n) |> table()
+```{r}
+load_data <- function() {
+  # Load trait data
+  data <-
+    read_csv("data/data-ausplants/AVH_records/AVH_records_20260302.csv",
+      show_col_types = FALSE
+    ) |>
+    mutate(trait_name = "height", log_value = log(height_final)) |>
+    select(family, genus, taxon_name,
+      recordNumber, row_number, identifier, institutionCode, year,
+      trait_name,
+      value_type,
+      value = height_final,
+      log_value,
+      decimal_longitude = decimalLongitude, decimal_latitude = decimalLatitude,
+      original_name = species,
+    ) |>
+    filter(if_any(where(is.double), ~ !(is.na(.x))), value > 0)
 
+  # Get climate covariates
+  vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
 
+  # Australia
+  australia <- terra::rast("data/australia.tif")
+
+  # Stacked raster of climate predictors, cropped to Australia
+  stacked_rasters <-
+    # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
+    file.path("data/climate/", vars) |>
+    terra::rast() |>
+    terra::crop(australia)
+
+  austraits_geo <-
+    data |>
+    # Remove problematic values
+    filter(
+      !is.na(decimal_latitude), !is.na(decimal_longitude)
+    )
+
+  # Add climate data
+  trait_data_vect <-
+    austraits_geo |>
+    select("decimal_longitude", "decimal_latitude") |>
+    terra::vect(
+      geom = c("decimal_longitude", "decimal_latitude"),
+      crs = terra::crs(stacked_rasters)
+    )
+
+  data_traits_climate <-
+    terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
+    as_tibble() |>
+    bind_cols(austraits_geo) |>
+    rename(
+      annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1
+    ) |>
+    select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything()) |>
+    mutate(
+      log_annual_precipitation = log(annual_precipitation),
+    ) |>
+    filter(!is.na(log_annual_precipitation) & !is.na(average_temperature))
+
+  # Add climate centres
+  # - For now use climate centres from the recorded locations
+  # TODO: add climate centres from the species distribution data
+  climate_centres <- data_traits_climate |>
+    group_by(taxon_name) |>
+    summarise(
+      .groups = "drop",
+      across(c(log_annual_precipitation, average_temperature, decimal_latitude, decimal_longitude), mean, .names = "{col}_mn")
+    )
+
+  # Also collect deviation of each species from median rainfall and temperature
+
+  data_traits_climate <- data_traits_climate |>
+    left_join(climate_centres, by = "taxon_name") |>
+    # Remove any species missing climate data
+    filter(!is.na(log_annual_precipitation_mn)) |>
+    # Center the rainfall data around the mean for each species
+    group_by(taxon_name) |>
+    mutate(
+      log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn,
+      average_temperature_c = average_temperature - average_temperature_mn
+    ) |>
+    ungroup() |>
+    # Center the trait data around the mean for each species
+    group_by(taxon_name, trait_name) |>
+    mutate(
+      log_value_c = log_value - mean(log_value)
+    ) |>
+    ungroup()
+}
+
+# Data saved in parquet file for faster loading in the future
+data_traits_climate_file <- "data-processed/data_height_climate.parquet"
+
+if (!file.exists(data_traits_climate_file)) {
+  data_traits_climate <- load_data()
+  arrow::write_parquet(data_traits_climate, data_traits_climate_file)
+} else {
+  data_traits_climate <- arrow::read_parquet(data_traits_climate_file)
+}
 ```
 
 
-## Get climate covariates
+## Fit statistical models
 
-Load climate covariates from worldclim
+We fit a custom statistical model to the data, which includes both fixed effects of climatic variables and random effects for each species. The model allows us to extract species-specific responses to climatic variables, which can then be compared across species. The overall model structure is as follows:
 
-- BIO_1: "Annual Mean Temperature" — the average temperature (°C) over the year for a location.
-- BIO_12 is a bioclimatic variable representing "Annual Precipitation." 
+```{r, eval = FALSE}
+log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + log_annual_precipitation_c + average_temperature_c | taxon_name)
+```
+where
 
+- `log_value` is the log-transformed height of the plant specimens.
+- `log_annual_precipitation_mn` and `average_temperature_mn` are the mean annual precipitation and average temperature for each species, representing the climatic conditions at the center of the species distribution.
+- `log_annual_precipitation_c` and `average_temperature_c` are the centered values of annual precipitation and average temperature, representing the deviation from the species mean for each record.
+- `(1 | taxon_name)` is a random intercept for each species, allowing for variation in the average height by species.
+- `(0 + log_annual_precipitation_c + average_temperature_c | taxon_name)` is a random slope for the climatic variables, allowing for variation in the response to the climatic variables within each species. 
+
+Note that random effects are included for both the intercept and slopes; however, these are assumed to be uncorrelated, as including correlations caused model convergence issues.
+
+In this preliminary analysis, we focus on the response to rainfall, as this is the climatic variable most strongly associated with height in our data. We fit separate models for rainfall and temperature to avoid model convergence issues, as well as a combined model with both predictors but no interactions. Terms related to temperature are therefore omitted from the model results presented here.
+
+The model has the following mathematical form:
+$\log(H_{i[s]}) = (\beta_0 +\gamma_{0[s]}) + \beta_{m} \cdot \log(P_{m[s]}) + (\beta_c + \gamma_{c[s]}) \cdot \left(\log(P_{i[s]}) - \log(P_{m[s]})\right)$,
+
+where 
+
+- $\beta_0$ is the overall intercept,
+- $\gamma_{0[s]}$ is the species-specific random intercept (deviation from overall average log height),
+- $\beta_{m}$ is the change in log height with mean precipitation across species,
+- $\beta_c$ is the average within-species change in log height with log precipitation, and
+- $\gamma_{c[s]}$ is the species-specific random slope (deviation from average response to precipitation).
+- $H_{i[s]}$ is the height of individual $i$ in species $s$,
+- $P_{i[s]}$ is the precipitation at the location of individual $i$ in species $s$, and
+- $P_{m[s]}$ is the mean precipitation for species $s$.
+
+The average height at any point in any species distribution can be calculated from the fitted model parameters and the equation above.
+
+When fitting the model, we filtered the data to species with more than a minimum number of records (`n_min = 5`) to ensure enough data to reliably estimate species-specific responses. This reduces dataset coverage from around 19,000 species to around 10,500 species. All models were fit using the `glmmTMB` package.
 
 ```{r}
-vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
+file_fits <- "data-processed/fits_height_climate.rds"
 
-# Australia
-australia <- terra::rast("data/australia.tif")
+if (!file.exists(file_fits)) {
+  # Limit data to species with more than n_min records, to ensure we can fit the models
+  n_min <- 5
+  spp_counts <- data_traits_climate |> count(taxon_name)
+  spp_counts_n <-
+    spp_counts |> filter(n > n_min)
 
-# Stacked raster of climate predictors, cropped to Australia
-stacked_rasters <-
-  # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
-  file.path("data/spatial/climate/worldclim/wc2.1_2.5m_bio", vars) |>
-  terra::rast() |>
-  terra::crop(australia)
+  data_model <- data_traits_climate |> filter(taxon_name %in% spp_counts_n$taxon_name)
+
+  # Check that all species have more than n_min records
+  assertthat::assert_that(all(data_model |> count(taxon_name) |> pull(n) > n_min))
+
+  # Fit the models
+  ## Note - we fit separate models for rainfall and temperature to avoid issues with model convergence, as well as a combined model with both predictors but no interactions
+  fit_r <- glmmTMB(log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + (1 | taxon_name) + (0 + log_annual_precipitation_c | taxon_name), data = data_model)
+  #  fit_t <- glmmTMB(log_value ~ average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
+
+  ## Note - no interactions in 2D model as causes issues with model convergence
+  # fit_rt <- glmmTMB(log_value ~ average_temperature_mn + log_annual_precipitation_mn + average_temperature_c + log_annual_precipitation_c + (0 + log_annual_precipitation_c + average_temperature_c | taxon_name), data = data_model)
+
+  # Compute predicted values and residuals for fitted models
+  data_fitted_r <- process_fit(fit_r)
+  #  data_fitted_t <- process_fit(fit_t)
+  #  data_fitted_rt <- process_fit(fit_rt)
+
+  random_effects_r <-
+    ranef(fit_r)$cond$taxon_name |>
+    as_tibble(rownames = "taxon_name") |>
+    rename(g_0 = `(Intercept)`, g_c = log_annual_precipitation_c) |>
+    mutate(h = exp(g_0))
+
+  # Save fitted models for future use
+  list(data_model = data_model, 
+    fit_r = fit_r, data_fitted_r = data_fitted_r, random_effects_r = random_effects_r
+  #fit_t = fit_t, fit_rt = fit_rt, 
+  ) |>
+  saveRDS(file_fits)
+}
+
+fits <- readRDS(file_fits)
 ```
 
+## Results
+
+### Overall model results
+
+The parameters of the fitted model are as follows:
 
 ```{r}
-austraits_geo <-
-  data |>
-  # Remove problematic values
-  filter(
-    !is.na(decimalLatitude), !is.na(decimalLongitude)
-  )
-
-# Add climate data
-trait_data_vect <-
-  austraits_geo |>
-  select("decimalLongitude", "decimalLatitude") |>
-  terra::vect(
-    geom = c("decimalLongitude", "decimalLatitude"),
-    crs = terra::crs(stacked_rasters)
-  )
-
-data_traits_climate <-
-  terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
-  as_tibble() |>
-  bind_cols(austraits_geo) |>
-  rename(decimal_longitude = `decimalLongitude`, decimal_latitude = `decimalLatitude`, annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1) |>
-  select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything()) |>
-  mutate(
-    taxon_name = species,
-    log_annual_precipitation = log(annual_precipitation),
-  ) |>
-  # Let's also collect the mean rinafall for each species, and a value of rainfall centered around the mean
-  group_by(taxon_name) |>
-  mutate(
-    log_annual_precipitation_mn = mean(log_annual_precipitation),
-    log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn
-  ) |>
-  ungroup() |>
-  group_by(taxon_name, trait_name) |>
-  mutate(
-    log_value_c = log_value - mean(log_value)
-  ) |>
-  ungroup()
-
-
+pars <- parameters(fits$fit_r)
+pars
 ```
 
-Fit model
+There is a moderately strong effect of mean precipitation on average species log height (i.e., change in height at the centre of a species distribution), with a 95% CI estimate of 0.58 (0.53, 0.62). By contrast, the change in height with deviation from mean precipitation (i.e., change in height across each species distribution) is much weaker, with an estimate of 0.03 (95% CI 0.02, 0.05). This suggests that as we move to wetter conditions, we tend to see taller species on average, and that within each species, individuals in wetter conditions also tend to be slightly taller than those in drier conditions. However, the within-species change in height is relatively weak, indicating that the dominant effect of rainfall on height is across species rather than within species.
 
+The plot below visualises the fitted relationships between height and climatic variables, and highlights species-specific responses to rainfall for a subset of species. The red line shows the across-species effect, thin black lines show fitted relationships for each species, and the blue line shows the average within-species effect. The stronger relationship indicated by the red line compared to the blue line reflects the stronger effect of rainfall across species than within species, as indicated by the model parameters above.
 
 ```{r}
-data_model <- data_traits_climate |> filter(!is.na(log_value) & !is.na(log_annual_precipitation), family == "Myrtaceae")
+p_fit_all <- plot_fitted(fits$data_model, fits$data_fitted_r)
 
-fit5 <- glmmTMB(log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + (log_annual_precipitation_c | taxon_name), data = data_model)
-
-# Extract random effects from the fitted model
-random_effects <- ranef(fit5)$cond$taxon_name
-print(random_effects)
-
+ggsave(p_fit_all, filename = "outputs/height/fit_all.png", width = 8, height = 6)
 ```
 
+![](outputs/height/fit_all.png)
 
-Make a plot
+### Variation among species in the response to rainfall
+
+We now look more closely at variation among species in their response to rainfall. The plot below shows fitted relationships between height and rainfall for a subset of species, highlighting those with the strongest positive response to rainfall (i.e., the largest values of $\gamma_{s}$). For illustration, we focus on the top 9 Eucalyptus species with the strongest positive rainfall response; however, the same approach can be applied to any subset of species, or all species if desired.
+
 ```{r}
-parameters(fit5)
+top9_taxa <- fits$random_effects_r |>
+  arrange(desc(g_c)) |>
+  filter(grepl("Eucalyptus", taxon_name)) |>
+  slice_head(n = 9) |>
+  pull(taxon_name)
 
-data_fit5 <- estimate_expectation(fit5) |>
-  as_tibble()
-
-data_fit5_global <-
-  estimate_means(fit5, by = "log_annual_precipitation_mn") |>
-  as_tibble() |>
-  select(log_annual_precipitation = log_annual_precipitation_mn, log_value = Mean) |>
-  mutate(
-    annual_precipitation = exp(log_annual_precipitation),
-    value = exp(log_value),
-    taxon_name = "average"
-  )
-
-data_fit5_mn <- estimate_expectation(fit5,
-  data = data_fit5 |> mutate(log_annual_precipitation_c = 0)
-) |>
-  as_tibble() |>
-  select(log_annual_precipitation_mn, taxon_name, log_value_mn = Predicted) |>
-  distinct()
-
-data_fit5_all <-
-  data_fit5 |>
-  rename(log_value = Predicted) |>
-  select(-SE, -Residuals) |>
-  left_join(
-    by = c("log_annual_precipitation_mn", "taxon_name"),
-    data_fit5_mn
-  ) |>
-  mutate(
-    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
-    annual_precipitation = exp(log_annual_precipitation),
-    annual_precipitation_mn = exp(log_annual_precipitation_mn),
-    value = exp(log_value),
-    value_mn = exp(log_value_mn),
-  )
-
-taxa <- c("Eucalyptus globulus", "Eucalyptus camaldulensis", "Melaleuca quinquenervia", "Corymbia citriodora", "Leptospermum laevigatum")
-
-data_model_taxa <- data_model |>
-  filter(taxon_name %in% taxa) |>
-  mutate(taxon2 = taxon_name)
-
-data_fit5_taxa <- data_fit5_all |>
-  filter(taxon_name %in% taxa) |>
-  mutate(taxon2 = taxon_name)
-
-p_fit <-
-  data_fit5_all |>
-  ggplot(aes(annual_precipitation, value, group = taxon_name)) +
-  # raw data
-  geom_point(alpha = 0.5, col = "grey", data = data_model, stroke = 0) +
-  # fitted lines
-  geom_line(alpha = 0.5, col = "black", linewidth = 0.25) +
-  # highlight certain species
-  geom_point(aes(group = taxon2), col = "orange", show.legend = FALSE, data = data_model_taxa, size = 1) +
-  geom_point(aes(x = annual_precipitation_mn, y = value_mn, group = taxon2), alpha = 0.5, data = data_fit5_taxa, col = "red") +
-  geom_line(aes(group = taxon2), col = "purple", alpha = 1, show.legend = FALSE, data = data_fit5_taxa) +
-  geom_line(data = data_fit5_global, col = "red") +
-  scale_x_log10() +
-  scale_y_log10() +
-  theme_classic() +
-  labs(y = "height", x = "annual rainfall") +
-  theme(legend.position = "none") + 
+p_fit_taxa <-
+  plot_fitted_highlight_taxa(fits$data_model, fits$data_fitted_r, top9_taxa) +
   facet_wrap(~taxon2)
 
-ggsave(p_fit, filename = "p_fit.png", width = 8, height = 6)
+ggsave(p_fit_taxa, filename = "outputs/height/fit_taxa_top_9_eucs.png", width = 10, height = 10)
 ```
+
+![](outputs/height/fit_taxa_top_9_eucs.png)
+
+## Predicting all species responses
+
+The parameters of the fitted model allow us to predict the height of each species at any point in its distribution, based on climatic conditions at that point, as per the equation above.
+
+The table below includes fitted parameters for all species.
+
+```{r}
+pars_global <- pars |>
+  filter(Effects == "fixed") |>
+  mutate(name = c("B_0", "B_m", "B_c")) |>
+  select(name, Coefficient) |>
+  pivot_wider(names_from = name, values_from = Coefficient)
+
+fits$random_effects_r |> select(taxon_name, g_0, g_c)
+
+data_table_output <-
+  fits$data_model |>
+  group_by(family, genus, taxon_name) |>
+  summarise(
+    .groups = "drop",
+    n = n(),
+    height_range = paste(min(value), max(value), sep = "-"),
+    log_P_m = first(log_annual_precipitation_mn),
+  ) |>
+  bind_cols(pars_global) |>
+  left_join(by = "taxon_name", fits$random_effects_r |> select(taxon_name, g_0, g_c)) |>
+  # Check if needed.
+  mutate(height_2 = exp(B_0 + g_0 + B_m * log_P_m)) |>
+  left_join(
+    by = "taxon_name",
+    fits$data_fitted_r$mn |>
+      select(taxon_name, log_annual_precipitation_mn, H_predicted_mn = estimate, conf.low, conf.high) |>
+      rename(log_P_m2 = log_annual_precipitation_mn)
+  ) |>
+  filter(!is.na(log_P_m2))
+
+# Sanity check - the predicted height at the mean precipitation should match the estimate from the fitted model
+assertthat::assert_that(all(data_table_output$log_P_m - data_table_output$log_P_m2 < 1e-3))
+assertthat::assert_that(all(data_table_output$height_2 - data_table_output$H_predicted_mn < 1e-3))
+
+data_export <- 
+  data_table_output |>
+  select(-height_2, -log_P_m2) 
+
+data_export
+```
+
+Save to file,
+and also save metadata describing the columns in the output table.
+
+```{r}
+data_export_meta <-
+  tibble(
+    names = names(data_export),
+    classes = sapply(data_export, class),
+    definitions = c(
+      "family of the species",
+      "genus of the species",
+      "species name",
+      "number of observations for the species",
+      "range of heights observed for the species",
+      "log of mean annual precipitation (mm) at species centre",
+      "global intercept parameter for the model",
+      "global slope parameter for mean precipitation response",
+      "global slope parameter for within species precipitation response",
+      "random intercept parameter for the species",
+      "random slope parameter for within species precipitation response",
+      "predicted height (m) at mean precipitation",
+      "lower confidence bound on predicted height (m)",
+      "upper confidence bound on predicted height (m)"
+    )
+  )
+
+data_export |>
+  write_csv("outputs/height/species_height_climate_response.csv.gz")
+
+data_export_meta |>
+  write_csv("outputs/height/species_height_climate_response_meta.csv")
+```
+
+

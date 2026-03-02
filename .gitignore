@@ -1,0 +1,10 @@
+data/AVH_records
+data/GBIF
+data/australia.tif
+data/climate
+data-processed/*
+data/NVISv7.0
+data/data-ausplants
+*.html
+*.docx
+outputs

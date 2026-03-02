@@ -1,0 +1,80 @@
+
+
+# calculate residuals from the fitted model
+
+```{r}
+data_fitted_r$ind |>
+  filter(taxon_name %in% top8_taxa) |>
+  ggplot(aes(residual)) +
+  geom_histogram() + 
+  facet_wrap(~taxon_name)
+```
+
+# Compare medoid climate centres to above
+
+
+```{r}
+data_climate_centres_med <- arrow::read_parquet("data-processed/climate_centres.parquet")
+
+data_climate_centres <-
+  data_traits_climate |>
+  select(taxon_name, log_annual_precipitation_mn, average_temperature_mn) |>
+  distinct() |>
+  mutate(annual_precipitation_mn = exp(log_annual_precipitation_mn)) |>
+  left_join(
+    by = "taxon_name",
+    data_climate_centres_med |> select(taxon_name, average_temperature_med = average_temperature, annual_precipitation_med = annual_precipitation)
+  )
+
+p <- data_climate_centres |>
+  ggplot(aes(annual_precipitation_mn, annual_precipitation_med)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_abline(slope = 1, intercept = 0, col= "red") +
+  theme_classic() 
+ 
+p
+```
+
+
+
+
+# Generate panel of species plots
+
+```{r}
+
+state
+
+plot_distn <-
+  ggplot() +
+  labs(x = "latitude", y = "longitude") +
+  theme_classic()
+
+plot_fits_r <-
+  ggplot() +
+  labs(title = "Response to rainfall",
+    x = "annual precipitation (mm)", y = "height (m)") +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic()
+
+plot_fits_t <-
+  ggplot() +
+  labs(title = "Response to temperature",
+    x = "temperature (°C)", y = "height (m)") +
+  scale_y_log10() +
+  theme_classic()
+
+plot_repsonse_2d <-
+  ggplot() +
+  labs( title = "Response to rainfall and temperature",
+    x = "temperature (°C)", y = "annual precipitation (mm)") +
+  scale_y_log10() +
+  theme_classic()
+
+p_all <- plot_distn + plot_repsonse_2d + plot_fits_r + plot_fits_t + plot_layout(ncol = 2) + plot_annotation(title = "Species name")
+
+p_all
+```
+
