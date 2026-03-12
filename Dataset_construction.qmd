@@ -190,13 +190,15 @@ if (!file.exists(output)) {
 traits <- c(
   "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass",
   "leaf_N_per_area", "leaf_P_per_area",
-  "seed_dry_mass", "wood_density", "leaf_P_per_dry_mass", "leaf_delta13C"
+  "seed_dry_mass", "wood_density", "leaf_P_per_dry_mass", "leaf_delta13C", "plant_height"
 )
+traits <- c("plant_height")
+
 
 output <- "data-processed/austraits_geo_climates.parquet"
 
 if (!file.exists(output)) {
-  austraits <- readRDS("data/austraits/austraits-7.0.0.rds") |>
+  austraits <- readRDS("data/data-ausplants/austraits/austraits-7.0.0.rds") |>
     austraits::flatten_database()
 
   austraits_geo <-
@@ -229,7 +231,64 @@ if (!file.exists(output)) {
     rename(decimal_longitude = `longitude (deg)`, decimal_latitude = `latitude (deg)`, annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1) |>
     select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything())
 
-  arrow::write_parquet(data_traits_climate, "data-processed/data_traits_climate.parquet")
+  arrow::write_parquet(data_traits_climate, "data-processed/data_traits_climate-height.parquet")
 }
+```
 
+
+```{r}
+library(tidyverse)
+
+data_traits_climate <- arrow::read_parquet("data-processed/data_traits_climate-height.parquet")
+
+# growth forms
+
+species_growth_form <-
+  austraits |>
+  filter(dataset_id == "Wenk_2022", trait_name == "plant_growth_form") |>
+  select(taxon_name, growth_form = value) |>
+  distinct() |>
+  mutate(
+    woody = ifelse(
+      !str_detect(growth_form, "herb|fern|tussock|geophyte|lycophyte|basal_large|graminoid"), "woody", "non-woody"
+    ),
+    # case_when doesn't overwrite if a condition is met multiple times, so these are ordered these in order of preference
+    growth_form_simpler = case_when(
+      str_detect(growth_form, "climber") ~ "climber",
+      str_detect(growth_form, "tree|mallee|palmoid") ~ "tree",
+      str_detect(growth_form, "shrub|subshrub|basal_large") ~ "shrub",
+      str_detect(growth_form, "herb|geophyte") ~ "herb",
+      str_detect(growth_form, "graminoid|hummock|tussock") ~ "graminoid",
+      str_detect(growth_form, "fern|lycophyte") ~ "primitive"
+    )
+  ) |>
+  select(-growth_form) |>
+  distinct()
+
+data_export <- 
+  data_traits_climate |>
+  select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, taxon_name, trait_name, value) |>
+  left_join(species_growth_form, by = c("taxon_name")) |>
+  filter(woody == "woody") |>
+  filter(trait_name == "plant_height")
+
+data_export |> write_csv("data-processed/data_traits_climate-height-woody.csv")
+
+  ggplot(aes(x = annual_precipitation, y = value)) +
+  geom_point() +
+  theme_minimal() +
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+
+Investigating problematic points. 
+
+
+```{r}
+data_export <-
+  data_traits_climate |>
+  select(dataset_id, decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, taxon_name, trait_name, value) |>
+  filter(trait_name == "plant_height") |>
+  filter(value > 50, annual_precipitation < 700)
 ```

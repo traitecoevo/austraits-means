@@ -91,15 +91,30 @@ plot_fitted <- function(data_model, data_fitted) {
     labs(y = "height", x = "annual rainfall", color = NULL)
 }
 
-plot_fitted_highlight_taxa <- function(data_model, data_fitted, taxa) {
+plot_fitted_highlight_taxa <- function(data_model, data_fitted, taxa, color_values = NULL, fill_values = NULL, y_labels = waiver()) {
+  if (is.null(color_values)) {
+    color_values <- c(
+      "All raw data" = "grey",
+      "All species fitted" = "black",
+      "Focal species data" = "orange",
+      "Focal species mean" = "red",
+      "Focal species CI" = "purple"
+    )
+  }
+
+  if (is.null(fill_values)) {
+    fill_values <- c("Focal species CI" = "purple")
+  }
+
   data_model_taxa <-
     data_model |>
     filter(taxon_name %in% taxa) |>
     mutate(taxon2 = taxon_name)
 
-  data_fit_ind_range_taxa <-
-    data_fitted$ind_range |>
+  data_fit_ind_taxa <-
+    data_fitted$ind |>
     filter(taxon_name %in% taxa) |>
+    arrange(taxon_name, annual_precipitation) |>
     mutate(taxon2 = taxon_name)
 
   data_fit_taxa_mn <-
@@ -117,18 +132,12 @@ plot_fitted_highlight_taxa <- function(data_model, data_fitted, taxa) {
     # highlight certain species
     geom_point(data = data_model_taxa, aes(y = value, group = taxon2, color = "Focal species data"), size = 1) +
     geom_point(data = data_fit_taxa_mn, aes(x = annual_precipitation, group = taxon2, color = "Focal species mean"), alpha = 0.5) +
-    geom_line(data = data_fit_ind_range_taxa, aes(group = taxon2, color = "Focal species fitted"), alpha = 1) +
-    geom_ribbon(data = data_fit_ind_range_taxa, aes(ymin = conf.low, ymax = conf.high, group = taxon2, fill = "Focal species 95% CI"), alpha = 0.2) +
-    scale_color_manual(values = c(
-      "All raw data" = "grey",
-      "All species fitted" = "black",
-      "Focal species data" = "orange",
-      "Focal species mean" = "red",
-      "Focal species fitted" = "purple"
-    )) +
-    scale_fill_manual(values = c("Focal species 95% CI" = "purple")) +
+    geom_line(data = data_fit_ind_taxa, aes(group = taxon2, color = "Focal species mean"), alpha = 1) +
+    geom_ribbon(data = data_fit_ind_taxa, aes(ymin = conf.low, ymax = conf.high, group = taxon2, fill = "Focal species CI"), alpha = 0.2) +
+    scale_color_manual(values = color_values) +
+    scale_fill_manual(values = fill_values) +
     scale_x_log10() +
-    scale_y_log10() +
+    scale_y_log10(labels = y_labels) +
     theme_classic() +
     labs(y = "Height (m)", x = "Annual rainfall (mm)", color = NULL, fill = NULL)
 

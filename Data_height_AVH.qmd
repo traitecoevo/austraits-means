@@ -27,108 +27,22 @@ library(memoise)
 library(ggrastr)
 library(patchwork)
 source("R/process_fitted_model.R")
+source("R/data/load_data_height_avh.R")
 
 options(marginaleffects_safe = FALSE)
+
+update <- FALSE
 ```
 
 ## Prepare data
 
 ```{r}
-load_data <- function() {
-  # Load trait data
-  data <-
-    read_csv("data/data-ausplants/AVH_records/AVH_records_20260302.csv",
-      show_col_types = FALSE
-    ) |>
-    mutate(trait_name = "height", log_value = log(height_final)) |>
-    select(family, genus, taxon_name,
-      recordNumber, row_number, identifier, institutionCode, year,
-      trait_name,
-      value_type,
-      value = height_final,
-      log_value,
-      decimal_longitude = decimalLongitude, decimal_latitude = decimalLatitude,
-      original_name = species,
-    ) |>
-    filter(if_any(where(is.double), ~ !(is.na(.x))), value > 0)
-
-  # Get climate covariates
-  vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
-
-  # Australia
-  australia <- terra::rast("data/australia.tif")
-
-  # Stacked raster of climate predictors, cropped to Australia
-  stacked_rasters <-
-    # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
-    file.path("data/climate/", vars) |>
-    terra::rast() |>
-    terra::crop(australia)
-
-  austraits_geo <-
-    data |>
-    # Remove problematic values
-    filter(
-      !is.na(decimal_latitude), !is.na(decimal_longitude)
-    )
-
-  # Add climate data
-  trait_data_vect <-
-    austraits_geo |>
-    select("decimal_longitude", "decimal_latitude") |>
-    terra::vect(
-      geom = c("decimal_longitude", "decimal_latitude"),
-      crs = terra::crs(stacked_rasters)
-    )
-
-  data_traits_climate <-
-    terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
-    as_tibble() |>
-    bind_cols(austraits_geo) |>
-    rename(
-      annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1
-    ) |>
-    select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything()) |>
-    mutate(
-      log_annual_precipitation = log(annual_precipitation),
-    ) |>
-    filter(!is.na(log_annual_precipitation) & !is.na(average_temperature))
-
-  # Add climate centres
-  # - For now use climate centres from the recorded locations
-  # TODO: add climate centres from the species distribution data
-  climate_centres <- data_traits_climate |>
-    group_by(taxon_name) |>
-    summarise(
-      .groups = "drop",
-      across(c(log_annual_precipitation, average_temperature, decimal_latitude, decimal_longitude), mean, .names = "{col}_mn")
-    )
-
-  # Also collect deviation of each species from median rainfall and temperature
-
-  data_traits_climate <- data_traits_climate |>
-    left_join(climate_centres, by = "taxon_name") |>
-    # Remove any species missing climate data
-    filter(!is.na(log_annual_precipitation_mn)) |>
-    # Center the rainfall data around the mean for each species
-    group_by(taxon_name) |>
-    mutate(
-      log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn,
-      average_temperature_c = average_temperature - average_temperature_mn
-    ) |>
-    ungroup() |>
-    # Center the trait data around the mean for each species
-    group_by(taxon_name, trait_name) |>
-    mutate(
-      log_value_c = log_value - mean(log_value)
-    ) |>
-    ungroup()
-}
+# Attribute each point to a state
 
 # Data saved in parquet file for faster loading in the future
 data_traits_climate_file <- "data-processed/data_height_climate.parquet"
 
-if (!file.exists(data_traits_climate_file)) {
+if (update || !file.exists(data_traits_climate_file)) {
   data_traits_climate <- load_data()
   arrow::write_parquet(data_traits_climate, data_traits_climate_file)
 } else {
@@ -177,7 +91,10 @@ When fitting the model, we filtered the data to species with more than a minimum
 ```{r}
 file_fits <- "data-processed/fits_height_climate.rds"
 
-if (!file.exists(file_fits)) {
+update <- TRUE
+if (update || !file.exists(file_fits)) {
+
+  
   # Limit data to species with more than n_min records, to ensure we can fit the models
   n_min <- 5
   spp_counts <- data_traits_climate |> count(taxon_name)
@@ -195,7 +112,12 @@ if (!file.exists(file_fits)) {
   #  fit_t <- glmmTMB(log_value ~ average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
 
   ## Note - no interactions in 2D model as causes issues with model convergence
-  # fit_rt <- glmmTMB(log_value ~ average_temperature_mn + log_annual_precipitation_mn + average_temperature_c + log_annual_precipitation_c + (0 + log_annual_precipitation_c + average_temperature_c | taxon_name), data = data_model)
+  fit_rt <- glmmTMB(
+    log_value ~ average_temperature_mn + log_annual_precipitation_mn + 
+                #average_temperature_c + 
+                #log_annual_precipitation_c + 
+                (0 + log_annual_precipitation_c * average_temperature_c | taxon_name), 
+    data = data_model)
 
   # Compute predicted values and residuals for fitted models
   data_fitted_r <- process_fit(fit_r)
@@ -209,14 +131,17 @@ if (!file.exists(file_fits)) {
     mutate(h = exp(g_0))
 
   # Save fitted models for future use
-  list(data_model = data_model, 
-    fit_r = fit_r, data_fitted_r = data_fitted_r, random_effects_r = random_effects_r
-  #fit_t = fit_t, fit_rt = fit_rt, 
-  ) |>
-  saveRDS(file_fits)
+  fits <- 
+    list(data_model = data_model, 
+    fit_r = fit_r, data_fitted_r = data_fitted_r, random_effects_r = random_effects_r, 
+    fit_rt = fit_rt
+  )
+  
+  fits |> saveRDS(file_fits)
 }
 
 fits <- readRDS(file_fits)
+
 ```
 
 ## Results
@@ -283,9 +208,9 @@ data_table_output <-
   summarise(
     .groups = "drop",
     n = n(),
-    height_range = paste(min(value), max(value), sep = "-"),
+    height_range = paste(min(value), max(value), sep = "--"),
     log_P_m = first(log_annual_precipitation_mn),
-    log_P_range = sprintf("%0.2f-%0.2f", min(log_annual_precipitation), max(log_annual_precipitation))
+    log_P_range = sprintf("%0.2f--%0.2f", min(log_annual_precipitation), max(log_annual_precipitation))
   ) |>
   bind_cols(pars_global) |>
   left_join(by = "taxon_name", fits$random_effects_r |> select(taxon_name, g_0, g_c)) |>
@@ -310,7 +235,7 @@ assertthat::assert_that(all(data_table_output$log_P_m - data_table_output$log_P_
 ## after checking, we can remove the redundant columns
 data_export <-
   data_table_output |>
-  select(-height_2, -log_P_m2)
+  select(-log_P_m2)
 
 data_export
 ```
@@ -348,3 +273,27 @@ data_export_meta |>
   write_csv("outputs/height/species_height_climate_response_meta.csv")
 ```
 
+## Species by species plots
+
+```{r}
+data_GBIF <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet")
+```
+
+Using the fitted model parameters, we can also predict height for each species across its distribution and visualise this relative to observations from GBIF and AVH.
+
+```{r, message = TRUE, warning = FALSE}
+source("R/species_panel_functions.R")
+
+taxa <- fits$random_effects_r |>
+  arrange(taxon_name) |>
+  slice_head(n = 20) |>
+  pull(taxon_name)
+
+generate_species_panels(
+  data_traits_climate = data_traits_climate,
+  fits = fits,
+  taxa = taxa,
+  gbif_path = "data-processed/data_gbif_cleaned.parquet",
+  out_dir_species = "outputs/height/species"
+)
+```
