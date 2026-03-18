@@ -273,10 +273,6 @@ data_export_meta |>
 
 ## Species by species plots
 
-```{r}
-data_GBIF <- arrow::open_dataset("data-processed/data_gbif_cleaned.parquet")
-```
-
 Using the fitted model parameters, we can also predict height for each species across its distribution and visualise this relative to observations from GBIF and AVH.
 
 ```{r, message = TRUE, warning = FALSE}

@@ -72,10 +72,9 @@ for (i in seq_along(taxa)) {
     dplyr::filter(taxon_name == taxon) |>
     dplyr::select(
       taxon_name, decimal_longitude, decimal_latitude,
-      value, annual_precipitation, average_temperature,
-      log_value,
-      log_annual_precipitation_mn, log_annual_precipitation_c,
-      average_temperature_mn, state
+      value,log_value, annual_precipitation, average_temperature,
+      log_annual_precipitation, log_annual_precipitation_mn, log_annual_precipitation_c,
+      average_temperature_mn, average_temperature_c, state
     ) |>
     dplyr::filter(
       !is.na(decimal_longitude), !is.na(decimal_latitude),
@@ -88,31 +87,36 @@ for (i in seq_along(taxa)) {
     next
   }
   
-  tic("  - Surface prediction")
-  surf <- predict_species_surface(fits$fit_rt, taxon, taxon_avh, taxon_gbif)
-  toc()
   
   tic("  - Plot 1 (map)")
   p1 <- plot_panel_map(taxon_gbif, taxon_avh, country_sf, states_sf)
   toc()
   
   tic("  - Plot 2 (climate)")
-  p2 <- plot_panel_climate(taxon_gbif, taxon_avh, surf, gbif_background)
+  p2 <- plot_panel_climate(taxon_gbif, taxon_avh, gbif_background)
   toc()
   
-  tic("  - Plot 3 (state)")
-  p3 <- plot_panel_state(taxon_avh)
+  tic("  - Plot 4 (state)")
+  p4 <- plot_panel_state(taxon_avh)
   toc()
-  
-  tic("  - Plot 4 (rain)")
-  p4 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
+
+  tic("  - Plot 5 (rain)")
+  p5 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
+  toc()
+
+  tic("  - Plot 6 (temp placeholder)")
+  p6 <- plot_panel_temperature_placeholder()
+  toc()
+
+  tic("  - Plot 7 (height heatmap)")
+  p7 <- plot_panel_height_heatmap(taxon_gbif, taxon_avh, fits$fit_rt)
   toc()
   
   tic("  - Combine plots and save")
   title_text <- sprintf("%s (AVH n=%s, GBIF n=%s)", taxon, nrow(taxon_avh), nrow(taxon_gbif))
   p_all <-
-    patchwork::wrap_plots(p1, p2, p3, p4, ncol = 2, byrow = TRUE) +
-    patchwork::plot_layout(widths = c(1, 1), heights = c(1, 1), guides = "collect") +
+    patchwork::wrap_plots(p1, p2, p4, p7, p5, p6, ncol = 2, byrow = TRUE) +
+    patchwork::plot_layout(widths = c(1, 1), heights = c(1, 1, 1), guides = "collect") +
     patchwork::plot_annotation(
       title = title_text,
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 18, face = "bold"))
@@ -125,7 +129,7 @@ for (i in seq_along(taxa)) {
     )
   
   file_out <- file.path(out_dir_species, paste0(clean_species_filename(taxon), ".png"))
-  ggplot2::ggsave(file_out, p_all, width = 14, height = 10, dpi = 150)
+  ggplot2::ggsave(file_out, p_all, width = 14, height = 15, dpi = 120)
   toc()
   
   toc()

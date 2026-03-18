@@ -1,3 +1,4 @@
+
 clean_species_filename <- function(x) {
   x <- gsub("[^A-Za-z0-9]+", "_", x)
   x <- gsub("_+", "_", x)
@@ -16,86 +17,6 @@ species_panel_palette <- function() {
   )
 }
 
-predict_species_surface <- function(fit_rt, taxon, taxon_avh, taxon_gbif, n_grid = 40) {
-  if (!requireNamespace("glmmTMB", quietly = TRUE)) {
-    stop("Package `glmmTMB` is required for prediction.")
-  }
-
-  p_rng <- range(taxon_gbif$annual_precipitation, na.rm = TRUE)
-  t_rng <- range(taxon_gbif$average_temperature, na.rm = TRUE)
-
-  if (!all(is.finite(c(p_rng, t_rng))) || diff(log(p_rng)) <= 0 || diff(t_rng) <= 0) {
-    return(tibble::tibble(
-      annual_precipitation = numeric(0),
-      average_temperature = numeric(0),
-      pred_height = numeric(0)
-    ))
-  }
-
-  p_seq <- exp(seq(log(p_rng[1]), log(p_rng[2]), length.out = n_grid))
-  t_seq <- seq(t_rng[1], t_rng[2], length.out = n_grid)
-
-  log_p_mn <- unique(taxon_avh$log_annual_precipitation_mn) |> dplyr::first()
-  t_mn <- unique(taxon_avh$average_temperature_mn) |> dplyr::first()
-
-  newdata <- tidyr::expand_grid(
-    annual_precipitation = p_seq,
-    average_temperature = t_seq
-  ) |>
-    dplyr::mutate(
-      log_annual_precipitation = log(annual_precipitation),
-      log_annual_precipitation_mn = log_p_mn,
-      average_temperature_mn = t_mn,
-      log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn,
-      average_temperature_c = average_temperature - average_temperature_mn,
-      taxon_name = taxon
-    )
-
-  newdata$pred_height <- stats::predict(fit_rt, newdata = newdata, type = "response", re.form = NULL)
-  newdata
-}
-
-clip_surface_to_avh_hull <- function(surf, taxon_avh) {
-  if (nrow(surf) == 0) {
-    return(surf)
-  }
-
-  if (!requireNamespace("sf", quietly = TRUE)) {
-    stop("Package `sf` is required for hull-based contour clipping.")
-  }
-
-  avh_pts <- taxon_avh |>
-    dplyr::select(annual_precipitation, average_temperature) |>
-    dplyr::distinct() |>
-    dplyr::filter(!is.na(annual_precipitation), !is.na(average_temperature))
-
-  if (nrow(avh_pts) < 3) {
-    p_rng <- range(taxon_avh$annual_precipitation, na.rm = TRUE)
-    t_rng <- range(taxon_avh$average_temperature, na.rm = TRUE)
-
-    return(
-      surf |>
-        dplyr::filter(
-          annual_precipitation >= p_rng[1],
-          annual_precipitation <= p_rng[2],
-          average_temperature >= t_rng[1],
-          average_temperature <= t_rng[2]
-        )
-    )
-  }
-
-  hull_idx <- grDevices::chull(avh_pts$annual_precipitation, avh_pts$average_temperature)
-  hull_coords <- avh_pts[hull_idx, ]
-  hull_coords <- dplyr::bind_rows(hull_coords, hull_coords[1, , drop = FALSE])
-
-  hull_poly <- sf::st_polygon(list(as.matrix(hull_coords))) |>
-    sf::st_sfc()
-
-  surf_sf <- sf::st_as_sf(surf, coords = c("annual_precipitation", "average_temperature"), remove = FALSE)
-  inside <- sf::st_within(surf_sf, hull_poly, sparse = FALSE)[, 1]
-
-  surf[inside, , drop = FALSE]
-}
 
 theme_panel_axes <- function() {
   ggplot2::theme(
@@ -122,8 +43,10 @@ sf_to_path_df <- function(x) {
     coords$group_id <- apply(coords[, group_cols, drop = FALSE], 1, paste, collapse = "-")
   }
 
-  tibble::as_tibble(coords) |>
-    dplyr::rename(x = X, y = Y)
+  coords <- tibble::as_tibble(coords)
+  names(coords)[names(coords) == "X"] <- "x"
+  names(coords)[names(coords) == "Y"] <- "y"
+  coords
 }
 
 plot_panel_map <- function(taxon_gbif, taxon_avh, country_sf, states_sf) {
@@ -171,10 +94,8 @@ plot_panel_map <- function(taxon_gbif, taxon_avh, country_sf, states_sf) {
     ggplot2::theme(legend.position = "none")
 }
 
-plot_panel_climate <- function(taxon_gbif, taxon_avh, surf, gbif_background) {
+plot_panel_climate <- function(taxon_gbif, taxon_avh, gbif_background) {
   pal <- species_panel_palette()
-  surf <- clip_surface_to_avh_hull(surf, taxon_avh)
-
   gbif_background <- gbif_background |>
     dplyr::mutate(source = "All Australian taxa")
 
@@ -202,8 +123,6 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, surf, gbif_background) {
       alpha = 1,
       size = 1.2
     ) +
-    # Contours (only if surface has data)
-    {if (nrow(surf) > 0) ggplot2::geom_contour(data = surf, ggplot2::aes(annual_precipitation, average_temperature, z = pred_height), color = pal$predicted, linewidth = 0.4, bins = 10)} +
     ggplot2::scale_x_log10() +
     ggplot2::scale_color_manual(
       values = c(
@@ -225,7 +144,8 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, surf, gbif_background) {
 
 plot_panel_state <- function(taxon_avh) {
   pal <- species_panel_palette()
-  avh_state <- taxon_avh |>
+
+  avh_state_raw <- taxon_avh |>
     dplyr::mutate(
       state = ifelse(is.na(state) | state == "", "Other", state),
       state = dplyr::case_when(
@@ -241,25 +161,29 @@ plot_panel_state <- function(taxon_avh) {
       )
     )
 
-  state_levels <- sort(c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA", "Other"))
-  avh_state <- avh_state |>
+  state_levels <- c("All", sort(c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA", "Other")))
+
+  avh_state <- dplyr::bind_rows(
+    avh_state_raw |> dplyr::mutate(state = "All"),
+    avh_state_raw
+  ) |>
     dplyr::mutate(state = factor(state, levels = state_levels))
 
   # Model-by-state means on log scale, then convert to height scale with 95% CI.
-  observed_levels <- avh_state |>
+  observed_levels <- avh_state_raw |>
     dplyr::filter(!is.na(state)) |>
     dplyr::pull(state) |>
     unique() |>
     as.character()
 
   if (length(observed_levels) >= 2) {
-    mod <- stats::lm(log(value) ~ state, data = avh_state)
+    mod <- stats::lm(log(value) ~ state, data = avh_state_raw)
   } else {
-    mod <- stats::lm(log(value) ~ 1, data = avh_state)
+    mod <- stats::lm(log(value) ~ 1, data = avh_state_raw)
   }
 
-  state_est <- purrr::map_dfr(
-    state_levels,
+  state_est_by <- purrr::map_dfr(
+    state_levels[-1],
     \(s) {
       if (!(s %in% observed_levels)) {
         return(tibble::tibble(
@@ -295,6 +219,22 @@ plot_panel_state <- function(taxon_avh) {
     }
   )
 
+  mod_all <- stats::lm(log(value) ~ 1, data = avh_state_raw)
+  pred_all <- stats::predict(mod_all, se.fit = TRUE)
+
+  state_est <- dplyr::bind_rows(
+    tibble::tibble(
+      state = factor("All", levels = state_levels),
+      log_est = as.numeric(pred_all$fit),
+      log_lo = as.numeric(pred_all$fit - stats::qnorm(0.975) * pred_all$se.fit),
+      log_hi = as.numeric(pred_all$fit + stats::qnorm(0.975) * pred_all$se.fit),
+      est = exp(as.numeric(pred_all$fit)),
+      conf.low = exp(as.numeric(pred_all$fit - stats::qnorm(0.975) * pred_all$se.fit)),
+      conf.high = exp(as.numeric(pred_all$fit + stats::qnorm(0.975) * pred_all$se.fit))
+    ),
+    state_est_by
+  )
+
   ggplot2::ggplot(avh_state, ggplot2::aes(x = state, y = value)) +
     ggplot2::geom_jitter(width = 0.15, alpha = 1, size = 1.8, color = pal$avh) +
     ggplot2::geom_errorbar(
@@ -313,7 +253,7 @@ plot_panel_state <- function(taxon_avh) {
       size = 3.4
     ) +
     ggplot2::scale_y_log10() +
-    ggplot2::labs(title = "c) Difference by State", x = "State", y = "Height (m)") +
+    ggplot2::labs(title = "d) Difference by State", x = "State", y = "Height (m)") +
     ggplot2::theme_minimal() +
     theme_panel_axes() +
     ggplot2::theme(
@@ -366,13 +306,134 @@ plot_panel_rain <- function(taxon, data_fitted_bg, taxon_avh, rain_bg_plot) {
       alpha = 0.25
     ) +
     ggplot2::labs(
-      title = "d) Rain fall response",
+      title = "e) Rain fall response",
       subtitle = sprintf("Slope = %.2f [%.1f-%.1f], R2 = %.2f", slope, slope_ci[1], slope_ci[2], r2)
     ) +
     ggplot2::theme(
       legend.position = "none",
       plot.title = ggplot2::element_text(face = "bold")
     )
+}
+
+plot_panel_temperature_placeholder <- function() {
+  ggplot2::ggplot() +
+    ggplot2::annotate(
+      "text", x = 0.5, y = 0.5,
+      label = "f) Temperature response\n(placeholder)",
+      size = 5, color = "grey50", hjust = 0.5, vjust = 0.5
+    ) +
+    ggplot2::theme_void()
+}
+
+plot_panel_height_heatmap <- function(taxon_gbif, taxon_avh, fit_rt) {
+
+  pal <- species_panel_palette()
+  
+  surf_clipped <- 
+    predict_species_surface(taxon_gbif, taxon_avh, fit_rt, n_grid = 20) |>
+    clip_surface_to_avh_hull(taxon_gbif)
+
+  if (nrow(surf_clipped) == 0) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Insufficient data",
+                          size = 4, color = "grey60") +
+        ggplot2::labs(title = "g) Predicted heights") +
+        ggplot2::theme_void()
+    )
+  }
+
+  ggplot2::ggplot() +
+    # Heatmap of predicted heights; log_annual_precipitation is evenly spaced so geom_raster works
+    ggplot2::geom_raster(
+      data = surf_clipped,
+      ggplot2::aes(log_annual_precipitation, average_temperature, fill = pred_height),
+      interpolate = TRUE
+    ) +
+    ggplot2::scale_fill_viridis_c(name = "Predicted\n height (m)", option = "C") +
+    # AVH measurement locations on top
+    ggplot2::geom_point(
+      data = taxon_avh,
+      ggplot2::aes(log_annual_precipitation, average_temperature),
+      color = pal$avh,
+      size = 1,
+      alpha = 0.8
+    ) +
+    ggplot2::scale_x_continuous(
+      name = "Annual precipitation (mm)",
+      labels = \(x) round(exp(x))
+    ) +
+    ggplot2::labs(title = "g) Predicted heights", y = "Average temperature (\u00b0C)") +
+    ggplot2::theme_minimal() +
+    theme_panel_axes()
+}
+
+predict_species_surface <- function(taxon_gbif, taxon_avh, fit_rt, n_grid = 40) {
+  p_rng <- range(taxon_avh$annual_precipitation, na.rm = TRUE)
+  t_rng <- range(taxon_avh$average_temperature, na.rm = TRUE)
+
+  if (!all(is.finite(c(p_rng, t_rng))) || diff(log(p_rng)) <= 0 || diff(t_rng) <= 0) {
+    return(tibble::tibble(
+      annual_precipitation = numeric(0),
+      average_temperature = numeric(0),
+      pred_log_height = numeric(0),
+      pred_height = numeric(0)
+    ))
+  }
+
+  newdata <- tidyr::expand_grid(
+    taxon_avh |> select(taxon_name, log_annual_precipitation_mn, average_temperature_mn) |> distinct(),
+    log_annual_precipitation = seq(log(p_rng[1]), log(p_rng[2]), length.out = n_grid),
+    average_temperature = seq(t_rng[1], t_rng[2], length.out = n_grid),
+  ) |>
+    dplyr::mutate(
+      annual_precipitation = exp(log_annual_precipitation), 
+      log_annual_precipitation_c = log_annual_precipitation - log_annual_precipitation_mn,
+      average_temperature_c = average_temperature - average_temperature_mn
+    )
+  
+  newdata$pred_log_height <- stats::predict(fit_rt, newdata = newdata) |> as.numeric()
+  newdata$pred_height <- exp(newdata$pred_log_height)
+
+  newdata
+}
+
+clip_surface_to_avh_hull <- function(surf, taxon) {
+  if (nrow(surf) == 0) {
+    return(surf)
+  }
+
+  avh_pts <- taxon |>
+    dplyr::select("annual_precipitation", "average_temperature") |>
+    dplyr::distinct() |>
+    dplyr::filter(!is.na(annual_precipitation), !is.na(average_temperature))
+
+  if (nrow(avh_pts) < 3) {
+    p_rng <- range(taxon$annual_precipitation, na.rm = TRUE)
+    t_rng <- range(taxon$average_temperature, na.rm = TRUE)
+
+    return(
+      surf |>
+        dplyr::filter(
+          annual_precipitation >= p_rng[1],
+          annual_precipitation <= p_rng[2],
+          average_temperature >= t_rng[1],
+          average_temperature <= t_rng[2]
+        )
+    )
+  }
+
+  hull_idx <- grDevices::chull(avh_pts$annual_precipitation, avh_pts$average_temperature)
+  hull_coords <- avh_pts[hull_idx, ]
+  hull_coords <- dplyr::bind_rows(hull_coords, hull_coords[1, , drop = FALSE])
+
+  hull_poly <- sf::st_polygon(list(as.matrix(hull_coords))) |>
+    sf::st_sfc()
+
+  surf_sf <- sf::st_as_sf(surf, coords = c("annual_precipitation", "average_temperature"), remove = FALSE)
+  inside <- sf::st_within(surf_sf, hull_poly, sparse = FALSE)[, 1]
+
+  surf[inside, , drop = FALSE]
 }
 
 build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
@@ -422,11 +483,11 @@ build_species_plot <- function(
   taxon_avh <- data_traits_climate |>
     dplyr::filter(taxon_name == taxon) |>
     dplyr::select(
-      taxon_name, decimal_longitude, decimal_latitude,
-      value, annual_precipitation, average_temperature,
-      log_value,
-      log_annual_precipitation_mn, log_annual_precipitation_c,
-      average_temperature_mn, state
+      "taxon_name", "decimal_longitude", "decimal_latitude",
+      "value", "annual_precipitation", "average_temperature",
+      "log_value",
+      "log_annual_precipitation_mn", "log_annual_precipitation_c",
+      "average_temperature_mn", "state"
     ) |>
     dplyr::filter(
       !is.na(decimal_longitude), !is.na(decimal_latitude),
@@ -446,8 +507,8 @@ build_species_plot <- function(
   taxon_gbif <- gbif_full |>
     dplyr::filter(taxon_name == taxon) |>
     dplyr::select(
-      taxon_name, decimal_longitude, decimal_latitude,
-      annual_precipitation, average_temperature
+      "taxon_name", "decimal_longitude", "decimal_latitude",
+      "annual_precipitation", "average_temperature"
     ) |>
     dplyr::distinct() |>
     dplyr::filter(
@@ -461,21 +522,19 @@ build_species_plot <- function(
     return(invisible(NULL))
   }
 
-  surf <- predict_species_surface(fit_rt, taxon, taxon_avh, taxon_gbif)
-
   p1 <- plot_panel_map(taxon_gbif, taxon_avh, country_sf, states_sf)
 
-  p2 <- plot_panel_climate(taxon_gbif, taxon_avh, surf, gbif_background)
-  
-  p3 <- plot_panel_state(taxon_avh)
-  
-  p4 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
+  p2 <- plot_panel_climate(taxon_gbif, taxon_avh, gbif_background)
+  p4 <- plot_panel_state(taxon_avh)
+  p5 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
+  p6 <- plot_panel_temperature_placeholder()
+  p7 <- plot_panel_height_heatmap(taxon_gbif, taxon_avh, fit_rt)
 
   title_text <- sprintf("%s (AVH n=%s, GBIF n=%s)", taxon, nrow(taxon_avh), nrow(taxon_gbif))
 
   p_all <-
-    patchwork::wrap_plots(p1, p2, p3, p4, ncol = 2, byrow = TRUE) +
-    patchwork::plot_layout(widths = c(1, 1), heights = c(1, 1), guides = "collect") +
+    patchwork::wrap_plots(p1, p2, p4, p7, p5, p6, ncol = 2, byrow = TRUE) +
+    patchwork::plot_layout(widths = c(1, 1), heights = c(1, 1, 1), guides = "collect") +
     patchwork::plot_annotation(
       title = title_text,
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 18, face = "bold"))
@@ -488,7 +547,7 @@ build_species_plot <- function(
     )
 
   file_out <- file.path(out_dir, paste0(clean_species_filename(taxon), ".png"))
-  ggplot2::ggsave(file_out, p_all, width = 14, height = 10, dpi = 120)
+  ggplot2::ggsave(file_out, p_all, width = 14, height = 15, dpi = 120)
 
   message("Saved ", file_out)
   invisible(NULL)
@@ -520,7 +579,7 @@ generate_species_panels <- function(
   states_sf <- ozmaps::ozmap_states
 
   gbif_background <- arrow::open_dataset(gbif_path) |>
-    dplyr::select(annual_precipitation, average_temperature) |>
+    dplyr::select("annual_precipitation", "average_temperature") |>
     dplyr::filter(!is.na(annual_precipitation), !is.na(average_temperature)) |>
     dplyr::collect()
   

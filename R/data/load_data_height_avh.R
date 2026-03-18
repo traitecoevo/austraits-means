@@ -18,10 +18,38 @@ assign_state_fast <- function(data) {
     dplyr::relocate(state, .after = decimal_latitude)
 }
 
-load_data <- function() {
+load_data <- function(avh_csv_path = NULL) {
+  default_csv <- "data/AVH_height_records_20260311.csv"
+  env_csv <- Sys.getenv("AVH_HEIGHT_CSV", unset = "")
+
+  # Path priority: function argument > env var > project default
+  avh_csv <- dplyr::coalesce(avh_csv_path, if (nzchar(env_csv)) env_csv else NA_character_, default_csv)
+
+  if (!file.exists(avh_csv)) {
+    stop(
+      "AVH file not found: ", avh_csv, "\n",
+      "Set `avh_csv_path=` in `load_data()` or env var `AVH_HEIGHT_CSV`."
+    )
+  }
+
+  if (file.access(avh_csv, 4) != 0) {
+    stop(
+      "AVH file exists but is not readable: ", avh_csv, "\n",
+      "On macOS this is often a Files/OneDrive permission issue. ",
+      "Move/copy the file into the project data folder or grant terminal/R full disk access."
+    )
+  }
+
   data <-
-    readr::read_csv("data/data-ausplants/AVH_records/AVH_height_records_20260311.csv",
-      show_col_types = FALSE
+    tryCatch(
+      readr::read_csv(avh_csv, show_col_types = FALSE),
+      error = function(e) {
+        stop(
+          "Failed to read AVH CSV: ", avh_csv, "\n",
+          "Original error: ", conditionMessage(e), "\n",
+          "If this points to OneDrive/CloudStorage, copy the CSV locally and pass `avh_csv_path=`."
+        )
+      }
     ) |>
     dplyr::mutate(trait_name = "height", log_value = log(height_final)) |>
     dplyr::select(family, genus, taxon_name,
