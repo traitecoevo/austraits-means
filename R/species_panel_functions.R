@@ -72,13 +72,15 @@ plot_panel_map <- function(taxon_gbif, taxon_avh, country_sf, states_sf) {
       data = taxon_gbif,
       ggplot2::aes(decimal_longitude, decimal_latitude, color = source),
       alpha = 0.6,
-      size = 0.6
+      size = 0.6,
+      na.rm = TRUE
     ) +
     ggplot2::geom_point(
       data = taxon_avh,
       ggplot2::aes(decimal_longitude, decimal_latitude, color = source),
       alpha = 1,
-      size = 1
+      size = 1,
+      na.rm = TRUE
     ) +
     ggplot2::scale_color_manual(
       values = c("All Australian taxa" = pal$all_taxa, "GBIF" = pal$gbif, "AVH" = pal$avh),
@@ -106,7 +108,8 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, gbif_background) {
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
       alpha = 0.3,
       size = 0.8,
-      shape = 16
+      shape = 16,
+      na.rm = TRUE
     ) +
     # Hex bin for GBIF density (faster than geom_point for large data)
     {if (nrow(taxon_gbif) > 100) ggplot2::geom_hex(data = taxon_gbif, ggplot2::aes(annual_precipitation, average_temperature), bins = 20) else ggplot2::geom_blank()} +
@@ -115,13 +118,15 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, gbif_background) {
       data = taxon_gbif,
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
       alpha = 1,
-      size = 1.2
+      size = 1.2,
+      na.rm = TRUE
     ) +
     ggplot2::geom_point(
       data = taxon_avh,
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
       alpha = 1,
-      size = 1.2
+      size = 1.2,
+      na.rm = TRUE
     ) +
     ggplot2::scale_x_log10() +
     ggplot2::scale_color_manual(
@@ -250,7 +255,8 @@ plot_panel_state <- function(taxon_avh) {
       inherit.aes = FALSE,
       mapping = ggplot2::aes(x = state, y = est),
       color = pal$predicted,
-      size = 3.4
+      size = 3.4,
+      na.rm = TRUE
     ) +
     ggplot2::scale_y_log10() +
     ggplot2::labs(title = "d) Difference by State", x = "State", y = "Height (m)") +
@@ -287,12 +293,14 @@ plot_panel_rain <- function(taxon, data_fitted_bg, taxon_avh, rain_bg_plot) {
     ggplot2::geom_point(
       data = data_fit_ind_taxa,
       ggplot2::aes(annual_precipitation, value, group = taxon2, color = "Focal species data"),
-      size = 1
+      size = 1,
+      na.rm = TRUE
     ) +
     ggplot2::geom_point(
       data = data_fit_taxa_mn,
       ggplot2::aes(annual_precipitation, estimate, group = taxon2, color = "Focal species mean"),
-      alpha = 0.5
+      alpha = 0.5,
+      na.rm = TRUE
     ) +
     ggplot2::geom_line(
       data = data_fit_ind_taxa,
@@ -357,7 +365,8 @@ plot_panel_height_heatmap <- function(taxon_gbif, taxon_avh, fit_rt) {
       ggplot2::aes(log_annual_precipitation, average_temperature),
       color = pal$avh,
       size = 1,
-      alpha = 0.8
+      alpha = 0.8,
+      na.rm = TRUE
     ) +
     ggplot2::scale_x_continuous(
       name = "Annual precipitation (mm)",
@@ -445,13 +454,12 @@ build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
     "Focal species mean" = pal$predicted,
     "Focal species CI" = pal$predicted_CI
   )
-  fill_values <- c("Focal species CI" = pal$predicted_CI)
 
   ggplot2::ggplot(data_model_bg, ggplot2::aes(annual_precipitation, group = taxon_name)) +
     # Use ind_range (2 rows per species: min/max precip) instead of ind (all points) — much less data
     ggplot2::geom_point(
       ggplot2::aes(y = value, color = "All raw data"),
-      alpha = 0.5, stroke = 0, size = 0.5
+      alpha = 0.5, stroke = 0, size = 0.5, na.rm = TRUE
     ) +
     ggplot2::geom_line(
       ggplot2::aes(y = estimate, color = "All species fitted"),
@@ -459,7 +467,6 @@ build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
       alpha = 0.5, linewidth = 0.25
     ) +
     ggplot2::scale_color_manual(values = color_values, drop = FALSE) +
-    ggplot2::scale_fill_manual(values = fill_values, drop = FALSE) +
     ggplot2::scale_x_log10() +
     ggplot2::scale_y_log10(labels = scales::label_number(accuracy = 0.01, trim = TRUE)) +
     ggplot2::theme_classic() +
