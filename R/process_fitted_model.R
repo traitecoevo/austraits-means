@@ -1,23 +1,38 @@
-process_fit <- function(fit) {
-  message("\t\033[32mComputing global mean predictions by log_annual_precipitation_mn...\033[0m")
+
+process_fit <- function(fit, var = "log_annual_precipitation") {
+  
+  if(var == "log_annual_precipitation") {
+    x_transform <- exp
+    global_c_center <- 6.7
+  } else if (var == "average_temperature") {
+    x_transform <- identity
+    global_c_center <- 19.5
+  } else {
+    stop("Unsupported variable: ", var)
+  }
+
+  var_between <- paste0(var, "_mn")
+  var_within <- paste0(var, "_c")
+
+  message("\t\033[32mComputing global mean predictions by ", var_between, "...\033[0m")
   data_fit_global_mn <-
-    estimate_means(fit, by = "log_annual_precipitation_mn") |>
+    estimate_means(fit, by = var_between) |>
     as_tibble() |>
     rename(estimate = Mean, conf.low = CI_low, conf.high = CI_high) |>
     mutate(
       taxon_name = "average_mn",
-      annual_precipitation = exp(log_annual_precipitation_mn),
+      annual_precipitation = x_transform(.data[[var_between]]),
       across(c("estimate", "conf.low", "conf.high"), ~ exp(.x)),
     )
 
-  message("\t\033[32mComputing global centered predictions by log_annual_precipitation_c...\033[0m")
+  message("\t\033[32mComputing global centered predictions by ", var_within, "...\033[0m")
   data_fit_global_c <-
-    estimate_means(fit, by = "log_annual_precipitation_c") |>
+    estimate_means(fit, by = var_within) |>
     as_tibble() |>
     rename(estimate = Mean, conf.low = CI_low, conf.high = CI_high) |>
     mutate(
       taxon_name = "average_c",
-      annual_precipitation = exp(6.7 + log_annual_precipitation_c), # 6.7 is the mean log annual precipitation across all species
+      annual_precipitation = x_transform(global_c_center + .data[[var_within]]),
       across(c("estimate", "conf.low", "conf.high"), ~ exp(.x))
     )
 
@@ -25,7 +40,13 @@ process_fit <- function(fit) {
   data_fit_ind <-
     marginaleffects::predictions(fit) |>
     as_tibble() |>
-    select(identifier, taxon_name, decimal_latitude, decimal_longitude, annual_precipitation, log_annual_precipitation, log_annual_precipitation_mn, log_annual_precipitation_c, value, log_value, estimate, conf.low, conf.high) |>
+    select(
+      any_of(c("identifier", "taxon_name", "decimal_latitude", "decimal_longitude",
+               "annual_precipitation", var)),
+      all_of(c(var_between, var_within)),
+      any_of(c("value", "log_value")),
+      estimate, conf.low, conf.high
+    ) |>
     mutate(
       log_residual = estimate - log_value,
       residual = exp(estimate) - exp(log_value),
@@ -37,20 +58,22 @@ process_fit <- function(fit) {
     # =only keep first and last record for each species to show the range of rainfall
     data_fit_ind |>
     group_by(taxon_name) |>
-    arrange(log_annual_precipitation) |>
+    arrange(.data[[var]]) |>
     slice(c(1, n())) |>
     ungroup()
 
-  message("\t\033[32mComputing predictions at species mean precipitation...\033[0m")
+  message("\t\033[32mComputing predictions at species mean...\033[0m")
   data_fit_mn <-
     marginaleffects::predictions(fit,
-      newdata = data_fit_ind |> mutate(log_annual_precipitation_c = 0) |> select(log_annual_precipitation_mn, log_annual_precipitation_c, taxon_name) |>
+      newdata = data_fit_ind |>
+        mutate("{var_within}" := 0) |>
+        select(all_of(c(var_between, var_within, "taxon_name"))) |>
         distinct()
     ) |>
     as_tibble() |>
     ## Keep the log estimates but also convert to original scale for plotting
     mutate(
-      annual_precipitation = exp(log_annual_precipitation_mn),
+      annual_precipitation = x_transform(.data[[var_between]]),
       # Convert back to original scale
       across(c("estimate", "conf.low", "conf.high"), ~ exp(.x))
     )

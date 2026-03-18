@@ -31,7 +31,7 @@ source("R/data/load_data_height_avh.R")
 
 options(marginaleffects_safe = FALSE)
 
-update <- FALSE
+update <- TRUE
 ```
 
 ## Prepare data
@@ -92,7 +92,6 @@ When fitting the model, we filtered the data to species with more than a minimum
 file_fits <- "data-processed/fits_height_climate.rds"
 
 if (update || !file.exists(file_fits)) {
-  
   # Limit data to species with more than n_min records, to ensure we can fit the models
   n_min <- 5
   spp_counts <- data_traits_climate |> count(taxon_name)
@@ -107,19 +106,23 @@ if (update || !file.exists(file_fits)) {
   # Fit the models
   ## Note - we fit separate models for rainfall and temperature to avoid issues with model convergence, as well as a combined model with both predictors but no interactions
   fit_r <- glmmTMB(log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + (1 | taxon_name) + (0 + log_annual_precipitation_c | taxon_name), data = data_model)
-  #  fit_t <- glmmTMB(log_value ~ average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
+
+  fit_t <- glmmTMB(log_value ~ average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
 
   ## Note - no interactions in 2D model as causes issues with model convergence
   fit_rt <- glmmTMB(
-    log_value ~ average_temperature_mn + log_annual_precipitation_mn + 
-                #average_temperature_c + 
-                #log_annual_precipitation_c + 
-                (0 + log_annual_precipitation_c * average_temperature_c | taxon_name), 
-    data = data_model)
+    log_value ~ average_temperature_mn * log_annual_precipitation_mn +
+      average_temperature_c + log_annual_precipitation_c +
+      (0 + log_annual_precipitation_c | taxon_name) + (0 + average_temperature_c | taxon_name),
+    data = data_model
+  )
+
+  ## Isaac's version
+  #  fit_rt <- glmmTMB(log_value ~ (log_annual_precipitation_mn + log_annual_precipitation_c + average_temperature_mn + average_temperature_c) + (0 + log_annual_precipitation_c | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
 
   # Compute predicted values and residuals for fitted models
-  data_fitted_r <- process_fit(fit_r)
-  #  data_fitted_t <- process_fit(fit_t)
+  data_fitted_t <- process_fit(fit_t, var = "average_temperature")
+  data_fitted_r <- process_fit(fit_r, var = "log_annual_precipitation")
   #  data_fitted_rt <- process_fit(fit_rt)
 
   random_effects_r <-
@@ -128,18 +131,26 @@ if (update || !file.exists(file_fits)) {
     rename(g_0 = `(Intercept)`, g_c = log_annual_precipitation_c) |>
     mutate(h = exp(g_0))
 
+  # random_effects_t <-
+  #   ranef(fit_t)$cond$taxon_name |>
+  #   as_tibble(rownames = "taxon_name") |>
+  #   rename(g_0 = `(Intercept)`, g_c = log_annual_precipitation_c) |>
+  #   mutate(h = exp(g_0))
+
   # Save fitted models for future use
-  fits <- 
-    list(data_model = data_model, 
-    fit_r = fit_r, data_fitted_r = data_fitted_r, random_effects_r = random_effects_r, 
-    fit_rt = fit_rt
-  )
-  
+  fits <-
+    list(
+      data_model = data_model,
+      fit_r = fit_r,
+      data_fitted_r = data_fitted_r, random_effects_r = random_effects_r,
+      fit_t = fit_t, data_fitted_t = data_fitted_t,
+      fit_rt = fit_rt
+    )
+
   fits |> saveRDS(file_fits)
 }
 
 fits <- readRDS(file_fits)
-
 ```
 
 ## Results
