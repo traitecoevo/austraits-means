@@ -16,7 +16,7 @@ species_panel_palette <- function() {
   )
 }
 
-predict_species_surface <- function(fit_rt, taxon, taxon_avh, taxon_gbif, n_grid = 100) {
+predict_species_surface <- function(fit_rt, taxon, taxon_avh, taxon_gbif, n_grid = 40) {
   if (!requireNamespace("glmmTMB", quietly = TRUE)) {
     stop("Package `glmmTMB` is required for prediction.")
   }
@@ -179,43 +179,36 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, surf, gbif_background) {
     dplyr::mutate(source = "All Australian taxa")
 
   ggplot2::ggplot() +
+    # Background points (rasterized for speed)
     ggplot2::geom_point(
       data = gbif_background,
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
-      alpha = 1,
-      size = 1,
+      alpha = 0.3,
+      size = 0.8,
       shape = 16
     ) +
-    ggplot2::geom_hex(data = taxon_gbif, ggplot2::aes(annual_precipitation, average_temperature), bins = 35)+
+    # Hex bin for GBIF density (faster than geom_point for large data)
+    {if (nrow(taxon_gbif) > 100) ggplot2::geom_hex(data = taxon_gbif, ggplot2::aes(annual_precipitation, average_temperature), bins = 20) else ggplot2::geom_blank()} +
+    # Focal species points
     ggplot2::geom_point(
       data = taxon_gbif,
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
       alpha = 1,
-      size = 1
+      size = 1.2
     ) +
     ggplot2::geom_point(
       data = taxon_avh,
       ggplot2::aes(annual_precipitation, average_temperature, color = source),
       alpha = 1,
-      size = 1
+      size = 1.2
     ) +
-    {
-      if (nrow(surf) > 0) {
-        ggplot2::geom_contour(
-          data = surf,
-          ggplot2::aes(annual_precipitation, average_temperature, z = pred_height),
-          color = pal$predicted,
-          linewidth = 0.45,
-          bins = 14
-        )
-      }
-    } +
+    # Contours (only if surface has data)
+    {if (nrow(surf) > 0) ggplot2::geom_contour(data = surf, ggplot2::aes(annual_precipitation, average_temperature, z = pred_height), color = pal$predicted, linewidth = 0.4, bins = 10)} +
     ggplot2::scale_x_log10() +
-#    ggplot2::scale_alpha_continuous(range = c(0.25, 0.95), guide = "none") +
     ggplot2::scale_color_manual(
       values = c(
-        "All Australian taxa" = pal$raw, 
-        "GBIF" = pal$gbif, 
+        "All Australian taxa" = pal$raw,
+        "GBIF" = pal$gbif,
         "AVH" = pal$avh),
       name = "Points"
     ) +
@@ -330,41 +323,48 @@ plot_panel_state <- function(taxon_avh) {
     )
 }
 
-plot_panel_rain <- function(taxon, data_model_bg, data_fitted_bg, taxon_avh, fit_r) {
+plot_panel_rain <- function(taxon, data_fitted_bg, taxon_avh, rain_bg_plot) {
   pal <- species_panel_palette()
 
-  data_model_plot <- dplyr::bind_rows(
-    data_model_bg |>
-      dplyr::filter(taxon_name != taxon),
-    taxon_avh
-  )
+  # Use pre-computed predictions from the fitted model (avoids expensive glmmTMB predict() call)
+  data_fit_ind_taxa <- data_fitted_bg$ind |>
+    dplyr::filter(taxon_name == taxon) |>
+    dplyr::arrange(annual_precipitation) |>
+    dplyr::mutate(taxon2 = taxon_name)
 
-  pred_log <- stats::predict(fit_r, newdata = taxon_avh, type = "link", re.form = NULL)
-
-  dat_stats <- taxon_avh |>
-    dplyr::mutate(pred_log = pred_log)
-
-  slope_fit <- stats::lm(log_value ~ log(annual_precipitation), data = dat_stats)
+  slope_fit <- stats::lm(log_value ~ log(annual_precipitation), data = data_fit_ind_taxa)
   slope <- stats::coef(slope_fit)[[2]]
   slope_ci <- stats::confint(slope_fit)[2, ]
 
-  # Goodness-of-fit of model predictions against observed log height.
-  r2 <- stats::cor(dat_stats$log_value, dat_stats$pred_log, use = "complete.obs")^2
+  # R² between observed and model-fitted log height
+  r2 <- stats::cor(data_fit_ind_taxa$log_value, log(data_fit_ind_taxa$estimate), use = "complete.obs")^2
 
-  plot_fitted_highlight_taxa(
-    data_model_plot,
-    data_fitted_bg,
-    taxa = taxon,
-    color_values = c(
-      "All raw data" = pal$raw,
-      "All species fitted" = pal$all_taxa,
-      "Focal species data" = pal$avh,
-      "Focal species mean" = pal$predicted,
-      "Focal species CI" = pal$predicted_CI
-    ),
-    fill_values = c("Focal species CI" = pal$predicted_CI),
-    y_labels = scales::label_number(accuracy = 0.01, trim = TRUE)
-  ) +
+  data_fit_taxa_mn <- data_fitted_bg$mn |>
+    dplyr::filter(taxon_name == taxon) |>
+    dplyr::mutate(taxon2 = taxon_name)
+
+  rain_bg_plot +
+    ggplot2::geom_point(
+      data = data_fit_ind_taxa,
+      ggplot2::aes(annual_precipitation, value, group = taxon2, color = "Focal species data"),
+      size = 1
+    ) +
+    ggplot2::geom_point(
+      data = data_fit_taxa_mn,
+      ggplot2::aes(annual_precipitation, estimate, group = taxon2, color = "Focal species mean"),
+      alpha = 0.5
+    ) +
+    ggplot2::geom_line(
+      data = data_fit_ind_taxa,
+      ggplot2::aes(annual_precipitation, estimate, group = taxon2, color = "Focal species mean"),
+      alpha = 1
+    ) +
+    ggplot2::geom_ribbon(
+      data = data_fit_ind_taxa,
+      ggplot2::aes(annual_precipitation, ymin = conf.low, ymax = conf.high, group = taxon2),
+      fill = pal$predicted,
+      alpha = 0.25
+    ) +
     ggplot2::labs(
       title = "d) Rain fall response",
       subtitle = sprintf("Slope = %.2f [%.1f-%.1f], R2 = %.2f", slope, slope_ci[1], slope_ci[2], r2)
@@ -373,6 +373,36 @@ plot_panel_rain <- function(taxon, data_model_bg, data_fitted_bg, taxon_avh, fit
       legend.position = "none",
       plot.title = ggplot2::element_text(face = "bold")
     )
+}
+
+build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
+  pal <- species_panel_palette()
+  color_values <- c(
+    "All raw data" = pal$raw,
+    "All species fitted" = pal$all_taxa,
+    "Focal species data" = pal$avh,
+    "Focal species mean" = pal$predicted,
+    "Focal species CI" = pal$predicted_CI
+  )
+  fill_values <- c("Focal species CI" = pal$predicted_CI)
+
+  ggplot2::ggplot(data_model_bg, ggplot2::aes(annual_precipitation, group = taxon_name)) +
+    # Use ind_range (2 rows per species: min/max precip) instead of ind (all points) — much less data
+    ggplot2::geom_point(
+      ggplot2::aes(y = value, color = "All raw data"),
+      alpha = 0.5, stroke = 0, size = 0.5
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = estimate, color = "All species fitted"),
+      data = data_fitted_bg$ind_range,
+      alpha = 0.5, linewidth = 0.25
+    ) +
+    ggplot2::scale_color_manual(values = color_values, drop = FALSE) +
+    ggplot2::scale_fill_manual(values = fill_values, drop = FALSE) +
+    ggplot2::scale_x_log10() +
+    ggplot2::scale_y_log10(labels = scales::label_number(accuracy = 0.01, trim = TRUE)) +
+    ggplot2::theme_classic() +
+    ggplot2::labs(y = "Height (m)", x = "Annual rainfall (mm)", color = NULL, fill = NULL)
 }
 
 build_species_plot <- function(
@@ -386,7 +416,8 @@ build_species_plot <- function(
   fit_r,
   country_sf,
   states_sf,
-  gbif_background
+  gbif_background,
+  rain_bg_plot
 ) {
   taxon_avh <- data_traits_climate |>
     dplyr::filter(taxon_name == taxon) |>
@@ -408,13 +439,16 @@ build_species_plot <- function(
     return(invisible(NULL))
   }
 
-  taxon_gbif <- arrow::open_dataset(gbif_path) |>
+  # Each worker opens GBIF data lazily from parquet
+  gbif_full <- arrow::open_dataset(gbif_path) |>
+    dplyr::collect()
+
+  taxon_gbif <- gbif_full |>
     dplyr::filter(taxon_name == taxon) |>
     dplyr::select(
       taxon_name, decimal_longitude, decimal_latitude,
       annual_precipitation, average_temperature
     ) |>
-    dplyr::collect() |>
     dplyr::distinct() |>
     dplyr::filter(
       !is.na(decimal_longitude), !is.na(decimal_latitude),
@@ -435,7 +469,7 @@ build_species_plot <- function(
   
   p3 <- plot_panel_state(taxon_avh)
   
-  p4 <- plot_panel_rain(taxon, data_model_bg, data_fitted_bg, taxon_avh, fit_r)
+  p4 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
 
   title_text <- sprintf("%s (AVH n=%s, GBIF n=%s)", taxon, nrow(taxon_avh), nrow(taxon_gbif))
 
@@ -454,7 +488,7 @@ build_species_plot <- function(
     )
 
   file_out <- file.path(out_dir, paste0(clean_species_filename(taxon), ".png"))
-  ggplot2::ggsave(file_out, p_all, width = 14, height = 10, dpi = 180)
+  ggplot2::ggsave(file_out, p_all, width = 14, height = 10, dpi = 120)
 
   message("Saved ", file_out)
   invisible(NULL)
@@ -504,6 +538,9 @@ generate_species_panels <- function(
 
   taxa_test <- taxa
 
+  # Build background rain plot once — reused across all species
+  rain_bg_plot <- build_rain_background_plot(data_model_bg, data_fitted_bg)
+
   options(future.globals.maxSize = max_global_size)
 
   if (future_strategy == "auto") {
@@ -545,7 +582,8 @@ generate_species_panels <- function(
           out_dir = out_dir_species,
           country_sf = country_sf,
           states_sf = states_sf,
-          gbif_background = gbif_background
+          gbif_background = gbif_background,
+          rain_bg_plot = rain_bg_plot
         ),
         error = \(e) message("Failed for ", taxon, ": ", conditionMessage(e))
       )

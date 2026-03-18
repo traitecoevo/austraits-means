@@ -91,9 +91,7 @@ When fitting the model, we filtered the data to species with more than a minimum
 ```{r}
 file_fits <- "data-processed/fits_height_climate.rds"
 
-update <- TRUE
 if (update || !file.exists(file_fits)) {
-
   
   # Limit data to species with more than n_min records, to ensure we can fit the models
   n_min <- 5
@@ -294,6 +292,7 @@ generate_species_panels(
   fits = fits,
   taxa = taxa,
   gbif_path = "data-processed/data_gbif_cleaned.parquet",
-  out_dir_species = "outputs/height/species"
+  out_dir_species = "outputs/height/species",
+  future_strategy = "multisession"
 )
 ```

@@ -27,5 +27,3 @@ generate_species_panels(
   out_dir_species = "outputs/height/species",
   future_strategy = "multisession"
 )
-
- 
