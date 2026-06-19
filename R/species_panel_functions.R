@@ -68,12 +68,15 @@ plot_panel_map <- function(taxon_gbif, taxon_avh, country_sf, states_sf) {
       color = "grey50",
       linewidth = 0.2
     ) +
-    ggplot2::geom_point(
-      data = taxon_gbif,
-      ggplot2::aes(decimal_longitude, decimal_latitude, color = source),
-      alpha = 0.6,
-      size = 0.6,
-      na.rm = TRUE
+    ggrastr::rasterise(
+      ggplot2::geom_point(
+        data = taxon_gbif,
+        ggplot2::aes(decimal_longitude, decimal_latitude, color = source),
+        alpha = 0.6,
+        size = 0.6,
+        na.rm = TRUE
+      ),
+      dpi = 150
     ) +
     ggplot2::geom_point(
       data = taxon_avh,
@@ -102,24 +105,30 @@ plot_panel_climate <- function(taxon_gbif, taxon_avh, gbif_background) {
     dplyr::mutate(source = "All Australian taxa")
 
   ggplot2::ggplot() +
-    # Background points (rasterized for speed)
-    ggplot2::geom_point(
-      data = gbif_background,
-      ggplot2::aes(annual_precipitation, average_temperature, color = source),
-      alpha = 0.3,
-      size = 0.8,
-      shape = 16,
-      na.rm = TRUE
+    # Background points (rasterised so vector/PDF output stays small)
+    ggrastr::rasterise(
+      ggplot2::geom_point(
+        data = gbif_background,
+        ggplot2::aes(annual_precipitation, average_temperature, color = source),
+        alpha = 0.3,
+        size = 0.8,
+        shape = 16,
+        na.rm = TRUE
+      ),
+      dpi = 150
     ) +
     # Hex bin for GBIF density (faster than geom_point for large data)
     {if (nrow(taxon_gbif) > 100) ggplot2::geom_hex(data = taxon_gbif, ggplot2::aes(annual_precipitation, average_temperature), bins = 20) else ggplot2::geom_blank()} +
     # Focal species points
-    ggplot2::geom_point(
-      data = taxon_gbif,
-      ggplot2::aes(annual_precipitation, average_temperature, color = source),
-      alpha = 1,
-      size = 1.2,
-      na.rm = TRUE
+    ggrastr::rasterise(
+      ggplot2::geom_point(
+        data = taxon_gbif,
+        ggplot2::aes(annual_precipitation, average_temperature, color = source),
+        alpha = 1,
+        size = 1.2,
+        na.rm = TRUE
+      ),
+      dpi = 150
     ) +
     ggplot2::geom_point(
       data = taxon_avh,
@@ -456,15 +465,22 @@ build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
   )
 
   ggplot2::ggplot(data_model_bg, ggplot2::aes(annual_precipitation, group = taxon_name)) +
-    # Use ind_range (2 rows per species: min/max precip) instead of ind (all points) — much less data
-    ggplot2::geom_point(
-      ggplot2::aes(y = value, color = "All raw data"),
-      alpha = 0.5, stroke = 0, size = 0.5, na.rm = TRUE
+    # Raw data and all-species lines are dense; rasterise them so vector/PDF
+    # output stays small. ind_range (2 rows per species) is used for the lines.
+    ggrastr::rasterise(
+      ggplot2::geom_point(
+        ggplot2::aes(y = value, color = "All raw data"),
+        alpha = 0.5, stroke = 0, size = 0.5, na.rm = TRUE
+      ),
+      dpi = 150
     ) +
-    ggplot2::geom_line(
-      ggplot2::aes(y = estimate, color = "All species fitted"),
-      data = data_fitted_bg$ind_range,
-      alpha = 0.5, linewidth = 0.25
+    ggrastr::rasterise(
+      ggplot2::geom_line(
+        ggplot2::aes(y = estimate, color = "All species fitted"),
+        data = data_fitted_bg$ind_range,
+        alpha = 0.5, linewidth = 0.25
+      ),
+      dpi = 150
     ) +
     ggplot2::scale_color_manual(values = color_values, drop = FALSE) +
     ggplot2::scale_x_log10() +
@@ -475,17 +491,16 @@ build_rain_background_plot <- function(data_model_bg, data_fitted_bg) {
 
 build_species_plot <- function(
   taxon,
-  fit_rt,
-  data_model_bg,
   data_fitted_bg,
   data_traits_climate,
   gbif_path,
   out_dir,
-  fit_r,
   country_sf,
   states_sf,
   gbif_background,
-  rain_bg_plot
+  rain_bg_plot,
+  ext = "png",
+  gbif_name_map = NULL
 ) {
   taxon_avh <- data_traits_climate |>
     dplyr::filter(taxon_name == taxon) |>
@@ -507,25 +522,44 @@ build_species_plot <- function(
     return(invisible(NULL))
   }
 
-  # Each worker opens GBIF data lazily from parquet
-  gbif_full <- arrow::open_dataset(gbif_path) |>
-    dplyr::collect()
+  # The GBIF dataset is aligned to a different taxonomy than the AVH/trait data, so
+  # the focal AVH name may not match GBIF's name directly. `gbif_name_map` (a data
+  # frame with columns taxon_name, gbif_taxon_name) bridges the two via their shared
+  # APC-accepted name. Fall back to the focal name itself when there is no mapping.
+  gbif_query_names <- if (!is.null(gbif_name_map)) {
+    gbif_name_map$gbif_taxon_name[gbif_name_map$taxon_name == taxon]
+  } else {
+    character(0)
+  }
+  if (length(gbif_query_names) == 0) gbif_query_names <- taxon
 
-  taxon_gbif <- gbif_full |>
-    dplyr::filter(taxon_name == taxon) |>
+  # Read ONLY these names' GBIF records from parquet. The filter/select are pushed
+  # down to Arrow before collect(), so the full dataset is never materialised in
+  # memory (collecting it whole per worker previously caused out-of-memory crashes).
+  taxon_gbif <- arrow::open_dataset(gbif_path) |>
+    dplyr::filter(taxon_name %in% gbif_query_names) |>
     dplyr::select(
       "taxon_name", "decimal_longitude", "decimal_latitude",
       "annual_precipitation", "average_temperature"
     ) |>
+    dplyr::collect() |>
     dplyr::distinct() |>
     dplyr::filter(
       !is.na(decimal_longitude), !is.na(decimal_latitude),
       !is.na(annual_precipitation), !is.na(average_temperature)
     ) |>
-      dplyr::mutate(source = "GBIF")
+    dplyr::mutate(source = "GBIF")
 
   if (nrow(taxon_gbif) < 10) {
-    message("Skipping ", taxon, " (insufficient GBIF records)")
+    reason <- if (nrow(taxon_gbif) == 0) {
+      "no GBIF records under matched name(s) - likely taxonomy mismatch"
+    } else {
+      "insufficient GBIF records"
+    }
+    message(
+      "Skipping ", taxon, " (", reason, "; queried GBIF name(s): ",
+      paste(gbif_query_names, collapse = ", "), ")"
+    )
     return(invisible(NULL))
   }
 
@@ -534,13 +568,15 @@ build_species_plot <- function(
   p2 <- plot_panel_climate(taxon_gbif, taxon_avh, gbif_background)
   p4 <- plot_panel_state(taxon_avh)
   p5 <- plot_panel_rain(taxon, data_fitted_bg, taxon_avh, rain_bg_plot)
-  p6 <- plot_panel_temperature_placeholder()
-  p7 <- plot_panel_height_heatmap(taxon_gbif, taxon_avh, fit_rt)
+  # p6 (temperature placeholder) and p7 (height heatmap) are not currently part of
+  # the layout below, so they are not built — this also keeps the fitted model
+  # objects out of the per-worker payload.
 
   title_text <- sprintf("%s (AVH n=%s, GBIF n=%s)", taxon, nrow(taxon_avh), nrow(taxon_gbif))
 
   p_all <-
-    patchwork::wrap_plots(p1, p2, p4, p7, p5, p6, ncol = 2, byrow = TRUE) +
+    patchwork::wrap_plots(p1, p2, p4, p5, # p6 p7
+       ncol = 2, byrow = TRUE) +
     patchwork::plot_layout(widths = c(1, 1), heights = c(1, 1, 1), guides = "collect") +
     patchwork::plot_annotation(
       title = title_text,
@@ -550,10 +586,14 @@ build_species_plot <- function(
   p_all <- p_all &
     ggplot2::theme(
       plot.margin = ggplot2::margin(10, 10, 10, 10),
-      legend.position = "right"
+      legend.position = "right",
+      legend.key.width = ggplot2::unit(0.4, "cm"),
+      legend.key.height = ggplot2::unit(0.4, "cm"),
+      legend.text = ggplot2::element_text(size = 8),
+      legend.title = ggplot2::element_text(size = 9)
     )
 
-  file_out <- file.path(out_dir, paste0(clean_species_filename(taxon), ".png"))
+  file_out <- file.path(out_dir, paste0(clean_species_filename(taxon), ".", ext))
   ggplot2::ggsave(file_out, p_all, width = 14, height = 15, dpi = 120)
 
   message("Saved ", file_out)
@@ -568,9 +608,11 @@ generate_species_panels <- function(
   out_dir_species = "outputs/height/species",
   workers_n = max(1, min(8, parallelly::availableCores() - 1)),
   future_strategy = c("auto", "multisession", "sequential", "multicore"),
-  max_global_size = 4 * 1024^3,
+  max_global_size = 8 * 1024^3,
   seed = 123,
-  n_background = 200000
+  n_background = 200000,
+  ext = "png",
+  gbif_name_map = NULL
 ) {
   future_strategy <- match.arg(future_strategy)
 
@@ -607,6 +649,26 @@ generate_species_panels <- function(
   # Build background rain plot once — reused across all species
   rain_bg_plot <- build_rain_background_plot(data_model_bg, data_fitted_bg)
 
+  # Ship workers only what they actually use, to keep the per-worker payload small
+  # and avoid future.globals.maxSize errors. The full `fits` object, the raw
+  # `data_model_bg`, and `data_fitted_bg$ind_range` are all needed only for the
+  # one-off rain background plot above, not inside each worker.
+  data_traits_worker <- data_traits_climate |>
+    dplyr::select(
+      "taxon_name", "decimal_longitude", "decimal_latitude",
+      "value", "annual_precipitation", "average_temperature",
+      "log_value", "log_annual_precipitation_mn",
+      "log_annual_precipitation_c", "average_temperature_mn", "state"
+    )
+
+  data_fitted_worker <- list(
+    ind = data_fitted_bg$ind,
+    mn = data_fitted_bg$mn
+  )
+
+  # Drop the large background objects so they are not captured by the worker closure
+  rm(data_model_bg, data_fitted_bg, fits)
+
   options(future.globals.maxSize = max_global_size)
 
   if (future_strategy == "auto") {
@@ -639,25 +701,24 @@ generate_species_panels <- function(
       tryCatch(
         build_species_plot(
           taxon = taxon,
-          fit_rt = fits$fit_rt,
-          fit_r = fits$fit_r,
-          data_model_bg = data_model_bg,
-          data_fitted_bg = data_fitted_bg,
-          data_traits_climate = data_traits_climate,
+          data_fitted_bg = data_fitted_worker,
+          data_traits_climate = data_traits_worker,
           gbif_path = gbif_path,
           out_dir = out_dir_species,
           country_sf = country_sf,
           states_sf = states_sf,
           gbif_background = gbif_background,
-          rain_bg_plot = rain_bg_plot
+          rain_bg_plot = rain_bg_plot,
+          ext = ext,
+          gbif_name_map = gbif_name_map
         ),
         error = \(e) message("Failed for ", taxon, ": ", conditionMessage(e))
       )
     },
-    .options = furrr::furrr_options(seed = TRUE, packages = c("glmmTMB", "ggplot2", "dplyr", "tidyr", "tibble", "purrr", "arrow", "patchwork", "sf"))
+    .options = furrr::furrr_options(seed = TRUE, packages = c("glmmTMB", "ggplot2", "ggrastr", "dplyr", "tidyr", "tibble", "purrr", "arrow", "patchwork", "sf"))
   )
 
-  n_png <- list.files(out_dir_species, pattern = "\\.png$", full.names = FALSE) |> length()
-  message("Generated ", n_png, " png files in ", out_dir_species)
-  invisible(n_png)
+  n_out <- list.files(out_dir_species, pattern = paste0("\\.", ext, "$"), full.names = FALSE) |> length()
+  message("Generated ", n_out, " ", ext, " files in ", out_dir_species)
+  invisible(n_out)
 }

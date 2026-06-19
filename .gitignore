@@ -9,3 +9,7 @@ data/data-ausplants
 *.docx
 outputs
 data/AVH_height_records_20260311.csv
+
+/.quarto/
+**/*.quarto_ipynb
+data/AVH_final_fewer_columns.csv

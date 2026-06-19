@@ -15,6 +15,7 @@ process_fit <- function(fit, var = "log_annual_precipitation") {
   var_within <- paste0(var, "_c")
 
   message("\t\033[32mComputing global mean predictions by ", var_between, "...\033[0m")
+  
   data_fit_global_mn <-
     estimate_means(fit, by = var_between) |>
     as_tibble() |>
@@ -71,12 +72,19 @@ process_fit <- function(fit, var = "log_annual_precipitation") {
         distinct()
     ) |>
     as_tibble() |>
-    ## Keep the log estimates but also convert to original scale for plotting
-    mutate(
-      annual_precipitation = x_transform(.data[[var_between]]),
-      # Convert back to original scale
-      across(c("estimate", "conf.low", "conf.high"), ~ exp(.x))
-    )
+     ## Keep the log estimates but also convert to original scale for plotting
+     mutate(
+       # Convert back to original scale
+       across(c("estimate", "conf.low", "conf.high"), ~ exp(.x))
+     )
+
+    if(var ==  "log_annual_precipitation") {
+    data_fit_mn <- 
+      data_fit_mn |>
+      mutate(
+        annual_precipitation = x_transform(.data[[var_between]])
+      )
+    }
 
   message("\t\033[32mDone processing fit!\033[0m")
 

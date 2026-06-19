@@ -1,21 +1,55 @@
 ---
-title: "Analysis of height variation in Australia: Dataset creation"
+title: "Analysis of height variation in Australia: Report for NVIS team"
 author: Daniel Falster & Elizabeth Wenk
-date: 2026-02-28
+date: 2026-06-19
 format:
   html:
     embed-resources: true
     toc: true
     smooth-scroll: true
   docx: default
+execute:
+  echo: false
+  warning: false
+  message: false
 editor_options:
   chunk_output_type: console
 ---
-This analysis focuses on understanding variation in plant height within and across species in Australia in relation to two climatic variables: annual precipitation (mm/yr) and average temperature (°C). The dataset used for this analysis is derived from the Australasian Virtual Herbarium (AVH). We extracted records of height from the "occurrence remarks" field in the AVH dataset, which contains a variety of information about plant specimens, often including measurements of population height. We then linked these height records to climate data from WorldClim, which provides high-resolution climate data for global land areas. Climate data were extracted for the locations where specimens were collected, allowing us to analyse how height varies with climatic conditions. By fitting a custom statistical model, we extracted species-specific responses to climatic variables and investigated how these responses vary across species. These within-species responses are compared with changes in average species height at the centre of each species' distribution. Combined, this analysis provides insights into how plant height varies across climatic conditions in Australia, and how this variation is structured within and across species.
+
+## Background and motivation
+
+This analysis forms one part of a larger project undertaken for the Australian Government Department of Climate Change, Energy, the Environment and Water (DCCEEW) to strengthen the plant trait data that underpins the National Vegetation Information System (NVIS).
+
+Accurate vegetation modelling for NVIS requires knowledge of the growth form and height of Australian plant species — especially the dominant ("key") species in each of the 89 IBRA Bioregions. A central challenge is that a species' height is not a single fixed value: the maximum and average height a species attains varies across its geographic range, largely in response to climate. NVIS modelling therefore needs more than one height per species; it needs an understanding of *how plant height shifts across a species' range*.
+
+Quantifying this within-species variation is the focus of the present analysis. Population-level, georeferenced height data of this kind are scarce in existing trait databases — AusTraits, for example, currently holds population-level height for only around 1,800 species, and data for multiple populations of the same species for fewer than 200. Such measurements are, however, frequently recorded as ancillary information when botanists collect herbarium specimens. We therefore extract height measurements directly from herbarium records and use them to characterise how height varies within and across species along climatic gradients. The result is a first-pass, continental-scale picture of within-species height variation, intended to support regionalised height estimates for NVIS.
+
+## Overview of the analysis
+
+This report analyses variation in plant height within and across species in Australia, in relation to two climatic variables: annual precipitation (mm/yr) and average temperature (°C).
+
+The dataset is derived from the Australasian Virtual Herbarium (AVH), a national online database of plant specimen records. We extracted height measurements from the free-text "occurrence remarks" field of AVH records, which often notes the height of the plant or population from which a specimen was collected. Each height record was then linked to climate data from WorldClim — a high-resolution global climate dataset — using the location at which the specimen was collected.
+
+By fitting a custom statistical model to these data, we extracted species-specific responses of height to climate and examined how those responses vary across species. The analysis distinguishes two effects:
+
+- how height changes *within* a species across its range, as individuals experience wetter or drier conditions; and
+- how average height differs *across* species, as we compare species centred in wetter versus drier parts of the continent.
+
+Together, these results provide insight into how plant height varies with climate in Australia, and how that variation is structured both within and among species. The within-species component is of particular relevance to NVIS, as it is what allows a species' height to be regionalised across the bioregions in which it occurs.
 
 ## Dataset creation
 
-The code below describes the process of creating the dataset used for the analysis. It involves loading the AVH data, extracting height records, linking these records to climate data, and preparing the dataset for analysis.
+The analysis dataset combines three sources: plant height measurements, climate data, and species occurrence data.
+
+**Height measurements** come from the Australasian Virtual Herbarium (AVH). Many herbarium specimens record the height of the plant or population in the free-text "occurrence remarks" field of the specimen record. We used natural-language (string-matching) scripts to extract these heights from AVH records, together with each record's species name, collection coordinates, and collection year. Each height was log-transformed for analysis.
+
+**Climate data** come from WorldClim, at a resolution of 2.5 arc-minutes. We use two bioclimatic layers: mean annual temperature (BIO 1, °C) and annual precipitation (BIO 12, mm/yr), cropped to Australia. For every AVH height record, we extracted the temperature and precipitation at its collection location. Records that fell outside the climate layers (e.g. offshore or with missing coordinates) were dropped, and each remaining record was assigned to an Australian state or territory from its coordinates.
+
+For each species we then computed the **centre of its climatic range** — its mean (log) annual precipitation and mean annual temperature across all of its records — and expressed every record's climate as a deviation from that species mean. This split of each record into a *species-mean* component and a *within-species deviation* component is what allows the model to separate across-species turnover from within-species responses to climate.
+
+**Species occurrence data** come from the Global Biodiversity Information Facility (GBIF). We use a cleaned national GBIF extract, with taxonomy aligned to the Australian Plant Census and with the same two WorldClim layers extracted at each occurrence. These occurrences are not used in the model; they characterise each species' geographic and climatic range in the species panels below.
+
+The steps that assemble and cache this dataset are run by the code in this section (hidden); the resulting table has one row per AVH height record, with its height, location, state, climate, and the species-mean and within-species climate components.
 
 ```{r, message = FALSE, warning = FALSE}
 library(tidyverse)
@@ -28,10 +62,11 @@ library(ggrastr)
 library(patchwork)
 source("R/process_fitted_model.R")
 source("R/data/load_data_height_avh.R")
+source("R/species_panel_functions.R")
 
 options(marginaleffects_safe = FALSE)
 
-update <- TRUE
+update <- FALSE
 ```
 
 ## Prepare data
@@ -53,40 +88,43 @@ if (update || !file.exists(data_traits_climate_file)) {
 
 ## Fit statistical models
 
-We fit a custom statistical model to the data, which includes both fixed effects of climatic variables and random effects for each species. The model allows us to extract species-specific responses to climatic variables, which can then be compared across species. The overall model structure is as follows:
+We fit a custom statistical model that combines fixed effects of the climatic variables with random effects for each species. The random effects let us extract a separate response to climate for every species, which can then be compared across species. In R notation, the model structure is:
 
-```{r, eval = FALSE}
+```r
 log_value ~ log_annual_precipitation_mn + log_annual_precipitation_c + average_temperature_mn + average_temperature_c + (1 | taxon_name) + (0 + log_annual_precipitation_c + average_temperature_c | taxon_name)
 ```
 where
 
-- `log_value` is the log-transformed height of the plant specimens.
-- `log_annual_precipitation_mn` and `average_temperature_mn` are the mean annual precipitation and average temperature for each species, representing the climatic conditions at the center of the species distribution.
-- `log_annual_precipitation_c` and `average_temperature_c` are the centered values of annual precipitation and average temperature, representing the deviation from the species mean for each record.
-- `(1 | taxon_name)` is a random intercept for each species, allowing for variation in the average height by species.
-- `(0 + log_annual_precipitation_c + average_temperature_c | taxon_name)` is a random slope for the climatic variables, allowing for variation in the response to the climatic variables within each species. 
+- `log_value` is the log-transformed height of a specimen.
+- `log_annual_precipitation_mn` and `average_temperature_mn` are each species' mean annual precipitation and mean average temperature, representing the climatic conditions at the centre of the species' distribution.
+- `log_annual_precipitation_c` and `average_temperature_c` are the centred values of annual precipitation and average temperature — that is, each record's deviation from its species mean.
+- `(1 | taxon_name)` is a random intercept for each species, allowing average height to vary by species.
+- `(0 + log_annual_precipitation_c + average_temperature_c | taxon_name)` are random slopes for the climatic variables, allowing the within-species response to climate to vary by species.
 
-Note that random effects are included for both the intercept and slopes; however, these are assumed to be uncorrelated, as including correlations caused model convergence issues.
+Random effects are included for both the intercept and the slopes. These are assumed to be uncorrelated, because allowing them to correlate caused the model to fail to converge.
 
-In this preliminary analysis, we focus on the response to rainfall, as this is the climatic variable most strongly associated with height in our data. We fit separate models for rainfall and temperature to avoid model convergence issues, as well as a combined model with both predictors but no interactions. Terms related to temperature are therefore omitted from the model results presented here.
+In this preliminary analysis we focus on the response to rainfall, as it is the climatic variable most strongly associated with height in our data. We fit separate models for rainfall and temperature (again to avoid convergence problems), together with a combined model that includes both predictors but no interaction between them. The results presented below are from the rainfall model; temperature terms are omitted.
 
-The model has the following mathematical form:
-$\log(H_{i[s]}) = (\beta_0 +\gamma_{0[s]}) + \beta_{m} \cdot \log(P_{m[s]}) + (\beta_c + \gamma_{c[s]}) \cdot \left(\log(P_{i[s]}) - \log(P_{m[s]})\right)$,
+Written as an equation, the model is:
 
-where 
+$$
+\log(H_{i[s]}) = (\beta_0 + \gamma_{0[s]}) + \beta_{m} \cdot \log(P_{m[s]}) + (\beta_c + \gamma_{c[s]}) \cdot \left(\log(P_{i[s]}) - \log(P_{m[s]})\right)
+$$
 
-- $H_{i[s]}$ is the height of individual $i$ in species $s$,
-- $\beta_0$ is the overall global intercept,
-- $\gamma_{0[s]}$ is the species-specific random intercept (i.e. deviation from $\beta_0$),
-- $\beta_{m}$ is the change across species, in the species average log height with species average log precipitation (i.e., change in height at the centre of a species distribution with change in precipitation at the centre of a species distribution),
-- $\beta_c$ is the overall average within-species change in log height with log precipitation,
-- $\gamma_{c[s]}$ is the species-specific random slope (deviation from $\beta_c$),
-- $P_{m[s]}$ is the mean precipitation for species $s$,and 
+where
+
+- $H_{i[s]}$ is the height of individual $i$ in species $s$;
+- $\beta_0$ is the overall (global) intercept;
+- $\gamma_{0[s]}$ is the species-specific random intercept (the deviation of species $s$ from $\beta_0$);
+- $\beta_{m}$ is the *across-species* effect: the change in a species' average log height as we compare species centred in drier versus wetter climates (i.e. the change in height at the centre of a species' distribution per unit change in precipitation at that centre);
+- $\beta_c$ is the overall average *within-species* change in log height with log precipitation;
+- $\gamma_{c[s]}$ is the species-specific random slope (the deviation of species $s$ from $\beta_c$);
+- $P_{m[s]}$ is the mean precipitation for species $s$; and
 - $P_{i[s]}$ is the precipitation at the location of individual $i$ in species $s$.
 
-The average height at any point in any species distribution can then be calculated from the fitted model parameters and the equation above.
+Given these fitted parameters, the equation lets us predict the average height of any species at any point within its distribution.
 
-When fitting the model, we filtered the data to species with more than a minimum number of records (`n_min = 5`) to ensure enough data to reliably estimate species-specific responses. This reduces dataset coverage from around 19,000 species to around 10,500 species. All models were fit using the `glmmTMB` package.
+When fitting the model, we restricted the data to species with more than a minimum number of records (`n_min = 5`), to ensure each species had enough data to reliably estimate its response. This reduces coverage from around 19,000 species to around 10,500 species. All models were fit using the `glmmTMB` package.
 
 ```{r}
 file_fits <- "data-processed/fits_height_climate.rds"
@@ -117,25 +155,15 @@ if (update || !file.exists(file_fits)) {
     data = data_model
   )
 
-  ## Isaac's version
-  #  fit_rt <- glmmTMB(log_value ~ (log_annual_precipitation_mn + log_annual_precipitation_c + average_temperature_mn + average_temperature_c) + (0 + log_annual_precipitation_c | taxon_name) + (0 + average_temperature_c | taxon_name), data = data_model)
-
   # Compute predicted values and residuals for fitted models
   data_fitted_t <- process_fit(fit_t, var = "average_temperature")
   data_fitted_r <- process_fit(fit_r, var = "log_annual_precipitation")
-  #  data_fitted_rt <- process_fit(fit_rt)
 
   random_effects_r <-
     ranef(fit_r)$cond$taxon_name |>
     as_tibble(rownames = "taxon_name") |>
     rename(g_0 = `(Intercept)`, g_c = log_annual_precipitation_c) |>
     mutate(h = exp(g_0))
-
-  # random_effects_t <-
-  #   ranef(fit_t)$cond$taxon_name |>
-  #   as_tibble(rownames = "taxon_name") |>
-  #   rename(g_0 = `(Intercept)`, g_c = log_annual_precipitation_c) |>
-  #   mutate(h = exp(g_0))
 
   # Save fitted models for future use
   fits <-
@@ -155,18 +183,175 @@ fits <- readRDS(file_fits)
 
 ## Results
 
+### Species by species plots
+
+Before turning to the aggregate results, it is helpful to see the data and fitted model for a few individual species. For each species we draw a diagnostic panel that brings everything together in one view: (a) the geographic distribution of records; (b) the species' position in environmental (precipitation–temperature) space relative to all Australian taxa; (d) the variation in height across Australian states; and (e) the fitted height–rainfall response. Records come from two sources: the Australasian Virtual Herbarium (AVH), which supplies the height measurements, and the Global Biodiversity Information Facility (GBIF), which provides additional occurrence records used to characterise each species' range.
+
+The code below generates panels for three example species, as PNG images for display here. Panels for the full set of species are generated separately, as PDFs, in [Generating panels for all species] below. All panels are saved to `outputs/height/species/`.
+
+```{r, echo = FALSE}
+##### Reconciling AVH and GBIF taxonomy
+
+# The AVH/trait data and the GBIF data were aligned to different releases of the Australian Plant Census (APC), so their species names disagree in places (for example, AVH *Boronia anemonifolia* corresponds to GBIF *Boronia fraseri*, and AVH *Scleromitrion galioides* to GBIF *Oldenlandia galioides*). To match each species to the correct GBIF records, we build a crosswalk: both sets of names are aligned to the *current* APC with `APCalign`, species are matched on their shared accepted name, and the resulting AVH-name → GBIF-name lookup is cached. The panel code uses this lookup when querying GBIF.
+
+crosswalk_file <- "data-processed/gbif_avh_name_crosswalk.parquet"
+
+if (update || !file.exists(crosswalk_file)) {
+  resources <- APCalign::load_taxonomic_resources()
+
+  align_accepted <- function(names) {
+    APCalign::create_taxonomic_update_lookup(
+      unique(stats::na.omit(names)),
+      resources = resources
+    ) |>
+      dplyr::select(original_name, accepted = suggested_name)
+  }
+
+  avh_lookup <- align_accepted(data_traits_climate$taxon_name) |>
+    rename(taxon_name = original_name)
+
+  gbif_lookup <-
+    arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
+    distinct(taxon_name) |>
+    collect() |>
+    pull(taxon_name) |>
+    align_accepted() |>
+    rename(gbif_taxon_name = original_name)
+
+  crosswalk <- avh_lookup |>
+    inner_join(gbif_lookup, by = "accepted", relationship = "many-to-many") |>
+    select(taxon_name, accepted, gbif_taxon_name) |>
+    filter(!is.na(gbif_taxon_name))
+
+  arrow::write_parquet(crosswalk, crosswalk_file)
+}
+
+crosswalk <- arrow::read_parquet(crosswalk_file)
+```
+
+```{r}
+source("R/species_panel_functions.R")
+
+taxa <- c("Eucalyptus saligna", "Acacia aneura", "Grevillea buxifolia")
+
+out_dir_species <- "outputs/height/species"
+
+# Panels are expensive to generate, so only (re)build them when missing or when
+# `update` is set. Expected file names mirror generate_species_panels()'s output.
+expected_panels <- file.path(out_dir_species, paste0(clean_species_filename(taxa), ".png"))
+
+if (update || !all(file.exists(expected_panels))) {
+  generate_species_panels(
+    data_traits_climate = data_traits_climate,
+    fits = fits,
+    taxa = taxa,
+    gbif_path = "data-processed/data_gbif_cleaned.parquet",
+    out_dir_species = out_dir_species,
+    future_strategy = "sequential",
+    gbif_name_map = crosswalk
+  )
+}
+```
+
+The panels generated for the three example species are shown below.
+
+#### *Eucalyptus saligna*
+
+![Species panel for *Eucalyptus saligna*.](outputs/height/species/Eucalyptus_saligna.png)
+
+#### *Acacia aneura*
+
+![Species panel for *Acacia aneura*.](outputs/height/species/Acacia_aneura.png)
+
+#### *Grevillea buxifolia*
+
+![Species panel for *Grevillea buxifolia*.](outputs/height/species/Grevillea_buxifolia.png)
+
+
+```{r, eval = FALSE, echo =FALSE, results = "hide"}
+#### Generating panels for all species
+
+# Generating a panel for every species is a large, long-running job, so we manage it with a simple job table. We build one row per species, recording the number of AVH height records, the expected output file, and whether that panel has already been generated. The table is written to `outputs/height/species_panel_jobs.csv` so the job can be tracked and resumed.
+
+#Before running, we subset to species that (a) have more than a minimum number of height records (`n_min_records`, 50 by default) — below which there is too little data to characterise a response — and (b) are not yet done. Re-running therefore only fills in the missing panels. Panels are written as PDF (vector) for the deliverable, and generated in parallel using `furrr` with a multisession backend. Note that some eligible species are still skipped during generation if they have too few GBIF occurrences (fewer than 10) to draw the distribution and climate maps, so the count of panels produced is smaller than the number of eligible species.
+
+out_dir_species <- "outputs/height/species"
+dir.create(out_dir_species, recursive = TRUE, showWarnings = FALSE)
+
+# Minimum number of AVH height records for a species to be worth a panel.
+n_min_records <- 50
+
+# One row per species: record count, whether it is eligible, the expected output
+# file, and whether that file exists. Records with no taxon name are dropped.
+species_jobs <-
+  data_traits_climate |>
+  filter(!is.na(value), !is.na(taxon_name)) |>
+  count(taxon_name, name = "n_records") |>
+  mutate(
+    eligible = n_records > n_min_records,
+    output_file = file.path(out_dir_species, paste0(clean_species_filename(taxon_name), ".pdf")),
+    done = file.exists(output_file)
+  ) |>
+  arrange(desc(n_records))
+
+write_csv(species_jobs, "outputs/height/species_panel_jobs.csv")
+
+# Run only eligible species that are not yet done. Set `update <- TRUE` (at the top
+# of this document) to force a full rebuild. Note: a species may still be skipped at
+# generation time if it has too few GBIF occurrences (< 10) to draw the maps, so the
+# "still to generate" count will not necessarily reach zero.
+jobs_to_run <-
+  species_jobs |>
+  filter(eligible, update | !done)
+
+message(
+  nrow(jobs_to_run), " of ", sum(species_jobs$eligible),
+  " eligible species (> ", n_min_records, " records) still to generate"
+)
+
+# This R session has options(mc.cores) set low (e.g. in .Rprofile), which throttles
+# availableCores() AND makes parallelly refuse to start more workers than that (its
+# CPU-overload guard). Read the true core count from the system and raise mc.cores
+# to match, so the job can actually use multiple cores.
+
+n_workers <- 5 #max(1, min(8, parallelly::availableCores(methods = "system") - 3))
+options(mc.cores = n_workers)
+message("Using ", n_workers, " parallel workers")
+
+if (nrow(jobs_to_run) > 0) {
+  
+  generate_species_panels(
+    data_traits_climate = data_traits_climate,
+    fits = fits,
+    taxa = jobs_to_run$taxon_name,
+    gbif_path = "data-processed/data_gbif_cleaned.parquet",
+    out_dir_species = out_dir_species,
+    # multicore (forking) is silently unsupported in RStudio/macOS and falls back
+    # to a single core; multisession spawns separate R processes and parallelises.
+    future_strategy = "multisession",
+    workers_n = n_workers,
+    ext = "pdf",
+    gbif_name_map = crosswalk
+  )
+
+  # Refresh `done` to reflect the panels just generated, then re-save the table.
+  species_jobs <- species_jobs |> mutate(done = file.exists(output_file))
+  write_csv(species_jobs, "outputs/height/species_panel_jobs.csv")
+}
+```
+
 ### Overall model results
 
-The parameters of the fitted model are as follows:
+The fitted parameters of the rainfall model are:
 
 ```{r}
 pars <- parameters(fits$fit_r)
 pars
 ```
 
-There is a moderately strong effect of mean precipitation on average species log height (i.e., change in height at the centre of a species distribution), with a 95% CI estimate of 0.58 (0.53, 0.62). By contrast, the change in height with deviation from mean precipitation (i.e., change in height across each species distribution) is much weaker, with an estimate of 0.03 (95% CI 0.02, 0.05). This suggests that as we move to wetter conditions, we tend to see taller species on average, and that within each species, individuals in wetter conditions also tend to be slightly taller than those in drier conditions. However, the within-species change in height is relatively weak, indicating that the dominant effect of rainfall on height is across species rather than within species.
+The across-species effect of precipitation ($\beta_m$) is moderately strong: a slope of 0.58 on the log–log scale (95% CI 0.53–0.62). The within-species effect ($\beta_c$) is much weaker, at 0.03 (95% CI 0.02–0.05). In plain terms: as we move to wetter parts of the continent, the species found there tend to be taller on average; and within an individual species, plants growing in wetter parts of its range tend to be slightly taller than those in drier parts. The within-species change, however, is small. The dominant signal is therefore *across* species (taller species occur in wetter climates) rather than *within* species.
 
-The plot below visualises the fitted relationships between height and climatic variables, and highlights species-specific responses to rainfall for a subset of species. The red line shows the across-species effect, thin black lines show fitted relationships for each species, and the blue line shows the average within-species effect. The stronger relationship indicated by the red line compared to the blue line reflects the stronger effect of rainfall across species than within species, as indicated by the model parameters above.
+The plot below shows the fitted relationships between height and rainfall, with species-specific responses highlighted for a subset of species. The red line is the across-species effect, the thin black lines are the fitted relationships for individual species, and the blue line is the average within-species effect. The red line is steeper than the blue line, reflecting the stronger across-species effect identified by the parameters above.
 
 ```{r}
 p_fit_all <- plot_fitted(fits$data_model, fits$data_fitted_r)
@@ -176,9 +361,97 @@ ggsave(p_fit_all, filename = "outputs/height/fit_all.png", width = 8, height = 6
 
 ![](outputs/height/fit_all.png)
 
+### Building up the figure
+
+To make the figure above easier to interpret, the code below reconstructs it in stages, adding one layer at a time: (1) the raw height observations, (2) the species means, (3) one highlighted species, (4) a small set of highlighted species, and (5) the fitted lines for all species. The resulting images are saved to `outputs/height/fit progression/` and are intended as a presentation aid rather than a separate result.
+
+```{r}
+# option = 1: just raw data
+# option = 2: + species means
+# option = 3: + highlight 1 species
+# option = 4: + highlight 5 species lines
+# option = 5: + all species lines
+
+plot_fitted_progression <- function(data_model, data_fitted, option = 1, taxa = c()) {
+  p <-
+    data_model |>
+    ggplot(aes(annual_precipitation, estimate, group = taxon_name)) +
+    # raw data
+    geom_point(aes(y = value, color = "Raw data"), alpha = 0.5, data = data_model, stroke = 0, na.rm = TRUE)
+
+  if (option >= 4) {
+    # species lines
+    p <- p +
+      geom_line(aes(color = "Within species"), data = data_fitted$ind_range, alpha = 0.5, linewidth = 0.25, )
+  }
+  if (option >= 2) {
+    v <- "Species means (turnover)"
+    p <- p +
+      # gloabl mn
+      geom_point(aes(x = exp(log_annual_precipitation_mn), y = estimate, colour = v), data = data_fitted$mn, size = 1, alpha = 0.2, stroke = 0, na.rm = TRUE) +
+      geom_line(aes(color = v), data = data_fitted$global_mn, na.rm = TRUE)
+  }
+
+  # geom_ribbon(data = data_fit5_global_mn, aes(ymin = conf.low, ymax = conf.high, group = taxon_name), col = "red", alpha = 0.1, show.legend = FALSE) +
+
+  if (option >= 3) {
+    data_model_taxa <-
+      data_model |>
+      filter(taxon_name %in% taxa) |>
+      mutate(taxon2 = taxon_name)
+
+    data_fit_ind_taxa <-
+      data_fitted$ind |>
+      filter(taxon_name %in% taxa) |>
+      arrange(taxon_name, annual_precipitation) |>
+      mutate(taxon2 = taxon_name)
+    p <- p +
+      # highlight certain species
+      geom_point(data = data_model_taxa, aes(y = value, group = taxon2, color = "Select species"), size = 1.5, na.rm = TRUE, stroke = 0, alpha = 0.5) +
+      geom_line(data = data_fit_ind_taxa, aes(group = taxon2, color = "Select species"), alpha = 1, linewidth = 1.25, na.rm = TRUE)
+  }
+
+  # global c
+  if (option >= 5) {
+    p <- p +
+      geom_line(aes(color = "Average within species"), data = data_fitted$global_c, na.rm = TRUE)
+  }
+
+  # geom_ribbon(data = data_fit5_global_c, aes(ymin = conf.low, ymax = conf.high), col = "blue", alpha = 0.1, show.legend = FALSE) +
+  p <- p +
+    scale_color_manual(
+      values = c(
+        "Raw data" = "grey",
+        "Species means (turnover)" = "red",
+        "Average within species" = "blue",
+        "Within species" = "black",
+        "Select species" = "orange"
+      ),
+      limits = c("Raw data", "Species means (turnover)", "Average within species", "Select species", "Within species")
+    ) +
+    scale_x_log10(limits = c(100, 4000)) +
+    scale_y_log10(
+      limits = c(0.01, 100),
+      breaks = c(0.01, 0.1, 1, 10, 100),
+      labels = c(0.01, 0.1, 1, 10, 100)
+    ) +
+    theme_classic() +
+    theme(legend.key.width = unit(1.2, "cm")) +
+    labs(y = "Height (m)", x = "Annual rainfall (mm)", color = NULL)
+}
+
+taxa <- c("Eucalyptus saligna", "Acacia aneura", "Grevillea buxifolia")
+
+for (i in 1:5) {
+  p <- plot_fitted_progression(fits$data_model, fits$data_fitted_r, option = i, taxa = taxa)
+  ggsave(p, filename = paste0("outputs/height/fit progression/fit_option_", i, ".png"), width = 8, height = 6)
+}
+```
+
+
 ### Variation among species in the response to rainfall
 
-We now look more closely at variation among species in their response to rainfall. The plot below shows fitted relationships between height and rainfall for a subset of species, highlighting those with the strongest positive response to rainfall (i.e., the largest values of $\gamma_{s}$). For illustration, we focus on the top 9 Eucalyptus species with the strongest positive rainfall response; however, the same approach can be applied to any subset of species, or all species if desired.
+We now look more closely at how the rainfall response varies among species. The plot below shows fitted height–rainfall relationships for the species with the strongest positive response to rainfall (the largest random slopes, $\gamma_{c[s]}$). For illustration we show the nine *Eucalyptus* species with the strongest positive response, but the same approach can be applied to any subset of species, or to all species.
 
 ```{r}
 top_taxa <- fits$random_effects_r |>
@@ -198,9 +471,9 @@ ggsave(p_fit_taxa, filename = "outputs/height/fit_taxa_top_9_eucs.png", width = 
 
 ## Predicting all species responses
 
-The parameters of the fitted model allow us to predict the height of each species at any point in its distribution, based on climatic conditions at that point, as per the equation above.
+Using the fitted parameters and the equation above, we can predict the height of each species at any point in its distribution from the climatic conditions there.
 
-The table below includes fitted parameters for all species.
+The table below assembles the fitted parameters for every species, alongside summary information (taxonomy, sample size, observed height range, and the climatic conditions at the centre of each species' range).
 
 ```{r}
 pars_global <- pars |>
@@ -249,7 +522,7 @@ data_export <-
 data_export
 ```
 
-Save to file, and also save metadata describing the columns in the output table.
+We then write the table to file, together with a companion metadata table that documents each column (its name, data type, and definition).
 
 ```{r}
 data_export_meta <-
@@ -282,24 +555,30 @@ data_export_meta |>
   write_csv("outputs/height/species_height_climate_response_meta.csv")
 ```
 
-## Species by species plots
+## Exported data files
 
-Using the fitted model parameters, we can also predict height for each species across its distribution and visualise this relative to observations from GBIF and AVH.
+The analysis produces two CSV files in `outputs/height/`:
 
-```{r, message = TRUE, warning = FALSE}
-source("R/species_panel_functions.R")
+- **`species_height_climate_response.csv.gz`** — the main results table, with one row per species. It contains taxonomic information, a summary of the data used, and the fitted model parameters needed to predict height from rainfall (see column definitions below). The file is gzip-compressed (`.csv.gz`); it can be opened directly by R (`readr::read_csv()`), and by most other software, without manual decompression.
+- **`species_height_climate_response_meta.csv`** — a metadata (data dictionary) file describing the columns of the main table. It has one row per column, giving the column name, its data type, and a plain-language definition.
 
-taxa <- fits$random_effects_r |>
-  arrange(taxon_name) |>
-  slice_head(n = 20) |>
-  pull(taxon_name)
+Each row of the main table combines parameters that are shared across all species (the global parameters $\beta_0$, $\beta_m$, $\beta_c$) with parameters that are specific to that species (the random intercept $\gamma_{0[s]}$ and random slope $\gamma_{c[s]}$). The predicted height at the centre of a species' range, with its 95% confidence interval, is also included for convenience. The columns are:
 
-generate_species_panels(
-  data_traits_climate = data_traits_climate,
-  fits = fits,
-  taxa = taxa,
-  gbif_path = "data-processed/data_gbif_cleaned.parquet",
-  out_dir_species = "outputs/height/species",
-  future_strategy = "multisession"
-)
-```
+| Column | Type | Definition |
+|---|---|---|
+| `family` | character | Plant family of the species |
+| `genus` | character | Genus of the species |
+| `taxon_name` | character | Species name |
+| `n` | integer | Number of height observations for the species |
+| `height_range` | character | Range of observed heights (m), formatted as `min--max` |
+| `log_P_m` | numeric | Log of mean annual precipitation (mm) at the centre of the species' range |
+| `log_P_range` | character | Range of log mean annual precipitation (mm) across the species' distribution, as `min--max` |
+| `B_0` | numeric | Global intercept, $\beta_0$ |
+| `B_m` | numeric | Global across-species slope for mean precipitation, $\beta_m$ |
+| `B_c` | numeric | Global within-species slope for precipitation, $\beta_c$ |
+| `g_0` | numeric | Species-specific random intercept, $\gamma_{0[s]}$ |
+| `g_c` | numeric | Species-specific random slope for the within-species precipitation response, $\gamma_{c[s]}$ |
+| `H_predicted_mn` | numeric | Predicted height (m) at the species' mean precipitation |
+| `conf.low` | numeric | Lower 95% confidence bound on the predicted height (m) |
+| `conf.high` | numeric | Upper 95% confidence bound on the predicted height (m) |
+

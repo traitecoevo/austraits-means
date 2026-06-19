@@ -148,7 +148,7 @@ means_all <- estimate_expectation(model_0, by = "x")
 p0 <-
   ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", linewidth = 0.5) +
   labs(title = "Fully pooled model:\n\t\t y ~ x") +
   theme_classic() +
   theme(legend.position = "none")
@@ -160,8 +160,8 @@ means_all <- estimate_expectation(model_intercept, by = "x")
 p1 <-
   ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_j, aes(y = Predicted), size = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  geom_line(data = means_j, aes(y = Predicted), linewidth = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", linewidth = 0.5) +
   labs(title = "Varying Intercepts:\n\t\t y ~ x + (1 | sp)") +
   theme_classic() +
   theme(legend.position = "none")
@@ -173,8 +173,8 @@ means_all <- estimate_expectation(model_intercept_slope, by = "x")
 p3 <-
   ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_j, aes(y = Predicted), size = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  geom_line(data = means_j, aes(y = Predicted), linewidth = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", linewidth = 0.5) +
   labs(title = "Varying, corr slope & intercept:\n\t\t y ~ x + (x | sp)") +
   theme_classic() +
   theme(legend.position = "none")
@@ -186,8 +186,8 @@ means_all <- estimate_expectation(model_intercept_slope_uncorr, by = "x")
 p4 <-
   ggplot(data1, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_j, aes(y = Predicted), size = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
+  geom_line(data = means_j, aes(y = Predicted), linewidth = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", linewidth = 0.5) +
   labs(title = "Varying, uncorr slope & intercept:\n\t\t y ~ x + (1 | sp) + (0 + x | sp)") +
   theme_classic() +
   theme(legend.position = "none")
@@ -238,7 +238,7 @@ And to illustrate with some plots:
 p2 <- 
   ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(aes(y = y_mn), size = 0.5) +
+  geom_line(aes(y = y_mn), linewidth = 0.5) +
   labs(title = "True relationships") +
   ylim(c(10, 30)) +
   theme_classic() +
@@ -250,8 +250,8 @@ means_all <- estimate_expectation(model_intercept_slope1, by = "x")
 
 p3 <- ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", size = 0.5) +
-  geom_line(data = means_j1, aes(y = Predicted), size = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, group = ""), col = "black", linewidth = 0.5) +
+  geom_line(data = means_j1, aes(y = Predicted), linewidth = 0.5) +
   labs(title = "Classic mixed model:\n\t\t y ~ x + (x | species)") +
   ylim(c(10, 30)) +
   theme_classic() +
@@ -266,8 +266,8 @@ means_all <- estimate_expectation(model_intercept_slope2, by = "x_mn")
 p4 <-
   ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", size = 0.5) +
-  geom_line(data = means_j2, aes(y = Predicted), size = 0.5) +
+  geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", linewidth = 0.5) +
+  geom_line(data = means_j2, aes(y = Predicted), linewidth = 0.5) +
   labs(title = "Modified mixed model:\n\t\t y ~ x_mn + x_c + (x_c | sp)") +
   theme_classic() +
   ylim(c(10, 30)) +
@@ -280,9 +280,9 @@ means_all <- estimate_expectation(model_intercept_slope3, by = "x_mn")
 
 p5 <-
   ggplot(data2, aes(x = x, y = y, color = species, group = species)) +
-geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", size = 0.5) +
+geom_line(data = means_all, aes(y = Predicted, x= x_mn, group = ""), col = "black", linewidth = 0.5) +
   geom_point(alpha = 0.5) +
-  geom_line(data = means_j3, aes(y = Predicted), size = 0.5) +
+  geom_line(data = means_j3, aes(y = Predicted), linewidth = 0.5) +
   labs(title = "Modified mixed, uncorr intercept & slope:\n\t\t y ~ x_mn + x_c + (1 | sp) + (0 + x_c | sp)") +
   theme_classic() +
   ylim(c(10, 30)) +
