@@ -112,7 +112,7 @@ output_dir <- "~/Downloads/climate_centres/"
 file.path(output_dir, "data") |> dir.create(showWarnings = FALSE, recursive = TRUE)
 file.path(output_dir, "figures") |> dir.create(showWarnings = FALSE, recursive = TRUE)
 
-source("R/locate_medoid_2d.R")
+source("R/init.R")
 taxon <- "Daviesia latifolia"
 taxon <- taxa$taxon_name[17278]
 process_taxon_medoid(taxon, overwrite = TRUE)

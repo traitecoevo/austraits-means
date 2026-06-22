@@ -4,8 +4,7 @@ library(glmmTMB)
 library(patchwork)
 library(tictoc)
 
-source("R/process_fitted_model.R")
-source("R/species_panel_functions.R")
+source("R/init.R")
 
 fits <- readRDS("data-processed/fits_height_climate.rds")
 data_traits_climate <- arrow::read_parquet("data-processed/data_height_climate.parquet")

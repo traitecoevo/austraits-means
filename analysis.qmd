@@ -1,0 +1,180 @@
+---
+title: "Trait means at species climate centres: Analysis"
+author: Daniel Falster & Elizabeth Wenk
+format:
+  html:
+    embed-resources: true
+    toc: true
+    smooth-scroll: true
+execute:
+  echo: false
+  warning: false
+  message: false
+editor_options:
+  chunk_output_type: console
+---
+
+## Overview
+
+This analysis produces **national estimates of plant species' trait means** for
+Australia, as part of the ARDC-funded AusTraits programme. Trait data are sampled
+unevenly across each species' geographic and climatic range, so a simple average
+is biased toward wherever a species happened to be measured. Instead, for each
+trait we estimate the species-level mean **at the centre of the species' climate
+distribution** (the 2D precipitation–temperature medoid), giving a consistent,
+defensible reference point across species and traits.
+
+We use a hierarchical within-group-centred model. Predictors are centred on the
+medoid (`x_c = obs − medoid`), so the between-species terms describe turnover
+across the continent and the within-species terms describe how a trait shifts
+across a species' range. This serves two goals: (1) delivering the species-mean
+estimates for AusTraits, and (2) underpinning a paper that reports these means
+and gives credence to the estimates (uncertainty intervals, the within/between
+decomposition, and — via the BRMS backend — full posterior inference). See
+`demo.qmd` for the statistical motivation and `refactor_plan.md` for the design.
+
+The dataset (`dataset_construction.qmd`) combines plant height from AVH with the
+remaining traits from AusTraits. Two interchangeable fitting backends are
+available — `tmb` (fast, used here) and `brms` (full posterior) — behind one
+interface (`fit_trait_climate_model()`); all logic lives in `R/`.
+
+```{r setup}
+library(tidyverse)
+library(arrow)
+library(glmmTMB)
+library(broom.mixed)
+library(easystats)
+
+source("R/init.R")
+
+update <- FALSE
+out_dir <- "outputs/traits"
+```
+
+```{r load-data}
+data_unified <- arrow::read_parquet("data-processed/data_traits_climate_unified.parquet")
+```
+
+## Fit per-trait models
+
+One model per trait (TMB), keeping species with more than `n_min` records. Each
+fit yields the species-level trait value at the climate centre, exported to
+`outputs/traits/<trait>_climate_response.csv.gz` (with a `_meta.csv` dictionary).
+
+```{r fit-traits}
+summary_file <- file.path(out_dir, "trait_model_summary.csv")
+
+if (update || !file.exists(summary_file)) {
+  fits <- run_trait_models(data_unified, backend = "tmb", n_min = 5, out_dir = out_dir)
+  trait_summary <- summarise_trait_fits(fits)
+  readr::write_csv(trait_summary, summary_file)
+} else {
+  trait_summary <- readr::read_csv(summary_file, show_col_types = FALSE)
+}
+```
+
+### Full posterior (BRMS backend, opt-in)
+
+For the deliverable we refit with the BRMS backend to get full posterior
+inference. It shares the same interface; each fit uses 4 chains with within-chain
+threading and is cached to disk (reused unless the model/data change). BRMS is
+slow at scale (≈1 min per few-hundred-species trait; tens of minutes for height),
+so it is opt-in (`eval=FALSE`) — run it deliberately, not on every render. Always
+inspect the diagnostics: larger traits need more iterations (e.g. `leaf_area` did
+not converge at `iter = 1500`). One-time `cmdstanr::rebuild_cmdstan()` resolves
+stale precompiled-header warnings when threading first turns on.
+
+```{r fit-brms, eval = FALSE}
+setup_parallel()  # macOS-safe multisession (not used by brms itself, but harmless)
+
+fits_brms <- run_trait_models(
+  data_unified, backend = "brms", n_min = 5, out_dir = out_dir,
+  fits_dir = "data-processed/brms_fits",
+  threads = 2, iter = 2000, warmup = 1000, refresh = 0, silent = 2
+)
+
+# Convergence summary; refit any flagged trait with more iterations.
+brms_diag <- summarise_trait_diagnostics(fits_brms)
+readr::write_csv(brms_diag, file.path(out_dir, "brms_diagnostics.csv"))
+brms_diag |> knitr::kable()
+```
+
+### Fitted fixed effects by trait
+
+Between-species (`_mn`) and within-species (`_c`) slopes for precipitation and
+temperature, plus the global intercept, for each trait.
+
+```{r summary-table}
+trait_summary |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  knitr::kable()
+```
+
+## Across-species turnover
+
+For each trait, the predicted species mean at the climate centre against the
+centre's mean annual precipitation (log–log), with the across-species trend.
+Figures are written (PNG + PDF) to `outputs/traits/figures/`.
+
+```{r centre-figures, results = "asis"}
+traits <- trait_summary$trait
+fig_dir <- file.path(out_dir, "figures")
+
+for (tr in traits) {
+  f <- file.path(out_dir, paste0(clean_species_filename(tr), "_climate_response.csv.gz"))
+  if (!file.exists(f)) next
+  centres <- readr::read_csv(f, show_col_types = FALSE)
+  p <- plot_trait_centres(centres, tr, x = "precip", log_y = TRUE)
+  paths <- save_figure(p, file.path(fig_dir, clean_species_filename(tr)), width = 7, height = 5)
+  cat("\n\n### ", tr, "\n\n", sep = "")
+  cat("![", tr, "](", paths[["png"]], ")\n\n", sep = "")
+}
+```
+
+## Round 2: simple means + combined product
+
+The climate-centre model (round 1) covers species with enough records *and* a
+climate medoid. For the remainder — low-coverage species, and species dropped for
+having no medoid — we fall back to a simple per-species mean (the geometric mean
+of all available records, since traits are log-normal). These run on the full,
+un-medoid-filtered record pool, so every species with any data gets an estimate.
+
+The combined product gives one **best estimate** per species × trait: the
+climate-centre estimate where available, otherwise the simple mean, with a
+`method` flag recording which was used.
+
+```{r round2-means}
+records_all <- dplyr::bind_rows(load_height_records(), load_austraits_records())
+simple_means <- estimate_simple_means(records_all)
+
+centre_estimates <- load_centre_estimates(sort(unique(simple_means$trait_name)), dir = out_dir)
+combined <- combine_estimates(simple_means, centre_estimates)
+
+readr::write_csv(combined, file.path(out_dir, "species_trait_means_combined.csv.gz"))
+```
+
+### Coverage by method
+
+How many species per trait are estimated by the climate-centre model vs the
+simple-mean fallback.
+
+```{r coverage}
+combined |>
+  count(trait_name, method) |>
+  tidyr::pivot_wider(names_from = method, values_from = n, values_fill = 0) |>
+  dplyr::mutate(total = climate_centre + simple_mean) |>
+  knitr::kable()
+```
+
+## Exported files
+
+Per trait, in `outputs/traits/`:
+
+- `<trait>_climate_response.csv.gz` — round-1 climate-centre estimates: one row
+  per species with the predicted trait value at the climate centre (with
+  interval), the centre climate, sample size, and species random effects.
+- `<trait>_climate_response_meta.csv` — a column dictionary.
+- `trait_model_summary.csv` — fitted fixed effects for every trait.
+- `species_trait_means_combined.csv.gz` — the integrated best-estimate product
+  across all traits: climate-centre estimate where available, else the simple
+  mean, with a `method` flag.

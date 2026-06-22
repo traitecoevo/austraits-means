@@ -1,22 +1,5 @@
-assign_state_fast <- function(data) {
-  data |>
-    dplyr::mutate(
-      vic_nsw_border_lat = -34 - 0.25 * (decimal_longitude - 141),
-      state = dplyr::case_when(
-        is.na(decimal_longitude) | is.na(decimal_latitude) ~ NA_character_,
-        decimal_latitude < -39 ~ "TAS",
-        dplyr::between(decimal_longitude, 148.75, 149.40) & dplyr::between(decimal_latitude, -35.95, -35.10) ~ "ACT",
-        decimal_longitude < 129 ~ "WA",
-        decimal_longitude < 138 & decimal_latitude > -26 ~ "NT",
-        decimal_longitude < 141 ~ "SA",
-        decimal_latitude > -29 ~ "QLD",
-        decimal_latitude < vic_nsw_border_lat ~ "VIC",
-        TRUE ~ "NSW"
-      )
-    ) |>
-    dplyr::select(-vic_nsw_border_lat) |>
-    dplyr::relocate(state, .after = decimal_latitude)
-}
+# assign_state_fast() lives in R/data/assign_state.R
+# load_climate_rasters() lives in R/data/extract_climate.R
 
 load_data <- function(avh_csv_path = NULL) {
   default_csv <- "data/AVH_height_records_20260311.csv"
@@ -63,14 +46,7 @@ load_data <- function(avh_csv_path = NULL) {
     ) |>
     dplyr::filter(dplyr::if_any(where(is.double), ~ !(is.na(.x))), value > 0)
 
-  vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
-
-  australia <- terra::rast("data/australia.tif")
-
-  stacked_rasters <-
-    file.path("data/climate/", vars) |>
-    terra::rast() |>
-    terra::crop(australia)
+  stacked_rasters <- load_climate_rasters()
 
   austraits_geo <-
     data |>

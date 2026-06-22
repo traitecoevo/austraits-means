@@ -60,9 +60,7 @@ library(easystats)
 library(memoise)
 library(ggrastr)
 library(patchwork)
-source("R/process_fitted_model.R")
-source("R/data/load_data_height_avh.R")
-source("R/species_panel_functions.R")
+source("R/init.R")
 
 options(marginaleffects_safe = FALSE)
 
@@ -230,7 +228,7 @@ crosswalk <- arrow::read_parquet(crosswalk_file)
 ```
 
 ```{r}
-source("R/species_panel_functions.R")
+source("R/init.R")
 
 taxa <- c("Eucalyptus saligna", "Acacia aneura", "Grevillea buxifolia")
 

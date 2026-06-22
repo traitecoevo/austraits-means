@@ -23,6 +23,9 @@ library(sf)
 library(ozmaps)
 library(furrr)
 
+source("R/init.R")
+
+update <- FALSE
 ```
 
 # Datasets
@@ -116,7 +119,7 @@ output <- "data-processed/data_spp_climates-medoid.parquet"
 
 if (!file.exists(output)) {
 
-  source("R/locate_medoid_2d.R")
+  source("R/init.R")
 
   # Example for a species
   taxon <- "Daviesia latifolia"
@@ -184,111 +187,108 @@ if (!file.exists(output)) {
 ```
 
 
-## AusTraits
+## Trait sources
+
+The two trait sources are extracted and cached here, in the common shape the
+`R/data/` loaders expect. Plant height comes from the AVH herbarium records; all
+other traits come from AusTraits. Climate is attached with the shared
+`extract_climate()` helper using the `stacked_rasters` built above.
+
+### Plant height (AVH)
+
+`load_data()` reads the AVH height records, attaches climate, and assigns each
+record to a state.
 
 ```{r}
-traits <- c(
-  "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass",
-  "leaf_N_per_area", "leaf_P_per_area",
-  "seed_dry_mass", "wood_density", "leaf_P_per_dry_mass", "leaf_delta13C", "plant_height"
+height_file <- "data-processed/data_height_climate.parquet"
+
+if (update || !file.exists(height_file)) {
+  arrow::write_parquet(load_data(), height_file)
+}
+```
+
+### Other traits (AusTraits)
+
+Field, georeferenced records for the analysis traits, with climate attached. The
+AusTraits flatten is the expensive step, so this is cached. (`leaf_delta13C`
+needs a discrimination transform before inclusion and is handled separately;
+plant height is the AVH source above.)
+
+```{r}
+austraits_traits <- c(
+  "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass", "leaf_N_per_area",
+  "leaf_P_per_area", "leaf_P_per_dry_mass", "seed_dry_mass", "wood_density"
 )
-traits <- c("plant_height")
 
+austraits_file <- "data-processed/data_traits_climate.parquet"
 
-output <- "data-processed/austraits_geo_climates.parquet"
-
-if (!file.exists(output)) {
+if (update || !file.exists(austraits_file)) {
   austraits <- readRDS("data/data-ausplants/austraits/austraits-7.0.0.rds") |>
     austraits::flatten_database()
 
   austraits_geo <-
     austraits |>
     filter(
-      trait_name %in% traits,
+      trait_name %in% austraits_traits,
       basis_of_record == "field",
       !is.na(`latitude (deg)`), !is.na(`longitude (deg)`)
     ) |>
-    mutate(across(c("latitude (deg)", "longitude (deg)", value), ~ suppressWarnings(as.numeric(.x)))) |>
-    # Remove problematic values
-    filter(
-      !is.na(`latitude (deg)`), !is.na(`longitude (deg)`),
-      !(trait_name == "leaf_delta13C" & value < 20)
-    )
-
-  # Add climate data
-  trait_data_vect <-
-    austraits_geo |>
-    select("longitude (deg)", "latitude (deg)") |>
-    terra::vect(
-      geom = c("longitude (deg)", "latitude (deg)"),
-      crs = terra::crs(stacked_rasters)
-    )
+    mutate(across(c("latitude (deg)", "longitude (deg)", value),
+                  ~ suppressWarnings(as.numeric(.x)))) |>
+    filter(!is.na(`latitude (deg)`), !is.na(`longitude (deg)`), !is.na(value)) |>
+    rename(decimal_longitude = `longitude (deg)`, decimal_latitude = `latitude (deg)`)
 
   data_traits_climate <-
-    terra::extract(x = stacked_rasters, y = trait_data_vect, method = "simple", bind = TRUE, xy = FALSE, cells = FALSE, ID = FALSE, dataframe = TRUE) |>
-    as_tibble() |>
-    bind_cols(austraits_geo) |>
-    rename(decimal_longitude = `longitude (deg)`, decimal_latitude = `latitude (deg)`, annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1) |>
-    select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, everything())
+    austraits_geo |>
+    extract_climate(rasters = stacked_rasters) |>
+    filter(!is.na(annual_precipitation), !is.na(average_temperature))
 
-  arrow::write_parquet(data_traits_climate, "data-processed/data_traits_climate-height.parquet")
+  arrow::write_parquet(data_traits_climate, austraits_file)
 }
 ```
 
+# Unified analysis dataset
+
+This is the single dataset consumed by `analysis.qmd`. It binds the two trait
+sources into one long table (one row per trait record) — plant height from the
+AVH herbarium records and the remaining traits from AusTraits — attaches each
+species' climate centre (the 2D medoid computed above) and centres the climate
+predictors on it (`x_c = obs − medoid`; Option B). Species without a medoid are
+dropped (they are handled by the round-2 means workflow). All the work is done
+by functions in `R/data/` (`build_dataset()`), so this notebook only orchestrates
+and caches.
 
 ```{r}
-library(tidyverse)
+unified_file <- "data-processed/data_traits_climate_unified.parquet"
 
-data_traits_climate <- arrow::read_parquet("data-processed/data_traits_climate-height.parquet")
+if (update || !file.exists(unified_file)) {
+  data_unified <- build_dataset()
+  arrow::write_parquet(data_unified, unified_file)
+} else {
+  data_unified <- arrow::read_parquet(unified_file)
+}
 
-# growth forms
-
-species_growth_form <-
-  austraits |>
-  filter(dataset_id == "Wenk_2022", trait_name == "plant_growth_form") |>
-  select(taxon_name, growth_form = value) |>
-  distinct() |>
-  mutate(
-    woody = ifelse(
-      !str_detect(growth_form, "herb|fern|tussock|geophyte|lycophyte|basal_large|graminoid"), "woody", "non-woody"
-    ),
-    # case_when doesn't overwrite if a condition is met multiple times, so these are ordered these in order of preference
-    growth_form_simpler = case_when(
-      str_detect(growth_form, "climber") ~ "climber",
-      str_detect(growth_form, "tree|mallee|palmoid") ~ "tree",
-      str_detect(growth_form, "shrub|subshrub|basal_large") ~ "shrub",
-      str_detect(growth_form, "herb|geophyte") ~ "herb",
-      str_detect(growth_form, "graminoid|hummock|tussock") ~ "graminoid",
-      str_detect(growth_form, "fern|lycophyte") ~ "primitive"
-    )
-  ) |>
-  select(-growth_form) |>
-  distinct()
-
-data_export <- 
-  data_traits_climate |>
-  select(decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, taxon_name, trait_name, value) |>
-  left_join(species_growth_form, by = c("taxon_name")) |>
-  filter(woody == "woody") |>
-  filter(trait_name == "plant_height")
-
-data_export |> write_csv("data-processed/data_traits_climate-height-woody.csv")
-
-  ggplot(aes(x = annual_precipitation, y = value)) +
-  geom_point() +
-  theme_minimal() +
-  scale_x_log10() +
-  scale_y_log10()
+data_unified |>
+  count(source, trait_name) |>
+  arrange(desc(n))
 ```
 
+## Medoid reasonableness checks
 
-Investigating problematic points. 
+Two complementary checks (functions in `R/medoid/check_medoid.R`):
 
+1. **Reasonableness vs the occurrence cloud** — for a sample of species, is the
+   medoid central within the species' GBIF occurrence distribution?
+2. **Extrapolation vs the trait records** — does the medoid fall within the span
+   of a species' trait-record climate (since we centre those records on it)?
 
 ```{r}
-data_export <-
-  data_traits_climate |>
-  select(dataset_id, decimal_longitude, decimal_latitude, annual_precipitation, average_temperature, taxon_name, trait_name, value) |>
-  filter(trait_name == "plant_height") |>
-  filter(value > 50, annual_precipitation < 700)
+# 1. Medoid sits centrally within its own occurrence cloud
+medoid_gbif_check <- check_medoid_vs_gbif(n_sample = 300, seed = 1)
+summarise_medoid_vs_gbif(medoid_gbif_check)
+plot_medoid_check(medoid_gbif_check, file = "outputs/checks/medoid_gbif_check")
+
+# 2. Extrapolation risk relative to the trait records being centred
+medoid_extrap_check <- check_medoid(data_unified)
+summarise_medoid_check(medoid_extrap_check)
 ```
