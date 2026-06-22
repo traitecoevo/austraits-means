@@ -52,14 +52,15 @@ All logic lives in functions under `R/`, loaded via **`source("R/init.R")`**
 R/
   init.R       # source this once; loads the whole library
   utils/       save_figure.R (png+pdf), parallel_setup.R (multisession)
-  data/        assign_state.R, extract_climate.R, load_data_height_avh.R
-               (planned: align_taxonomy.R, build_dataset.R)
-  medoid/      locate_medoid_2d.R  (planned: check_medoid.R)
-  process/     process_fit.R       (planned: species_centres.R)
-  plot/        plot_fitted.R
-  means/       species_means.R     # round-2 simple means
+  data/        build_dataset.R, extract_climate.R, assign_state.R,
+               load_data_height_avh.R
+  medoid/      locate_medoid_2d.R, check_medoid.R
+  model/       model_formula.R, fit_trait_climate_model.R (tmb | brms),
+               run_trait_models.R
+  process/     process_fit.R, species_centres.R, export_centres.R
+  plot/        plot_fitted.R, plot_trait_centres.R
+  means/       simple_means.R (round-2 fallback), species_means.R
   panels/      species_panel_functions.R
-  model/       (planned: model_formula.R, fit_trait_climate_model.R)
   scripts/     generate_species_panels.R, benchmark_species_panels.R,
                combine_species_panels.R   # RUN-SCRIPTS — execute on source,
                                            # NOT loaded by init.R
@@ -137,16 +138,20 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
   AusTraits `data/data-ausplants/`). `data/` and `downloads/` are symlinks into
   the sibling `Cornsters-australian_annuals` project.
 - `data-processed/` — cached intermediates: `data_gbif_cleaned.parquet`,
-  `climate_centres.parquet` (medoids), `data_height_climate.parquet`,
-  `fits_height_climate.rds`, name crosswalks.
-- `outputs/` — figures, per-trait response CSVs, species panels.
+  `climate_centres.parquet` (medoids), `gbif_avh_name_crosswalk.parquet`, the
+  source caches `data_height_climate.parquet` + `data_traits_climate.parquet`,
+  the unified `data_traits_climate_unified.parquet`, and `brms_fits/` (BRMS cache).
+- `outputs/traits/` — per-trait `<trait>_climate_response.csv.gz` (+ `_meta.csv`),
+  `species_trait_means_combined.csv.gz`, `trait_model_summary.csv`, figures.
 
 ## Gotchas
 
 - **Taxonomy across releases:** AVH, AusTraits and GBIF were aligned to
   different APC releases. Joining medoids/occurrences to trait records needs a
-  crosswalk (align all to current APC with `APCalign`). See the crosswalk build
-  in `Data_height_AVH.qmd`.
+  crosswalk (align all to current APC with `APCalign`); `build_medoid_lookup()`
+  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also
+  the crosswalk build in `archive/Data_height_AVH.qmd`, and open issue #1 (APC
+  versions out of sync).
 - **Medoid memory:** the 2D distance matrix in `locate_medoid_2d()` is O(n²);
   `process_taxon_medoid()` subsamples species with >20k occurrences.
 - **`.Rprofile` may set `mc.cores` low** — use `setup_parallel()`.

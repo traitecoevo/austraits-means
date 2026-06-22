@@ -44,7 +44,7 @@ cached behind `if (update || !file.exists(...))`; set `update <- TRUE` to rebuil
 │   ├── process/                 # process_fit, species_centres, export_centres
 │   ├── plot/                    # plot_fitted, plot_trait_centres
 │   ├── panels/                  # species diagnostic panels
-│   ├── means/                   # species_means (round 2)
+│   ├── means/                   # simple_means (round-2 fallback) + species_means
 │   ├── utils/                   # save_figure (png+pdf), parallel_setup (multisession)
 │   └── scripts/                 # run-scripts (NOT sourced by init.R)
 ├── data/                        # inputs (git-ignored): AVH, GBIF, WorldClim, AusTraits
