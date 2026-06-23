@@ -29,11 +29,21 @@ A later round adds a methodology factor (by `dataset_id`) to partition variance 
 
 ## 2a. Conventions (apply throughout)
 
-- **Exactly two Quarto files** orchestrate everything:
-  - `dataset_construction.qmd` — all data building (climate extraction, medoid + reasonableness check, taxonomy alignment, the unified long table).
-  - `analysis.qmd` — all modelling, processing, exports, figures, and the write-up. The current `Data_height_AVH.qmd` / `analysis.qmd` / `climate_centres.qmd` content collapses into these two; the rest are archived.
-- **All logic lives in reusable functions in `R/`.** The `.qmd` files only call functions, set parameters, and narrate. No substantive code blocks in the notebooks.
-- **Cache expensive steps with `if` guards** (the existing pattern): `if (update || !file.exists(out)) { … write } ; read`. A single `update <- FALSE` toggle at the top of each notebook forces rebuilds.
+> **Update (targets migration):** orchestration now lives in a **`targets`
+> pipeline** (`_targets.R`); `tar_make()` rebuilds only what changed. The two
+> `.qmd` files are now *reporting layers* rendered by `tar_quarto` targets (they
+> `tar_load()` results, they do not compute). The manual `if (update || …)`
+> caching below is **retired** — `targets` content-hashing replaces it. Heavy
+> upstream artefacts (GBIF clean, medoids, crosswalk, AusTraits flatten) are
+> tracked as *file inputs* and regenerated via `R/data/build_sources.R`; see the
+> `_targets.R` header and `CLAUDE.md` for the current model. `renv.lock` pins
+> dependencies. The notes below are kept for design rationale.
+
+- **Two Quarto files** as reporting layers (rendered by the pipeline):
+  - `dataset_construction.qmd` — provenance of the data-building inputs + the medoid reasonableness checks.
+  - `analysis.qmd` — modelling write-up, figures, and the round-2 combined product. The current `Data_height_AVH.qmd` / `climate_centres.qmd` content is archived (they remain the producers for the seeded medoid/crosswalk inputs).
+- **All logic lives in reusable functions in `R/`.** The `.qmd` files and `_targets.R` only call functions, set parameters, and narrate.
+- ~~**Cache expensive steps with `if` guards**: `if (update || !file.exists(out)) { … write } ; read`, one `update <- FALSE` toggle per notebook.~~ Replaced by `targets` (see the update note above).
 - **Parallelism via `furrr` + `plan(multisession, workers = n)`** (not `multicore` — forking is unreliable/disabled on macOS/RStudio). Helper to set workers sensibly from `parallelly::availableCores()`.
 - **Figures saved as both PNG and PDF** via a `save_figure(plot, name, width, height)` helper (PNG for embedding/preview, PDF as the vector deliverable).
 
@@ -164,7 +174,7 @@ Returns a **standardized fit object** (S3) so downstream code is backend-blind:
 - **BRMS:** validated vs TMB (centres r=1.000); production path set up — cmdstanr + within-chain threading + on-disk fit cache (`fits_dir`) + per-fit diagnostics. Benchmarked; larger traits need `iter` ≥ 4000 to converge. Opt-in in `analysis.qmd`.
 - **Medoid quality:** reasonableness check + `medoid_ok` flag (§3.2a).
 - **AVH methodology:** one `dataset_id` per collector.
-- **Structure:** two notebooks (`dataset_construction.qmd`, `analysis.qmd`); all logic in `R/` functions; `if`-guarded caching; furrr `multisession`; figures saved png + pdf.
+- **Structure:** `targets` pipeline (`_targets.R`) orchestrates; the two notebooks (`dataset_construction.qmd`, `analysis.qmd`) are `tar_quarto` reporting layers; all logic in `R/` functions; caching via `targets` content-hashing (the old `if`-guarded `update` toggles are retired); `renv.lock` pins deps; figures saved png + pdf.
 - **Trait list:** all traits — plant height (AVH) + the AusTraits set (LMA, leaf area, leaf N/P per mass & area, seed mass, wood density). `leaf_delta13C` deferred (needs a discrimination transform before inclusion).
 - **Framing:** NVIS dropped (it was a reportable subproject; the height report is archived). Two framings now: (1) national species-trait estimates under the ARDC AusTraits programme; (2) a paper reporting the species means and giving credence to the estimates.
 

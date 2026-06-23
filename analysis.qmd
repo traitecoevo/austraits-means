@@ -33,33 +33,32 @@ and gives credence to the estimates (uncertainty intervals, the within/between
 decomposition, and — via the BRMS backend — full posterior inference). See
 `demo.qmd` for the statistical motivation and `refactor_plan.md` for the design.
 
-The dataset (`dataset_construction.qmd`) combines plant height from AVH with the
-remaining traits from AusTraits. Two interchangeable fitting backends are
-available — `tmb` (fast, used here) and `brms` (full posterior) — behind one
-interface (`fit_trait_climate_model()`); all logic lives in `R/`.
+This notebook is a *reporting layer*: model fitting, exports and figures are
+produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the
+results and narrate them. The dataset (`dataset_construction.qmd`) combines plant
+height from AVH with the remaining traits from AusTraits. Two interchangeable
+fitting backends are available — `tmb` (fast, used here) and `brms` (full
+posterior, opt-in via `run_brms` in `_targets.R`) — behind one interface
+(`fit_trait_climate_model()`); all logic lives in `R/`.
 
 ```{r setup}
 library(tidyverse)
-library(arrow)
-library(glmmTMB)
-library(broom.mixed)
-library(easystats)
-
+library(targets)
 source("R/init.R")
 
-update <- FALSE
+tar_load(trait_summary)   # fitted fixed effects per trait
+tar_load(tmb_fits)        # list of per-trait fits (with $centres)
+tar_load(combined)        # integrated best-estimate product
+tmb_fits <- purrr::compact(tmb_fits)
 out_dir <- "outputs/traits"
-```
-
-```{r load-data}
-data_unified <- arrow::read_parquet("data-processed/data_traits_climate_unified.parquet")
 ```
 
 ## Fit per-trait models
 
 One model per trait (TMB), keeping species with more than `n_min` records. Each
 fit yields the species-level trait value at the climate centre, exported to
-`outputs/traits/<trait>_climate_response.csv.gz` (with a `_meta.csv` dictionary).
+`outputs/traits/<trait>_climate_response.csv.gz` (with a `_meta.csv` dictionary)
+by the per-trait targets.
 
 ### The fitted model
 
@@ -93,18 +92,6 @@ The exact formula used for the fit (echoed live so it can't drift from the code)
 build_model_formula()
 ```
 
-```{r fit-traits}
-summary_file <- file.path(out_dir, "trait_model_summary.csv")
-
-if (update || !file.exists(summary_file)) {
-  fits <- run_trait_models(data_unified, backend = "tmb", n_min = 5, out_dir = out_dir)
-  trait_summary <- summarise_trait_fits(fits)
-  readr::write_csv(trait_summary, summary_file)
-} else {
-  trait_summary <- readr::read_csv(summary_file, show_col_types = FALSE)
-}
-```
-
 ### Full posterior (BRMS backend, opt-in)
 
 For the deliverable we refit with the BRMS backend. TMB gives a fast maximum-
@@ -133,14 +120,10 @@ full joint distribution of every quantity we report. Concretely:
   treating missing covariates / gap-filling as parameters to be imputed rather
   than dropped.
 
-Operationally it shares the same interface; each fit uses 4 chains with within-
-chain threading (`reduce_sum`) and is cached to disk (reused unless the model/data
-change). Warmup is gradient-bound, so threads are sized to the machine — `threads`
-≈ cores / 4, since the 4 chains run in parallel (≈ `4 * threads` cores at peak).
-Progress is left visible (`refresh = 50, silent = 1`): with `refresh = 0` warmup
-emits no output and nothing is checkpointed until the fit completes, so a long run
-would otherwise give no read on its progress. BRMS is opt-in (`eval=FALSE`) — run
-it deliberately, not on every render. Always inspect the diagnostics: larger
+The BRMS backend is **opt-in**: set `run_brms <- TRUE` in `_targets.R` to add the
+`brms_fits` / `brms_diag` targets. Each fit uses 4 chains with within-chain
+threading (`reduce_sum`) and is cached on disk under `data-processed/brms_fits/`
+(reused unless the model/data change). Always inspect the diagnostics: larger
 traits need more iterations (e.g. `leaf_area` did not converge at `iter = 1500`).
 One-time `cmdstanr::rebuild_cmdstan()` resolves stale precompiled-header warnings
 when threading first turns on.
@@ -151,28 +134,7 @@ effect parameters — a NUTS fit there runs many hours (the per-iteration cost i
 flat across warmup, so the mass-matrix adaptation never rescues it) with real risk
 of memory pressure and divergences. The full posterior is not worth that for one
 trait; TMB's asymptotic (delta-method) intervals are the pragmatic choice for
-height. So the BRMS run below fits every trait *except* height.
-
-```{r fit-brms, eval = FALSE}
-# Within-chain threads. The fits run one trait at a time (4 chains in parallel),
-# so peak load ≈ 4 * threads cores. threads = 4 => 16 cores; size to the machine.
-brms_threads <- max(1, floor(parallelly::availableCores(methods = "system") / 4))
-
-# Height is too large for NUTS (see above) — fit it with TMB only.
-brms_traits <- setdiff(sort(unique(data_unified$trait_name)), "plant_height")
-
-fits_brms <- run_trait_models(
-  data_unified, traits = brms_traits, backend = "brms",
-  n_min = 5, out_dir = out_dir, fits_dir = "data-processed/brms_fits",
-  threads = brms_threads, iter = 2000, warmup = 1000,
-  refresh = 250, silent = 1   # live "Iteration X/2000" per chain (incl. warmup)
-)
-
-# Convergence summary; refit any flagged trait with more iterations.
-brms_diag <- summarise_trait_diagnostics(fits_brms)
-readr::write_csv(brms_diag, file.path(out_dir, "brms_diagnostics.csv"))
-brms_diag |> knitr::kable()
-```
+height. So the BRMS run fits every trait *except* height (`brms_traits` target).
 
 ### Fitted fixed effects by trait
 
@@ -189,20 +151,14 @@ trait_summary |>
 
 For each trait, the predicted species mean at the climate centre against the
 centre's mean annual precipitation (log–log), with the across-species trend.
-Figures are written (PNG + PDF) to `outputs/traits/figures/`.
+(The same figures are also written PNG + PDF to `outputs/traits/figures/` by the
+`tmb_fig_*` targets.)
 
 ```{r centre-figures, results = "asis"}
-traits <- trait_summary$trait
-fig_dir <- file.path(out_dir, "figures")
-
-for (tr in traits) {
-  f <- file.path(out_dir, paste0(clean_species_filename(tr), "_climate_response.csv.gz"))
-  if (!file.exists(f)) next
-  centres <- readr::read_csv(f, show_col_types = FALSE)
-  p <- plot_trait_centres(centres, tr, x = "precip", log_y = TRUE)
-  paths <- save_figure(p, file.path(fig_dir, clean_species_filename(tr)), width = 7, height = 5)
+for (tr in names(tmb_fits)) {
   cat("\n\n### ", tr, "\n\n", sep = "")
-  cat("![", tr, "](", paths[["png"]], ")\n\n", sep = "")
+  print(plot_trait_centres(tmb_fits[[tr]]$centres, tr, x = "precip", log_y = TRUE))
+  cat("\n\n")
 }
 ```
 
@@ -214,19 +170,10 @@ having no medoid — we fall back to a simple per-species mean (the geometric me
 of all available records, since traits are log-normal). These run on the full,
 un-medoid-filtered record pool, so every species with any data gets an estimate.
 
-The combined product gives one **best estimate** per species × trait: the
-climate-centre estimate where available, otherwise the simple mean, with a
-`method` flag recording which was used.
-
-```{r round2-means}
-records_all <- dplyr::bind_rows(load_height_records(), load_austraits_records())
-simple_means <- estimate_simple_means(records_all)
-
-centre_estimates <- load_centre_estimates(sort(unique(simple_means$trait_name)), dir = out_dir)
-combined <- combine_estimates(simple_means, centre_estimates)
-
-readr::write_csv(combined, file.path(out_dir, "species_trait_means_combined.csv.gz"))
-```
+The combined product (`combined` target → `species_trait_means_combined.csv.gz`)
+gives one **best estimate** per species × trait: the climate-centre estimate where
+available, otherwise the simple mean, with a `method` flag recording which was
+used.
 
 ### Coverage by method
 
@@ -249,7 +196,8 @@ Per trait, in `outputs/traits/`:
   per species with the predicted trait value at the climate centre (with
   interval), the centre climate, sample size, and species random effects.
 - `<trait>_climate_response_meta.csv` — a column dictionary.
-- `trait_model_summary.csv` — fitted fixed effects for every trait.
+- `trait_model_summary.csv` — fitted fixed effects for every trait
+  (`trait_summary_file` target).
 - `species_trait_means_combined.csv.gz` — the integrated best-estimate product
   across all traits: climate-centre estimate where available, else the simple
-  mean, with a `method` flag.
+  mean, with a `method` flag (`combined_file` target).

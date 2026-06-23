@@ -12,4 +12,18 @@ data/AVH_height_records_20260311.csv
 
 /.quarto/
 **/*.quarto_ipynb
+*_files/
+*_cache/
 data/AVH_final_fewer_columns.csv
+
+# targets store (rebuilt by tar_make)
+/_targets/
+
+# renv project library (renv.lock + renv/activate.R are committed)
+/renv/library/
+/renv/local/
+/renv/cellar/
+/renv/lock/
+/renv/python/
+/renv/sandbox/
+/renv/staging/

@@ -26,22 +26,43 @@ within-species slope when group means correlate with predictors) are in
 The full roadmap is in **`refactor_plan.md`** — read it before making structural
 changes.
 
-## Notebook structure
+## Workflow: `targets` pipeline + two reporting notebooks
 
-**Exactly two Quarto notebooks** drive the analysis; both only call functions
-from `R/`:
+The analysis is orchestrated by a **`targets` pipeline** (`_targets.R`);
+`targets::tar_make()` builds the DAG and only rebuilds what changed. All logic
+still lives in `R/` functions — `_targets.R` and the notebooks only call them.
 
-- `dataset_construction.qmd` — climate covariates → GBIF + medoid centres
-  (+ reasonableness check) → trait sources (AVH height, AusTraits) → unified
-  record-level table.
-- `analysis.qmd` — per-trait model fitting → processing → exports → figures +
-  write-up.
+The two Quarto notebooks are now **reporting layers** (rendered by `tar_quarto`
+targets): they `tar_load()` pipeline results and narrate them, they do not
+compute.
+
+- `dataset_construction.qmd` — provenance of the data-construction inputs +
+  medoid reasonableness checks (loads `unified`, `medoid_gbif_check`).
+- `analysis.qmd` — the write-up: fitted fixed effects, across-species turnover
+  figures, the round-2 combined product (loads `trait_summary`, `tmb_fits`,
+  `combined`).
+
+**Pipeline tiers** (see the header comment in `_targets.R`):
+- *Tier B — tracked file inputs.* The heavy, rarely rebuilt artefacts
+  (`data_gbif_cleaned.parquet` ~1.2GB, the 22k-species O(n²) medoids
+  `climate_centres.parquet`, the AVH↔GBIF crosswalk, the AusTraits flatten) are
+  tracked by hash but **not** recomputed by `tar_make()`. Regenerate them
+  deliberately with the builders in `R/data/build_sources.R`
+  (`build_gbif_climate()`, `build_austraits_climate()`), `load_data()` (height),
+  and the archive notebooks (medoids, crosswalk).
+- *Tier A — computed.* Everything from `unified` (the linchpin, was
+  `data_traits_climate_unified.parquet`) forward: per-trait TMB fits (one branch
+  per trait via `tar_map`), exports, the combined product, figures, and the two
+  rendered reports. This is the part `targets` rebuilds incrementally.
+
+BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
+`brms_fits`/`brms_diag` targets (height excluded — TMB only).
 
 Supporting files: `demo.qmd` (method illustration — the justification for the
 within-group-centred approach), `trait_species_means.qmd` (round-2 simple means
 for low-coverage traits — WIP). Superseded/scratch material lives in `archive/`
-(the retired NVIS height report, the old medoid exploration, and
-`notes_why_bayesian.md` — rough rationale notes for the round-2 Bayesian work).
+(the retired NVIS height report, the medoid + crosswalk producers
+`climate_centres.qmd` / `Data_height_AVH.qmd`, and `notes_why_bayesian.md`).
 
 ## R/ library layout
 
@@ -52,8 +73,8 @@ All logic lives in functions under `R/`, loaded via **`source("R/init.R")`**
 R/
   init.R       # source this once; loads the whole library
   utils/       save_figure.R (png+pdf), parallel_setup.R (multisession)
-  data/        build_dataset.R, extract_climate.R, assign_state.R,
-               load_data_height_avh.R
+  data/        build_dataset.R, build_sources.R (regen seeded inputs),
+               extract_climate.R, assign_state.R, load_data_height_avh.R
   medoid/      locate_medoid_2d.R, check_medoid.R
   model/       model_formula.R, fit_trait_climate_model.R (tmb | brms),
                run_trait_models.R
@@ -71,20 +92,44 @@ do real work when sourced, so they must never be sourced by `init.R`.
 
 ## Conventions
 
-- **All logic in `R/` functions; notebooks only call, parameterize, narrate.**
-- **Cache expensive steps with `if` guards**, one `update <- FALSE` toggle per
-  notebook:
-  ```r
-  if (update || !file.exists(out)) { result <- expensive(); write(result, out) }
-  result <- read(out)
-  ```
-  Cached artefacts live in `data-processed/` (parquet/rds), outputs in `outputs/`.
+- **All logic in `R/` functions; `_targets.R` + notebooks only call, narrate.**
+- **Caching is handled by `targets`** (content-hash invalidation), not manual
+  `if (update || !file.exists)` guards — those are retired. Add a step by adding
+  a `tar_target()`; `tar_make()` rebuilds only the affected targets and their
+  descendants (`tar_outdated()` previews this; `tar_visnetwork()` draws the DAG).
+  The targets store is `_targets/` (git-ignored); seeded inputs still live in
+  `data-processed/`, deliverables in `outputs/`.
+- **`renv`** locks dependencies (`renv.lock`); `renv::snapshot()` after adding a
+  package, `renv::restore()` to reproduce the library.
 - **Parallelism: `furrr` + `setup_parallel()` → `plan(multisession)`.** Never
   `multicore` — forking is unstable/disabled on macOS/RStudio. `setup_parallel()`
   reads true core count via `parallelly::availableCores(methods = "system")` to
   work around a low `mc.cores` in `.Rprofile`.
 - **Figures: save as both PNG and PDF via `save_figure(plot, path, w, h)`** (PNG
   for embedding/preview, PDF as vector deliverable).
+
+## Dependencies (`renv`)
+
+Package versions are pinned with `renv` so the pipeline is reproducible.
+
+- **Activation is automatic.** `.Rprofile` sources `renv/activate.R`, so every R
+  session in this project uses the project library at
+  `renv/library/…` (not the system library). `.Rprofile`, `renv.lock`, and
+  `renv/activate.R` are committed; `renv/library/` is git-ignored.
+- **Reproduce the library:** `renv::restore()` (installs the locked versions).
+- **After adding/using a new package:** install it into the project
+  (`renv::install("pkg")`), then `renv::snapshot()` to record it in `renv.lock`.
+  Check `renv::status()` if things feel out of sync.
+- **GitHub-sourced packages:** `austraits` and `APCalign` are pinned to their
+  `traitecoevo/…` GitHub remotes in the lockfile (not CRAN) — `restore()` fetches
+  them from GitHub.
+- **Implicit deps gotcha:** `renv` discovers dependencies by scanning code for
+  `library()` / `pkg::fun` / `requireNamespace()`. Packages used *implicitly*
+  (here `quarto`, needed by `tar_quarto`, and `crew` for the optional parallel
+  controller) are not auto-detected, so `_targets.R` references them via
+  `requireNamespace(...)` guards purely so `renv` tracks them. If you add another
+  implicitly-used package, add a similar reference or it will be dropped from the
+  lockfile on the next `snapshot()`.
 
 ## Modelling decisions (locked — see refactor_plan.md §5)
 
@@ -105,7 +150,13 @@ do real work when sourced, so they must never be sourced by `init.R`.
 ## Running BRMS at scale
 
 TMB is the default (seconds per trait). BRMS gives the full posterior but is slow,
-so it is opt-in:
+so it is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
+`brms_fits` / `brms_diag` targets, then `tar_make()`. The targets wrap
+`run_trait_models(..., backend = "brms")` with the settings below (height
+excluded; on-disk fit cache in `data-processed/brms_fits/`; `threads ≈ cores/4`;
+`iter = 2000, warmup = 1000, refresh = 250, silent = 1`), and
+`summarise_trait_diagnostics()` produces the per-trait divergence / Rhat / ESS
+table. The same call works interactively for ad-hoc fits:
 
 ```r
 brms_traits <- setdiff(unique(data_unified$trait_name), "plant_height")  # height stays on TMB
@@ -153,10 +204,13 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 - `data/` — inputs (AVH CSV, GBIF/ALA, WorldClim `data/climate/`, `australia.tif`,
   AusTraits `data/data-ausplants/`). `data/` and `downloads/` are symlinks into
   the sibling `Cornsters-australian_annuals` project.
-- `data-processed/` — cached intermediates: `data_gbif_cleaned.parquet`,
-  `climate_centres.parquet` (medoids), `gbif_avh_name_crosswalk.parquet`, the
-  source caches `data_height_climate.parquet` + `data_traits_climate.parquet`,
-  the unified `data_traits_climate_unified.parquet`, and `brms_fits/` (BRMS cache).
+- `data-processed/` — seeded pipeline inputs (tracked by `targets` as file
+  inputs, not recomputed by `tar_make`): `data_gbif_cleaned.parquet`,
+  `climate_centres.parquet` (medoids), `gbif_avh_name_crosswalk.parquet`, and the
+  source caches `data_height_climate.parquet` + `data_traits_climate.parquet`;
+  plus `brms_fits/` (BRMS fit cache). The unified record-level table is now a
+  `targets` object (`unified`) in the `_targets/` store, not a standalone parquet
+  (`data_traits_climate_unified.parquet` is the legacy/orphaned cache).
 - `outputs/traits/` — per-trait `<trait>_climate_response.csv.gz` (+ `_meta.csv`),
   `species_trait_means_combined.csv.gz`, `trait_model_summary.csv`, figures.
 

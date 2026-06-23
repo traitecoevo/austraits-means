@@ -32,6 +32,23 @@ run_one_trait <- function(data, trait, backend = "tmb", n_min = 5,
   fit
 }
 
+#' Safe single-trait fit for use as a `targets` branch.
+#'
+#' Thin wrapper around `run_one_trait()` that returns `NULL` (with a message)
+#' instead of erroring, so one un-fittable trait does not abort `tar_make()`.
+#' Filter `NULL`s downstream (e.g. `purrr::compact()`).
+fit_trait_target <- function(data, trait, backend = "tmb", n_min = 5,
+                             out_dir = "outputs/traits", fits_dir = NULL, ...) {
+  message("== ", trait, " (", backend, ") ==")
+  tryCatch(
+    run_one_trait(data, trait, backend = backend, n_min = n_min,
+                  out_dir = out_dir, fits_dir = fits_dir, ...),
+    error = function(e) {
+      message("  failed: ", conditionMessage(e)); NULL
+    }
+  )
+}
+
 #' Fit all (or selected) traits and export per-trait species centres.
 #'
 #' @param data unified analysis dataset (output of `build_dataset()`).

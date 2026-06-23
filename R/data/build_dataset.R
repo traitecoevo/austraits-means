@@ -140,14 +140,20 @@ load_austraits_records <- function(
 #'
 #' @param traits optional character vector to restrict to; NULL keeps all.
 #' @param sources which sources to include.
+#' @param height_climate path to the cached AVH height+climate parquet
+#'   (forwarded to `load_height_records()`).
+#' @param austraits_climate path to the cached AusTraits trait+climate parquet
+#'   (forwarded to `load_austraits_records()`).
 #' @param medoid_lookup output of `build_medoid_lookup()`.
 build_dataset <- function(traits = NULL,
                           sources = c("AVH", "AusTraits"),
+                          height_climate = "data-processed/data_height_climate.parquet",
+                          austraits_climate = "data-processed/data_traits_climate.parquet",
                           medoid_lookup = build_medoid_lookup()) {
   sources <- match.arg(sources, several.ok = TRUE)
   parts <- list()
-  if ("AVH" %in% sources) parts$avh <- load_height_records()
-  if ("AusTraits" %in% sources) parts$austraits <- load_austraits_records()
+  if ("AVH" %in% sources) parts$avh <- load_height_records(height_climate)
+  if ("AusTraits" %in% sources) parts$austraits <- load_austraits_records(austraits_climate)
 
   data <- dplyr::bind_rows(parts)
   if (!is.null(traits)) data <- dplyr::filter(data, trait_name %in% traits)

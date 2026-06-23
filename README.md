@@ -16,29 +16,55 @@ See `CLAUDE.md` for conventions, `refactor_plan.md` for the design/roadmap, and
 
 ## Workflow
 
-Two Quarto notebooks, which only orchestrate functions in `R/`:
+Orchestration is a [`targets`](https://docs.ropensci.org/targets/) pipeline
+(`_targets.R`); all logic lives in functions under `R/`. Dependencies are pinned
+with [`renv`](https://rstudio.github.io/renv/) (`renv::restore()` to reproduce
+the library).
 
-1. `dataset_construction.qmd` — climate covariates → GBIF + medoid climate centres
-   (+ reasonableness checks) → trait sources (AVH height, AusTraits) → cached
-   **unified record-level dataset**.
-2. `analysis.qmd` — loads the unified dataset → fits one model per trait →
-   exports per-species centre estimates and figures.
+```r
+renv::restore()         # first time: install the pinned package versions
+targets::tar_make()     # build everything that is out of date
+targets::tar_visnetwork()  # view the dependency graph
+targets::tar_outdated()    # preview what a make would rebuild
+```
 
-Run order: `dataset_construction.qmd` then `analysis.qmd`. Expensive steps are
-cached behind `if (update || !file.exists(...))`; set `update <- TRUE` to rebuild.
+`tar_make()` rebuilds only what changed (content-hash invalidation — no manual
+`update` toggles) and renders the two reports at the end:
+
+- `dataset_construction.qmd` — provenance of the data-building inputs + medoid
+  reasonableness checks.
+- `analysis.qmd` — the write-up: per-trait fitted effects, across-species
+  turnover figures, and the round-2 combined best-estimate product.
+
+Both notebooks are **reporting layers**: they `tar_load()` pipeline results and
+narrate them, they do not compute.
+
+**Pipeline tiers.** The heavy, rarely rebuilt artefacts (cleaned GBIF ~1.2 GB,
+the 22k-species medoids, the AVH↔GBIF crosswalk, the AusTraits flatten) are
+tracked as **file inputs** — `tar_make()` watches their hashes but does not
+recompute them. Regenerate them deliberately with the builders in
+`R/data/build_sources.R` (`build_gbif_climate()`, `build_austraits_climate()`),
+`load_data()` (height), and the archive notebooks (`climate_centres.qmd` for
+medoids, `Data_height_AVH.qmd` for the crosswalk). Everything from the **unified
+record-level dataset** forward is computed and rebuilt incrementally.
+
+The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
+`_targets.R` (height stays on `tmb` — too large for NUTS).
 
 ## Layout
 
 ```text
 .
-├── dataset_construction.qmd     # data pipeline -> unified dataset
-├── analysis.qmd                 # per-trait models -> estimates + figures
+├── _targets.R                   # the pipeline (orchestration; calls R/ functions)
+├── renv.lock                    # pinned dependency versions
+├── dataset_construction.qmd     # report: data provenance + medoid checks
+├── analysis.qmd                 # report: per-trait models -> estimates + figures
 ├── trait_species_means.qmd      # round-2 simple means (low-coverage traits, WIP)
 ├── demo.qmd                     # within-group-centring method illustration
 ├── CLAUDE.md  refactor_plan.md
 ├── R/
 │   ├── init.R                   # source() this to load the whole library
-│   ├── data/                    # build_dataset, extract_climate, assign_state, load_data_height_avh
+│   ├── data/                    # build_dataset, build_sources, extract_climate, assign_state, load_data_height_avh
 │   ├── medoid/                  # locate_medoid_2d, check_medoid
 │   ├── model/                   # model_formula, fit_trait_climate_model, run_trait_models
 │   ├── process/                 # process_fit, species_centres, export_centres
@@ -47,8 +73,9 @@ cached behind `if (update || !file.exists(...))`; set `update <- TRUE` to rebuil
 │   ├── means/                   # simple_means (round-2 fallback) + species_means
 │   ├── utils/                   # save_figure (png+pdf), parallel_setup (multisession)
 │   └── scripts/                 # run-scripts (NOT sourced by init.R)
+├── _targets/                    # targets store (git-ignored; rebuilt by tar_make)
 ├── data/                        # inputs (git-ignored): AVH, GBIF, WorldClim, AusTraits
-├── data-processed/              # cached intermediates (git-ignored)
+├── data-processed/              # cached intermediates + seeded inputs (git-ignored)
 ├── outputs/                     # figures + per-trait response CSVs (git-ignored)
-└── archive/                     # superseded notebooks (retired NVIS report, etc.)
+└── archive/                     # superseded notebooks (incl. medoid + crosswalk producers)
 ```

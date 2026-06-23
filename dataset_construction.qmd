@@ -1,274 +1,72 @@
 ---
 title: "Analysis of trait variation in Australia: Dataset creation"
-format: html
+format:
+  html:
+    embed-resources: true
 editor_options:
   chunk_output_type: console
 ---
 
 # Background & aims
 
-1.  
+This notebook documents the **data-construction half** of the pipeline and runs
+the medoid reasonableness checks. It is a *reporting layer*: the computation is
+done by the `targets` pipeline (`_targets.R`), and here we only `tar_load()` the
+results and narrate them. To (re)build the data, run `targets::tar_make()` from
+the project root; see `_targets.R` for the DAG and `CLAUDE.md` for the layout.
 
-# Setup
-
-```{r}
+```{r setup}
+#| message: false
 library(tidyverse)
-library(APCalign)
-library(terra) # used to extract and process rasters
-library(tictoc) # used to track time processes take
-
-# For climate medoids
-library(arrow)
-library(sf)
-library(ozmaps)
-library(furrr)
-
+library(targets)
 source("R/init.R")
 
-update <- FALSE
+# Results built by the targets pipeline.
+tar_load(unified)
+tar_load(medoid_gbif_check)
 ```
 
 # Datasets
 
-Reusing data from Cornsters annuals project. To save duplicating that, I'm just going to create a symbolic link to those datasets, to those directories. 
+Reusing data from the Cornsters annuals project via symlinks:
 
 ```
 ln -s ../Cornsters-australian_annuals/data data
-ln -s ../Cornsters-australian_annuals/downloads downloads 
+ln -s ../Cornsters-australian_annuals/downloads downloads
 ```
 
-## Get climate covariates
+## Pipeline inputs
 
-Load climate covariates from worldclim
+The data-construction targets are wired in `_targets.R`. The expensive, rarely
+rebuilt artefacts are tracked as **file inputs** (targets watches their hashes
+but does not recompute them on every `tar_make()`); regenerate them deliberately
+with the builders in `R/data/build_sources.R`:
 
-- BIO_1: "Annual Mean Temperature" — the average temperature (°C) over the year for a location.
-- BIO_12 is a bioclimatic variable representing "Annual Precipitation." 
-
-```{r}
-vars <- c("wc2.1_2.5m_bio_1.tif", "wc2.1_2.5m_bio_12.tif")
-
-# Australia
-australia <- terra::rast("data/australia.tif")
-
-# Stacked raster of climate predictors, cropped to Australia
-stacked_rasters <-
-  # list.files(wc_path, full.names = TRUE, pattern = ".bil") |>
-  file.path("data/climate", vars) |>
-  terra::rast() |>
-  terra::crop(australia)
-```
-
-
-## GBIF
-
-Load cleaned GBIF/ALA dataset as tibble, create a dataset spanning known species obervations, link to climate layers
-
-```{r}
-output <- "data-processed/gbif_data_climates.parquet"
-
-if (!file.exists(output)) {
-  data_gbif <- arrow::read_parquet("data/GBIF/2025/GBIF_aus_clean_0001494-250914085247600.parquet") |>
-    janitor::clean_names()
-
-  data_gbif_vect <-
-    data_gbif |>
-    terra::vect(
-      geom = c("decimal_longitude", "decimal_latitude"),
-      crs = terra::crs(stacked_rasters)
-    )
-
-  data_gbif_climate <-
-    terra::extract(x = stacked_rasters, y = data_gbif_vect, method = "simple", xy = TRUE, ID = FALSE, dataframe = TRUE) |>
-    as_tibble() |>
-    select(x, y, everything())
-
-  # fixing taxonomy in GBIF
-  aligned_species_list <- arrow::read_parquet("data/GBIF/2025/gbif_names_aligned_2025.parquet")
-
-  data_gbif_cleaned <-
-    data_gbif |>
-    rename(original_name = species) |>
-    select(-taxon_rank) |>
-    left_join(by = "original_name", aligned_species_list) |>
-    bind_cols(data_gbif_climate |> select(-x, -y)) |>
-    select(original_name, taxon_name = accepted_name, genus, scientific_name, starts_with("decimal"), annual_precipitation = wc2.1_2.5m_bio_12, average_temperature = wc2.1_2.5m_bio_1, everything()) |>
-    # Rogue points to remove
-    filter(!is.na(annual_precipitation), !is.na(average_temperature), annual_precipitation > 0) |>
-    filter(
-      !(decimal_longitude == 134.1 & decimal_latitude == -25.7)
-    ) |>
-    mutate(
-      log_annual_precipitation = log(annual_precipitation),
-      log_annual_precipitation_centered = (log_annual_precipitation - mean(log_annual_precipitation)) / sd(log_annual_precipitation),
-      average_temperature_centered = (average_temperature - mean(average_temperature)) / sd(average_temperature),
-    ) |>
-    relocate(contains("_centered"), .after = "average_temperature")
-
-  arrow::write_parquet(data_gbif_cleaned, output)
-}
-
-data_gbif_cleaned <- arrow::read_parquet(output)
-```
-
-### Climate centres
-
-Calculating the centre of @D distribtion (medoid)
-
-```{r}
-output <- "data-processed/data_spp_climates-medoid.parquet"
-
-if (!file.exists(output)) {
-
-  source("R/init.R")
-
-  # Example for a species
-  taxon <- "Daviesia latifolia"
-  process_taxon_medoid(taxon, overwrite = TRUE)
-
-  # Deploy for lot of species
-  output_dir <- "~/Downloads/climate_centres/"
-  file.path(output_dir, "data") |> dir.create(showWarnings = FALSE, recursive = TRUE)
-  file.path(output_dir, "figures") |> dir.create(showWarnings = FALSE, recursive = TRUE)
-
-  taxa <-  arrow::open_dataset("data-processed/data_gbif_cleaned.parquet") |>
-    select(taxon_name, genus) |>
-    distinct() |>
-    collect() |>
-    filter(!is.na(taxon_name)) |>
-    filter(!taxon_name|> str_detect("/"))
-
-  ncores <- parallel::detectCores() - 2
-  options(mc.cores = ncores)
-  plan(multisession, workers = ncores)
-  taxa$taxon_name |>
-  #  future_walk(~ process_taxon_medoid(.x, overwrite = FALSE))
-    walk(~ process_taxon_medoid(.x, overwrite = FALSE))
-
-  # Now compile for all the species
-  read_taxon <- function(taxon) {
-      file.path(output_dir, "data", paste0(taxon, ".rds")) |> readRDS()
-  }
-
-  data_spp_medoids <- taxa$taxon_name |> furrr::future_map(read_taxon) |> bind_rows()
-
-  data_spp_medoids |> arrow::write_parquet(output)
-}
-
-```
-
-Alternatively: A simple calculation (not used)
-
-```{r, eval = FALSE}
-output <- "data-processed/data_spp_climates-simple.parquet"
-
-if (!file.exists(output)) {
-  data_spp_climates <-
-    data_gbif_cleaned |>
-    group_by(taxon_name, genus, scientific_name) |>
-    summarize(
-      n = n(),
-      across(where(is.numeric), list(
-        p50 = ~ quantile(.x, 0.50, na.rm = TRUE),
-        p05 = ~ quantile(.x, 0.05, na.rm = TRUE),
-        p95 = ~ quantile(.x, 0.95, na.rm = TRUE)
-      ), .names = "{.col}_{.fn}"),
-      .groups = "drop"
-    ) |>
-    arrange(taxon_name) |>
-    mutate(
-      decimal_longitude_range = decimal_longitude_p95 - decimal_longitude_p05,
-      decimal_latitude_range = decimal_latitude_p95 - decimal_latitude_p05,
-      average_temperature_range = average_temperature_p95 - average_temperature_p05,
-      annual_precipitation_range = annual_precipitation_p95 / annual_precipitation_p05
-    )
-
-  arrow::write_parquet(data_spp_climates, "data-processed/data_spp_climates-simple.parquet")
-}
-```
-
-
-## Trait sources
-
-The two trait sources are extracted and cached here, in the common shape the
-`R/data/` loaders expect. Plant height comes from the AVH herbarium records; all
-other traits come from AusTraits. Climate is attached with the shared
-`extract_climate()` helper using the `stacked_rasters` built above.
-
-### Plant height (AVH)
-
-`load_data()` reads the AVH height records, attaches climate, and assigns each
-record to a state.
-
-```{r}
-height_file <- "data-processed/data_height_climate.parquet"
-
-if (update || !file.exists(height_file)) {
-  arrow::write_parquet(load_data(), height_file)
-}
-```
-
-### Other traits (AusTraits)
-
-Field, georeferenced records for the analysis traits, with climate attached. The
-AusTraits flatten is the expensive step, so this is cached. (`leaf_delta13C`
-needs a discrimination transform before inclusion and is handled separately;
-plant height is the AVH source above.)
-
-```{r}
-austraits_traits <- c(
-  "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass", "leaf_N_per_area",
-  "leaf_P_per_area", "leaf_P_per_dry_mass", "seed_dry_mass", "wood_density"
-)
-
-austraits_file <- "data-processed/data_traits_climate.parquet"
-
-if (update || !file.exists(austraits_file)) {
-  austraits <- readRDS("data/data-ausplants/austraits/austraits-7.0.0.rds") |>
-    austraits::flatten_database()
-
-  austraits_geo <-
-    austraits |>
-    filter(
-      trait_name %in% austraits_traits,
-      basis_of_record == "field",
-      !is.na(`latitude (deg)`), !is.na(`longitude (deg)`)
-    ) |>
-    mutate(across(c("latitude (deg)", "longitude (deg)", value),
-                  ~ suppressWarnings(as.numeric(.x)))) |>
-    filter(!is.na(`latitude (deg)`), !is.na(`longitude (deg)`), !is.na(value)) |>
-    rename(decimal_longitude = `longitude (deg)`, decimal_latitude = `latitude (deg)`)
-
-  data_traits_climate <-
-    austraits_geo |>
-    extract_climate(rasters = stacked_rasters) |>
-    filter(!is.na(annual_precipitation), !is.na(average_temperature))
-
-  arrow::write_parquet(data_traits_climate, austraits_file)
-}
-```
+- **Climate** — WorldClim 2.5′ BIO_1 (annual mean temperature, °C) and BIO_12
+  (annual precipitation, mm/yr; modelled on the log scale), cropped to Australia
+  (`load_climate_rasters()`).
+- **GBIF** (`data_gbif_cleaned.parquet`) — cleaned GBIF/ALA occurrences with
+  names aligned and climate attached (`build_gbif_climate()`).
+- **Climate centres / medoids** (`climate_centres.parquet`) — the 2D
+  precipitation–temperature medoid per species (`process_taxon_medoid()`;
+  produced by `archive/climate_centres.qmd`).
+- **Trait sources** — plant height from AVH (`load_data()` →
+  `data_height_climate.parquet`) and the AusTraits field traits
+  (`build_austraits_climate()` → `data_traits_climate.parquet`).
+- **Crosswalk** (`gbif_avh_name_crosswalk.parquet`) — bridges AVH/AusTraits names
+  to the GBIF medoid names (produced by `archive/Data_height_AVH.qmd`).
 
 # Unified analysis dataset
 
-This is the single dataset consumed by `analysis.qmd`. It binds the two trait
-sources into one long table (one row per trait record) — plant height from the
-AVH herbarium records and the remaining traits from AusTraits — attaches each
-species' climate centre (the 2D medoid computed above) and centres the climate
-predictors on it (`x_c = obs − medoid`; Option B). Species without a medoid are
-dropped (they are handled by the round-2 means workflow). All the work is done
-by functions in `R/data/` (`build_dataset()`), so this notebook only orchestrates
-and caches.
+`unified` is the single table consumed by `analysis.qmd`. It binds the two trait
+sources into one long table (one row per trait record) — plant height from AVH
+and the remaining traits from AusTraits — attaches each species' climate centre
+(the 2D medoid) and centres the climate predictors on it (`x_c = obs − medoid`;
+Option B). Species without a medoid are dropped (handled by the round-2 means
+workflow). All the work is done by `build_dataset()` in `R/data/`.
 
-```{r}
-unified_file <- "data-processed/data_traits_climate_unified.parquet"
-
-if (update || !file.exists(unified_file)) {
-  data_unified <- build_dataset()
-  arrow::write_parquet(data_unified, unified_file)
-} else {
-  data_unified <- arrow::read_parquet(unified_file)
-}
-
-data_unified |>
+```{r unified-summary}
+unified |>
   count(source, trait_name) |>
   arrange(desc(n))
 ```
@@ -282,13 +80,13 @@ Two complementary checks (functions in `R/medoid/check_medoid.R`):
 2. **Extrapolation vs the trait records** — does the medoid fall within the span
    of a species' trait-record climate (since we centre those records on it)?
 
-```{r}
-# 1. Medoid sits centrally within its own occurrence cloud
-medoid_gbif_check <- check_medoid_vs_gbif(n_sample = 300, seed = 1)
+```{r medoid-checks}
+# 1. Medoid sits centrally within its own occurrence cloud (computed by the
+#    `medoid_gbif_check` target; the figure is the `medoid_check_fig` target).
 summarise_medoid_vs_gbif(medoid_gbif_check)
-plot_medoid_check(medoid_gbif_check, file = "outputs/checks/medoid_gbif_check")
 
 # 2. Extrapolation risk relative to the trait records being centred
-medoid_extrap_check <- check_medoid(data_unified)
-summarise_medoid_check(medoid_extrap_check)
+summarise_medoid_check(check_medoid(unified))
 ```
+
+![Medoid vs GBIF occurrence cloud](outputs/checks/medoid_gbif_check.png)
