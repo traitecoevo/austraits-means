@@ -61,6 +61,38 @@ One model per trait (TMB), keeping species with more than `n_min` records. Each
 fit yields the species-level trait value at the climate centre, exported to
 `outputs/traits/<trait>_climate_response.csv.gz` (with a `_meta.csv` dictionary).
 
+### The fitted model
+
+`build_model_formula()` assembles the model from the climate-variable stems, so
+the explicit form isn't visible in the notebook. With the two default climate
+variables it is the following within-group-centred ("Mundlak") mixed model, in
+`glmmTMB` syntax:
+
+```r
+log_value ~ log_annual_precipitation_mn + average_temperature_mn   # between-species
+          + log_annual_precipitation_c  + average_temperature_c    # within-species
+          + (1 | taxon_name)                                       # species intercept
+          + (0 + log_annual_precipitation_c | taxon_name)          # species precip slope
+          + (0 + average_temperature_c | taxon_name)               # species temp slope
+```
+
+- For each climate variable, `_mn` is the species' medoid (its climate centre)
+  and `_c = obs − medoid` is the within-species deviation.
+- The `_mn` terms capture **between-species** turnover across the continent; the
+  `_c` terms capture the **within-species** response across a species' range.
+- Random effects are an uncorrelated species intercept plus per-variable species
+  slopes — no climate interaction and no intercept–slope correlation, matching
+  the convergence-driven choices in the height analysis.
+- The species-level value at the climate centre (where `_c = 0`) is the intercept
+  plus the species random intercept.
+- The `brms` backend fits the same formula with weakly informative priors.
+
+The exact formula used for the fit (echoed live so it can't drift from the code):
+
+```{r print-formula}
+build_model_formula()
+```
+
 ```{r fit-traits}
 summary_file <- file.path(out_dir, "trait_model_summary.csv")
 
@@ -75,22 +107,65 @@ if (update || !file.exists(summary_file)) {
 
 ### Full posterior (BRMS backend, opt-in)
 
-For the deliverable we refit with the BRMS backend to get full posterior
-inference. It shares the same interface; each fit uses 4 chains with within-chain
-threading and is cached to disk (reused unless the model/data change). BRMS is
-slow at scale (≈1 min per few-hundred-species trait; tens of minutes for height),
-so it is opt-in (`eval=FALSE`) — run it deliberately, not on every render. Always
-inspect the diagnostics: larger traits need more iterations (e.g. `leaf_area` did
-not converge at `iter = 1500`). One-time `cmdstanr::rebuild_cmdstan()` resolves
-stale precompiled-header warnings when threading first turns on.
+For the deliverable we refit with the BRMS backend. TMB gives a fast maximum-
+likelihood point estimate, and for the *central* species means the two backends
+agree closely (data dominate the weakly informative priors). What changes is the
+**uncertainty**, and that is the deliverable's main product. TMB reports
+species means conditional on plug-in point estimates of the variance components,
+with asymptotic (delta-method) standard errors; the posterior instead gives the
+full joint distribution of every quantity we report. Concretely:
+
+- **Variance-component uncertainty is propagated.** TMB fixes the random-effect
+  SDs at their ML values when forming species intervals; the posterior integrates
+  over uncertainty in *how much* each species is shrunk toward the mean. This
+  matters most for species with few records, where the shrinkage is itself poorly
+  determined — exactly the species whose intervals we most need to trust.
+- **The species mean is a derived, back-transformed quantity.** Each reported
+  value is `intercept + species random intercept`, fitted on the log scale and
+  exponentiated. Its posterior is correlated across parameters and asymmetric on
+  the natural scale; a point estimate ± SE cannot represent that skew, whereas the
+  posterior carries it through exactly.
+- **Boundary/singular fits are regularised.** ML variance estimates can collapse
+  to zero (degenerate partial pooling); the weakly informative priors on the SDs
+  keep them off the boundary, giving sensible shrinkage for sparse traits.
+- **It is the basis for full inference downstream** — calibrated credible
+  intervals, the within/between decomposition *with* uncertainty, and (round 2)
+  treating missing covariates / gap-filling as parameters to be imputed rather
+  than dropped.
+
+Operationally it shares the same interface; each fit uses 4 chains with within-
+chain threading (`reduce_sum`) and is cached to disk (reused unless the model/data
+change). Warmup is gradient-bound, so threads are sized to the machine — `threads`
+≈ cores / 4, since the 4 chains run in parallel (≈ `4 * threads` cores at peak).
+Progress is left visible (`refresh = 50, silent = 1`): with `refresh = 0` warmup
+emits no output and nothing is checkpointed until the fit completes, so a long run
+would otherwise give no read on its progress. BRMS is opt-in (`eval=FALSE`) — run
+it deliberately, not on every render. Always inspect the diagnostics: larger
+traits need more iterations (e.g. `leaf_area` did not converge at `iter = 1500`).
+One-time `cmdstanr::rebuild_cmdstan()` resolves stale precompiled-header warnings
+when threading first turns on.
+
+**Height is excluded from the BRMS backend and kept on TMB.** After unifying the
+sources it carries ~306k records across ~10,200 species, i.e. ~30,000 random-
+effect parameters — a NUTS fit there runs many hours (the per-iteration cost is
+flat across warmup, so the mass-matrix adaptation never rescues it) with real risk
+of memory pressure and divergences. The full posterior is not worth that for one
+trait; TMB's asymptotic (delta-method) intervals are the pragmatic choice for
+height. So the BRMS run below fits every trait *except* height.
 
 ```{r fit-brms, eval = FALSE}
-setup_parallel()  # macOS-safe multisession (not used by brms itself, but harmless)
+# Within-chain threads. The fits run one trait at a time (4 chains in parallel),
+# so peak load ≈ 4 * threads cores. threads = 4 => 16 cores; size to the machine.
+brms_threads <- max(1, floor(parallelly::availableCores(methods = "system") / 4))
+
+# Height is too large for NUTS (see above) — fit it with TMB only.
+brms_traits <- setdiff(sort(unique(data_unified$trait_name)), "plant_height")
 
 fits_brms <- run_trait_models(
-  data_unified, backend = "brms", n_min = 5, out_dir = out_dir,
-  fits_dir = "data-processed/brms_fits",
-  threads = 2, iter = 2000, warmup = 1000, refresh = 0, silent = 2
+  data_unified, traits = brms_traits, backend = "brms",
+  n_min = 5, out_dir = out_dir, fits_dir = "data-processed/brms_fits",
+  threads = brms_threads, iter = 2000, warmup = 1000,
+  refresh = 250, silent = 1   # live "Iteration X/2000" per chain (incl. warmup)
 )
 
 # Convergence summary; refit any flagged trait with more iterations.

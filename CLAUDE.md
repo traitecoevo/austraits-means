@@ -108,20 +108,36 @@ TMB is the default (seconds per trait). BRMS gives the full posterior but is slo
 so it is opt-in:
 
 ```r
-fits <- run_trait_models(data_unified, backend = "brms",
+brms_traits <- setdiff(unique(data_unified$trait_name), "plant_height")  # height stays on TMB
+fits <- run_trait_models(data_unified, traits = brms_traits, backend = "brms",
                          fits_dir = "data-processed/brms_fits",  # on-disk fit cache
-                         threads = 2, iter = 2000, warmup = 1000)
+                         threads = 4, iter = 2000, warmup = 1000,
+                         refresh = 50, silent = 1)  # keep warmup progress visible
 summarise_trait_diagnostics(fits)   # divergences, max Rhat, min ESS per trait
 ```
 
+- **Height is TMB-only, excluded from BRMS.** In the unified dataset height is
+  ~306k records / ~10,200 species (n>5) → ~30,000 random-effect parameters. NUTS
+  there runs many hours: the per-iteration cost stays flat (~11s) across warmup, so
+  mass-matrix adaptation never rescues it, with real divergence/memory risk. Not
+  worth the full posterior for one trait — use TMB's asymptotic intervals. (The old
+  "~114s for 712 species" benchmark predates source unification; it is obsolete.)
 - **Threading** (`threads = n`, reduce_sum) speeds the large fits; 4 chains run in
-  parallel so total cores ≈ `4 * threads`.
+  parallel so total cores ≈ `4 * threads` — size `threads ≈ cores / 4`. Note
+  reduce_sum scales sublinearly (~60% efficiency) because the gradient still
+  carries all RE parameters serially; it helps but is not 1:1 with thread count.
+- **Visibility:** keep `refresh = 50, silent = 1`. With `refresh = 0`, warmup emits
+  nothing and nothing is checkpointed until completion, so a long fit gives no read
+  on progress. (To check a live fit externally: `ps … | grep method=sample` shows
+  per-chain args; post-warmup draw counts appear as non-comment rows in the cmdstan
+  CSVs under the session tempdir, but warmup draws are not written.)
 - **Caching** (`fits_dir`) writes `<trait>_brms.rds`; reused unless model/data
-  change (reload ≈ 1s vs minutes to fit).
+  change (reload ≈ 1s vs minutes to fit). Only written on completion — an
+  interrupted fit checkpoints nothing.
 - **Diagnostics** are captured per fit (`fit$diagnostics`) and flagged to console;
-  always check them. Benchmark: ~44–53s for 142–309-species traits, ~114s for 712
-  species; **larger traits need more iterations** — `leaf_area` did not converge at
-  `iter = 1500` (Rhat 1.115). Refit flagged traits with `iter = 4000`.
+  always check them. Benchmark: ~44–53s for 142–309-species traits; **larger traits
+  need more iterations** — `leaf_area` did not converge at `iter = 1500` (Rhat
+  1.115). Refit flagged traits with `iter = 4000`.
 - One-time `cmdstanr::rebuild_cmdstan()` clears stale precompiled-header (PCH)
   warnings the first time threading turns on.
 - `data-processed/brms_fits/` is git-ignored (fits are large).
