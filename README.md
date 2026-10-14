@@ -87,7 +87,7 @@ The code and the data products in this repository are licensed under [CC BY 4.0]
 
 ## Contributing
 
-Issues across the AusTraits family are tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9), and new issues are auto-added. Please read the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/main/governance/issue-guide.md) in [`austraits-meta`](https://github.com/traitecoevo/austraits-meta) — the family's cross-package knowledge and governance hub — before filing.
+Issues across the AusTraits family are tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9), and new issues are auto-added. Please read the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/master/governance/issue-guide.md) in [`austraits-meta`](https://github.com/traitecoevo/austraits-meta) — the family's cross-package knowledge and governance hub — before filing.
 
 ## Acknowledgements
 

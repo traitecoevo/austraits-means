@@ -234,14 +234,14 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 
 `austraits-means` is part of the **AusTraits family** (a subset of the [`traitecoevo`](https://github.com/traitecoevo) org) — here, species-level trait means (observed and climate-centred modelled) built downstream of the released AusTraits database, with taxonomy aligned by `APCalign`. Family-wide concerns are documented centrally in **[austraits-meta](https://github.com/traitecoevo/austraits-meta)** — don't restate them here, read them there:
 
-- **Start with [`AGENTS.md`](https://github.com/traitecoevo/austraits-meta/blob/main/AGENTS.md)** — pipeline order, who owns what, dependency direction, source-of-truth rules, cross-boundary artifacts, gotchas.
-- **[`dependencies.yml`](https://github.com/traitecoevo/austraits-meta/blob/main/dependencies.yml)** — machine-readable package graph + cross-boundary artifacts.
-- **[`governance/`](https://github.com/traitecoevo/austraits-meta/tree/main/governance)** — label taxonomy, board #9 conventions, release playbooks, triage.
+- **Start with [`AGENTS.md`](https://github.com/traitecoevo/austraits-meta/blob/master/AGENTS.md)** — pipeline order, who owns what, dependency direction, source-of-truth rules, cross-boundary artifacts, gotchas.
+- **[`dependencies.yml`](https://github.com/traitecoevo/austraits-meta/blob/master/dependencies.yml)** — machine-readable package graph + cross-boundary artifacts.
+- **[`governance/`](https://github.com/traitecoevo/austraits-meta/tree/master/governance)** — label taxonomy, board #9 conventions, release playbooks, triage.
 
 Source-of-truth rules that bite here: trait definitions and units come from **APD**, and taxonomy from **APCalign** — consume them, never redefine them in this repo.
 
-**Filing issues:** the whole family is tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9) (new issues auto-add to it). Follow the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/main/governance/issue-guide.md): pick one work-type label (`bug` / `task` / `epic`); Status and Priority are set on the board, not as labels.
+**Filing issues:** the whole family is tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9) (new issues auto-add to it). Follow the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/master/governance/issue-guide.md): pick one work-type label (`bug` / `task` / `epic`); Status and Priority are set on the board, not as labels.
 
-**No PRs in this repo — push straight to `master`** (maintainer decision, 2026-10-14). This is a deliberate exception to the family's feature-branch + PR discipline; don't open PRs here unless asked. The family's commit-message shape still applies to the commits themselves: subject ≤50 characters as typed, body ≤10 lines saying why and what changed. See [`commit-messages.md`](https://github.com/traitecoevo/austraits-meta/blob/main/governance/commit-messages.md).
+**No PRs in this repo — push straight to `master`** (maintainer decision, 2026-10-14). This is a deliberate exception to the family's feature-branch + PR discipline; don't open PRs here unless asked. The family's commit-message shape still applies to the commits themselves: subject ≤50 characters as typed, body ≤10 lines saying why and what changed. See [`commit-messages.md`](https://github.com/traitecoevo/austraits-meta/blob/master/governance/commit-messages.md).
 
 > austraits-meta is hand-maintained prose — a map, not ground truth. Verify specifics against the actual repos.
