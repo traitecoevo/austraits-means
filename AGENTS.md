@@ -59,12 +59,9 @@ Supporting files: `demo.qmd` (method illustration — the justification for the 
 
 ### Producer notebooks
 
-Two notebooks at the project root are the only code that regenerates two Tier B inputs, so they must stay in the tree:
+`climate_centres.qmd` at the project root is the only code that regenerates a Tier B input, the 22k-species medoids (`data-processed/climate_centres.parquet`; O(n²), run deliberately), so it must stay in the tree. It uses paths relative to the project root and `source("R/init.R")`, so run it from the root. It is not a `tar_quarto` target. Porting its producer chunk into `R/data/build_sources.R` would bring it under the same pattern as the other builders.
 
-- `climate_centres.qmd` — the 22k-species medoids, `data-processed/climate_centres.parquet` (O(n²); run deliberately).
-- `Data_height_AVH.qmd` — the AVH↔GBIF name crosswalk, `data-processed/gbif_avh_name_crosswalk.parquet`. The rest of this notebook is the retired NVIS height report.
-
-Both use paths relative to the project root and `source("R/init.R")`, so run them from the root. They are not `tar_quarto` targets. Porting their producer chunks into `R/data/build_sources.R` would bring them under the same pattern as the other builders. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
+`Data_height_AVH.qmd` used to produce the name crosswalk. Since #13 the crosswalk is built inside the pipeline (`build_name_crosswalk()`, target `name_crosswalk`) and `data-processed/gbif_avh_name_crosswalk.parquet` is no longer read; what remains of the notebook is the retired NVIS height report, which reads the old AVH caches. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
 
 ## R/ library layout
 

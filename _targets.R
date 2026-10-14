@@ -10,8 +10,8 @@
 #
 # TIERING ----------------------------------------------------------------------
 # The heavy upstream artefacts (raw GBIF cleaning ~1.2GB, the 22k-species O(n^2)
-# medoid build, the name crosswalk) are expensive and rarely rebuilt, and
-# their producers live outside the two notebooks
+# medoid build) are expensive and rarely rebuilt, and their producers live
+# outside the two notebooks
 # (producer notebooks climate_centres.qmd, Data_height_AVH.qmd at the root; builders in
 # R/data/build_sources.R). They are tracked here as *file inputs* — targets
 # watches their hashes and invalidates downstream when they change, but never
@@ -55,6 +55,11 @@ out_dir <- "outputs/traits"
 # included, via the AVH_2026 dataset). How it was built:
 # data-raw/austraits/README.md.
 austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-cd26bb2.rds"
+
+# APC/APNI release that trait-record names and GBIF names are both aligned to
+# for the crosswalk (an APCalign release tag; #13). Changing it rebuilds the
+# crosswalk and everything downstream.
+apc_version <- "2026-07-30"
 
 # Static trait list for per-trait branching (must be known at pipeline-build
 # time); also the traits read from the austraits.build export.
@@ -109,9 +114,6 @@ list(
              format = "file"),
   tar_target(medoids_file, "data-processed/climate_centres.parquet",
              format = "file"),
-  tar_target(crosswalk_file,
-             "data-processed/gbif_avh_name_crosswalk.parquet",
-             format = "file"),
   tar_target(austraits_dev_file, austraits_dev_rds, format = "file"),
 
   # ===== Tier A: computed modelling pipeline ================================
@@ -130,11 +132,25 @@ list(
                  australia_tif = climate_australia_tif))),
   tar_target(records_all, load_austraits_records(austraits_climate)),
 
-  # Per-species medoid lookup (crosswalk-bridged), rebuilt if either input
-  # parquet changes.
+  # Name crosswalk: every taxon name in the build and every GBIF name, both
+  # aligned to the pinned APC release.
+  tar_target(dev_taxa,
+             readRDS(austraits_dev_file)$taxa |>
+               dplyr::select(taxon_name, taxon_rank, binomial)),
+  tar_target(gbif_names, gbif_taxon_names(gbif_cleaned_file)),
+  tar_target(name_crosswalk,
+             build_name_crosswalk(
+               taxon_names = dev_taxa$taxon_name,
+               gbif_names = gbif_names, apc_version = apc_version)),
+
+  # Per-species medoid lookup (crosswalk-bridged; infraspecific taxa without
+  # a medoid take their species', provisionally).
   tar_target(medoid_lookup,
              build_medoid_lookup(medoids = medoids_file,
-                                 crosswalk = crosswalk_file)),
+                                 crosswalk = name_crosswalk, taxa = dev_taxa)),
+  tar_target(name_matching,
+             summarise_name_matching(records_all, name_crosswalk, gbif_names,
+                                     medoid_lookup)),
 
   # The linchpin: unified record-level table, medoid-centred.
   tar_target(unified, build_dataset(records_all, medoid_lookup)),
