@@ -38,7 +38,7 @@ Species-level summaries of the plant trait records in AusTraits ", version, " (d
 
 This version holds the **observed means by the portal method** (`estimate_type = observed_mean`, `method = portal_arithmetic`): the species means the AusTraits data portal computes for release ", version, ", reproduced exactly. For numeric traits the value is an **arithmetic** mean of per-location means and per-observation flora midpoints; for categorical traits, counts of each value. The table has ", fmt(n_rows), " rows covering ", fmt(n_taxa), " taxa and ", n_traits, " traits.
 
-Read the limitations in `observed-means-portal-method.md` before use. In particular, the column `value_geom_mean` is not a geometric mean (it equals `value_mean`), records are not filtered by basis of record or life stage, and infraspecific names are not rolled up to species.
+Read the limitations in `observed-means-portal-method.md` before use. In particular, the column `value_geom_mean` is not a geometric mean (it equals `value_mean`, or is NaN where that is negative), records are not filtered by basis of record or life stage, and infraspecific names are not rolled up to species.
 
 ## Files
 
