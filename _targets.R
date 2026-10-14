@@ -130,7 +130,10 @@ list(
                  vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
                  climate_dir = dirname(climate_bio1_tif),
                  australia_tif = climate_australia_tif))),
-  tar_target(records_all, load_austraits_records(austraits_climate)),
+  # Infraspecific taxa are rolled up to species (roadmap.md).
+  tar_target(records_all,
+             roll_up_to_species(load_austraits_records(austraits_climate),
+                                dev_taxa)),
 
   # Name crosswalk: every taxon name in the build and every GBIF name, both
   # aligned to the pinned APC release.
@@ -143,11 +146,10 @@ list(
                taxon_names = dev_taxa$taxon_name,
                gbif_names = gbif_names, apc_version = apc_version)),
 
-  # Per-species medoid lookup (crosswalk-bridged; infraspecific taxa without
-  # a medoid take their species', provisionally).
+  # Per-species medoid lookup (crosswalk-bridged).
   tar_target(medoid_lookup,
              build_medoid_lookup(medoids = medoids_file,
-                                 crosswalk = name_crosswalk, taxa = dev_taxa)),
+                                 crosswalk = name_crosswalk)),
   tar_target(name_matching,
              summarise_name_matching(records_all, name_crosswalk, gbif_names,
                                      medoid_lookup)),

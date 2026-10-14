@@ -5,30 +5,23 @@
 
 #' Per-species climate centre (medoid), keyed by trait-data `taxon_name`.
 #'
-#' The medoids were computed on GBIF names, which are almost all at species
-#' rank; trait data uses austraits.build names aligned to a different APC
-#' release, with subspecies, varieties and forms kept. We bridge with the name
-#' crosswalk (`build_name_crosswalk()`) and fall back to a direct name match.
-#' Where a name has several candidate medoids, the choice is deterministic: a
-#' GBIF name identical to the trait name, then one identical to the accepted
-#' name, then the first alphabetically; a direct match comes last.
-#'
-#' Provisional (roadmap.md, 14 October 2026): an infraspecific taxon with no
-#' medoid of its own takes its parent species' medoid, so it stays its own
-#' taxon in the models but is centred on the species' climate. `medoid_match`
-#' records which route each centre came by: `name` (same name), `synonym`
-#' (crosswalk to a different GBIF name) or `parent_species`.
+#' The medoids were computed on GBIF names; trait data uses austraits.build
+#' names aligned to a different APC release (and rolled up to species by
+#' `roll_up_to_species()`). We bridge with the name crosswalk
+#' (`build_name_crosswalk()`) and fall back to a direct name match. Where a
+#' name has several candidate medoids, the choice is deterministic: a GBIF name
+#' identical to the trait name, then one identical to the accepted name, then
+#' the first alphabetically; a direct match comes last. `medoid_match` records
+#' the route: `name` (same name) or `synonym` (a different GBIF name).
 #'
 #' @param medoids medoid parquet (one row per GBIF taxon name).
 #' @param crosswalk crosswalk table, or a parquet path to one.
-#' @param taxa optional tibble(taxon_name, taxon_rank, binomial) of the trait
-#'   names (the build's taxa table), for the parent-species fallback.
 #' @return tibble(taxon_name, gbif_taxon_name, medoid_match,
 #'   annual_precipitation_centre, average_temperature_centre,
 #'   log_annual_precipitation_centre).
 build_medoid_lookup <- function(
     medoids = "data-processed/climate_centres.parquet",
-    crosswalk, taxa = NULL) {
+    crosswalk) {
   if (is.character(crosswalk)) crosswalk <- arrow::read_parquet(crosswalk)
 
   med <- arrow::read_parquet(medoids) |>
@@ -59,34 +52,44 @@ build_medoid_lookup <- function(
   direct <- med |>
     dplyr::mutate(taxon_name = gbif_taxon_name, .rank = 4L)
 
-  lookup <- dplyr::bind_rows(via_crosswalk, direct) |>
+  dplyr::bind_rows(via_crosswalk, direct) |>
     dplyr::arrange(taxon_name, .rank, gbif_taxon_name) |>
     dplyr::distinct(taxon_name, .keep_all = TRUE) |>
     dplyr::mutate(medoid_match = dplyr::if_else(gbif_taxon_name == taxon_name,
                                                 "name", "synonym")) |>
     dplyr::select(dplyr::all_of(centre_cols))
-  if (is.null(taxa)) return(lookup)
+}
 
-  # Infraspecific taxa without a centre of their own take their species'.
-  parent <- taxa |>
+#' Roll infraspecific taxa up to species (roadmap.md, decision of 14 October
+#' 2026).
+#'
+#' Records of a subspecies, variety or form are relabelled with their species
+#' (the build's `binomial`), so the modelled means and the geometric observed
+#' means are per species, matching the species-level GBIF names and medoids.
+#' The build's own name is kept in `taxon_name_aligned`. Genus-level and other
+#' names are left as they are.
+#'
+#' @param records records with a `taxon_name` column.
+#' @param taxa tibble(taxon_name, taxon_rank, binomial): the build's taxa table.
+roll_up_to_species <- function(records, taxa) {
+  species_of <- taxa |>
     dplyr::filter(taxon_rank %in% c("subspecies", "variety", "form"),
-                  !is.na(binomial), binomial != taxon_name,
-                  !taxon_name %in% lookup$taxon_name) |>
-    dplyr::distinct(taxon_name, binomial) |>
-    dplyr::inner_join(dplyr::select(lookup, -medoid_match),
-                      by = c(binomial = "taxon_name")) |>
-    dplyr::mutate(medoid_match = "parent_species") |>
-    dplyr::select(dplyr::all_of(centre_cols))
+                  !is.na(binomial), binomial != taxon_name) |>
+    dplyr::distinct(taxon_name, .species = binomial)
 
-  dplyr::bind_rows(lookup, parent) |>
-    dplyr::arrange(taxon_name)
+  records |>
+    dplyr::left_join(species_of, by = "taxon_name") |>
+    dplyr::mutate(taxon_name_aligned = taxon_name,
+                  taxon_name = dplyr::coalesce(.species, taxon_name),
+                  .after = taxon_name) |>
+    dplyr::select(-.species)
 }
 
 #' Name-matching rates per trait: species with GBIF records and with a medoid.
 #'
 #' A species "has GBIF records" if its name reaches a GBIF occurrence name,
-#' through the crosswalk or directly; it "has a medoid" if it has a climate
-#' centre by any route, including its parent species' (`n_parent_species`).
+#' through the crosswalk or directly; it "has a medoid" if one of those names
+#' has a climate centre.
 #'
 #' @param records trait records (`load_austraits_records()`).
 #' @param crosswalk output of `build_name_crosswalk()`.
@@ -98,15 +101,12 @@ summarise_name_matching <- function(records, crosswalk, gbif_names, medoid_looku
                    intersect(records$taxon_name, gbif_names))
   species <- dplyr::distinct(records, trait_name, taxon_name) |>
     dplyr::mutate(has_gbif = taxon_name %in% in_gbif,
-                  has_medoid = taxon_name %in% medoid_lookup$taxon_name,
-                  parent = taxon_name %in% medoid_lookup$taxon_name[
-                    medoid_lookup$medoid_match == "parent_species"])
+                  has_medoid = taxon_name %in% medoid_lookup$taxon_name)
   summarise_rates <- function(d) {
     dplyr::summarise(d,
       n_species = dplyr::n_distinct(taxon_name),
       n_with_gbif = dplyr::n_distinct(taxon_name[has_gbif]),
       n_with_medoid = dplyr::n_distinct(taxon_name[has_medoid]),
-      n_parent_species = dplyr::n_distinct(taxon_name[parent]),
       pct_with_medoid = round(100 * n_with_medoid / n_species, 1)
     )
   }
