@@ -251,6 +251,26 @@ list(
   tar_target(portal_reproduction_files,
              write_portal_reproduction(portal_reproduction), format = "file"),
 
+  # ===== Observed means, geometric method (development build; #15) =========
+  # Successor to the portal method: same recipe on the log scale
+  # (R/means/observed_means_geometric.R, docs/observed-means-geometric-method.md).
+  tar_target(geometric_traits,
+             geometric_mean_traits(read_portal_core_traits(portal_core_traits_file))),
+  tar_target(dev_records, prepare_records(austraits_dev_file, geometric_traits)),
+  tar_target(observed_means_geometric,
+             estimate_observed_means_geometric(dev_records)),
+  tar_target(observed_means_geometric_files,
+             write_species_means(
+               label_estimates(observed_means_geometric,
+                               "observed_mean", "geometric"),
+               observed_means_geometric_dictionary(),
+               dir = file.path("outputs/species_means",
+                               austraits_dev_info$austraits_version),
+               stem = "observed_means_geometric",
+               metadata = observed_means_geometric_metadata(austraits_dev_info,
+                                                            geometric_traits)),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")

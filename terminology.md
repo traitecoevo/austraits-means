@@ -25,12 +25,15 @@ Species terms decided 14 October 2026. Community terms proposed 14 October 2026;
 
 ## What each estimate does and does not account for
 
-**The observed mean** (`estimate_simple_means()` in `R/means/simple_means.R`) pools:
+**The observed mean** (geometric method: `estimate_observed_means_geometric()` in `R/means/observed_means_geometric.R`; full description in `docs/observed-means-geometric-method.md`) uses, from an AusTraits build:
 
-- height records from AVH specimens
-- AusTraits records with `basis_of_record == "field"` and `value_type` in raw, mean or median
+- records with `value_type` raw, mean or median, whatever their basis of record or life stage;
+- the AVH height dataset in austraits.build (`AVH_2026`), whose specimen label bounds (one minimum or maximum per specimen) are used as observations, like raw records;
+- minimum and maximum records from preserved specimens and the literature (floras), as one geometric midpoint per observation.
 
-These records are not filtered by medoid, which gives maximum coverage. The mean is unweighted: a study with many records counts for more than one with few. A mean or median reported by a study counts the same as a single raw record. It does not adjust for where in the species' range the records came from.
+Records are first summarised per dataset × location (the geometric mean of the records there) and per flora observation (the geometric midpoint of its bounds); the species value is the geometric mean of those groups, each counting once. So a study that measured many individuals at one site counts once for that site, and a mean or median reported by a study counts the same as a raw record within its group. Records with a zero or negative value are not used (a geometric mean needs positive values). Subspecies, varieties and forms are rolled up to species. The records are not filtered by medoid, which gives maximum coverage, and the mean does not adjust for where in the species' range the records came from. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
+
+The record selection differs from the modelled mean's, which uses field records only (raw, mean or median, plus the AVH bounds): the observed mean keeps the portal method's broader selection so that the two observed methods stay comparable.
 
 **The modelled mean** corrects for records that cluster away from the centre of the species' climate range. Through partial pooling, it draws species with few records toward the across-species climate trend. A species is only included if it has a medoid that passes the reasonableness check and enough records to fit. All others get only an observed mean.
 
