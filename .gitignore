@@ -5,6 +5,8 @@ data/climate
 data-processed/*
 data/NVISv7.0
 data/data-ausplants
+data/austraits
+data/portal
 *.html
 *.docx
 outputs

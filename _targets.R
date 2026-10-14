@@ -170,6 +170,29 @@ list(
     readr::write_csv(combined, p); p
   }, format = "file"),
 
+  # ===== Observed means, portal method: species means 7.0.0 ================
+  # Reproduces the AusTraits data portal's species averages for release 7.0.0
+  # (R/means/observed_means_portal.R, docs/observed-means-portal-method.md).
+  tar_target(austraits_release_file, "data/austraits/austraits-7.0.0.rds",
+             format = "file"),
+  tar_target(portal_core_traits_file,
+             "data-raw/portal/trait_groups_for_portal.csv", format = "file"),
+  tar_target(portal_records,
+             prepare_portal_records(
+               read_austraits_release(austraits_release_file, "7.0.0"),
+               read_portal_core_traits(portal_core_traits_file))),
+  tar_target(observed_means_portal,
+             estimate_observed_means_portal(portal_records)),
+  tar_target(observed_means_portal_files,
+             write_species_means(
+               label_estimates(observed_means_portal,
+                               "observed_mean", "portal_arithmetic"),
+               observed_means_portal_dictionary(),
+               dir = "outputs/species_means/7.0.0",
+               stem = "observed_means_portal_arithmetic",
+               metadata = observed_means_portal_metadata()),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")
