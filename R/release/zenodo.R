@@ -177,7 +177,10 @@ create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
     if (identical(unname(present_md5[basename(f)]), unname(tools::md5sum(f)))) next
     message(format(Sys.time(), "%H:%M:%S"), " uploading ", basename(f), " (",
             round(file.size(f) / 1e6, 1), " MB)")
-    authed(draft$links$bucket) |>
+    # No in-request retry here: a retried request cannot re-read the file
+    # stream. Rerun the whole upload instead; finished files are skipped.
+    httr2::request(draft$links$bucket) |>
+      httr2::req_auth_bearer_token(token) |>
       httr2::req_url_path_append(basename(f)) |>
       httr2::req_method("PUT") |>
       httr2::req_body_file(f, type = "application/octet-stream") |>
