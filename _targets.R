@@ -99,9 +99,10 @@ mapped <- tar_map(
 )
 
 # Community layers per species-means input (#20 is open, so both are built):
-# combined (modelled where available, else observed) and modelled only.
+# combined (modelled where available, else observed) and modelled means
+# only (at each species' climate centre).
 community_variants <- tar_map(
-  values = list(input = c("combined", "modelled")),
+  values = list(input = c("combined", "modelled_centre")),
   names = "input",
 
   tar_target(community_layers,
@@ -331,6 +332,25 @@ list(
                                    woody_lookup$taxon_name))),
   # The layer variants, one per species-means input (#20 decides).
   community_variants,
+
+  # Model surface: each trait model's population-level prediction at the
+  # cell's climate (species averaged out), all species together.
+  tar_target(cell_climate_grid,
+             cell_climate(load_climate_rasters(
+               vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
+               climate_dir = dirname(climate_bio1_tif),
+               australia_tif = climate_australia_tif))),
+  tar_target(model_surface, predict_model_surface(tmb_fits, cell_climate_grid)),
+  tar_target(model_surface_files,
+             write_model_surface(model_surface,
+                                 file.path(community_dir, "model_surface"),
+                                 model_surface_metadata(data_basis_info)),
+             format = "file"),
+  tar_target(model_surface_maps,
+             write_model_surface_maps(model_surface, community_layers_combined,
+                                      species_means_combined,
+                                      file.path(community_dir, "model_surface")),
+             format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================
   tar_target(observed_modelled,

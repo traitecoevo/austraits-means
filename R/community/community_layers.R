@@ -8,9 +8,10 @@
 #   - a regular 0.25° grid in EPSG:4326 (#20);
 #   - a statistic only where at least 10 species in the group have a mean (#20);
 #   - presence from the cleaned GBIF occurrences (#20);
-#   - species means: two variants are built, `combined` (the modelled mean
-#     where there is one, otherwise the geometric observed mean) and
-#     `modelled` (modelled means only) (#20).
+#   - species means: variants are built for review (#20): `combined` (the
+#     modelled mean where there is one, otherwise the geometric observed
+#     mean) and `modelled_centre` (modelled means only); the model surface
+#     (model_surface.R) is a further, model-based variant.
 #
 # Definitions (terminology.md): community mean = exp(mean of the log species
 # means); community variance = variance of the log species means, between
@@ -56,15 +57,20 @@ combine_species_means <- function(fits, observed_means) {
 #' The species means a layer variant uses.
 #'
 #' @param means output of `combine_species_means()`.
-#' @param input "combined" (all rows) or "modelled" (modelled means only).
-select_species_means <- function(means, input = c("combined", "modelled")) {
+#' @param input "combined" (all rows) or "modelled_centre" (modelled means,
+#'   at each species' climate centre, only).
+select_species_means <- function(means, input = c("combined", "modelled_centre")) {
   input <- match.arg(input)
-  if (input == "modelled") dplyr::filter(means, estimate_type == "modelled_mean") else means
+  if (input == "modelled_centre") {
+    dplyr::filter(means, estimate_type == "modelled_mean")
+  } else {
+    means
+  }
 }
 
 species_means_input_description <- c(
   combined = "combined: the modelled mean (TMB) where there is one, otherwise the geometric observed mean",
-  modelled = "modelled means (TMB) only; species without a modelled mean are counted as present but have no mean"
+  modelled_centre = "modelled means (TMB, at each species' climate centre) only; species without a modelled mean are counted as present but have no mean"
 )
 
 #' Species present per grid cell, from the GBIF occurrences.
@@ -116,7 +122,7 @@ gbif_to_species <- function(gbif_names, crosswalk, taxa, species_names) {
 #' @param presence output of `gbif_presence_cells()`.
 #' @param name_map output of `gbif_to_species()`.
 #' @param groups woody lookup (`build_woody_lookup()`); unassigned taxa are
-#'   left out of both groups.
+#'   left out of the woody and non-woody groups but counted in `all`.
 #' @param means output of `combine_species_means()`.
 #' @param settings `community_layer_settings()`.
 #' @return long tibble: trait_name, cell_x, cell_y, longitude, latitude (cell
@@ -125,14 +131,18 @@ gbif_to_species <- function(gbif_names, crosswalk, taxa, species_names) {
 compute_community_layers <- function(presence, name_map, groups, means,
                                      settings = community_layer_settings()) {
   res <- settings$resolution
-  present <- presence |>
+  mapped <- presence |>
     dplyr::inner_join(name_map, by = "gbif_taxon_name") |>
-    dplyr::distinct(taxon_name, cell_x, cell_y) |>
-    dplyr::inner_join(
-      groups |>
-        dplyr::filter(woodiness_group != "unassigned") |>
-        dplyr::select(taxon_name, woodiness_group),
-      by = "taxon_name")
+    dplyr::distinct(taxon_name, cell_x, cell_y)
+  present <- dplyr::bind_rows(
+    mapped |>
+      dplyr::inner_join(
+        groups |>
+          dplyr::filter(woodiness_group != "unassigned") |>
+          dplyr::select(taxon_name, woodiness_group),
+        by = "taxon_name"),
+    dplyr::mutate(mapped, woodiness_group = "all")
+  )
 
   n_present <- dplyr::count(present, cell_x, cell_y, woodiness_group,
                             name = "n_species_present")
@@ -205,7 +215,8 @@ write_community_layers <- function(layers, dir, metadata,
 #' non-woody. Grey cells have species present but fewer than the minimum with
 #' a mean.
 plot_community_layers <- function(layers, trait, unit = NULL, input = "combined") {
-  d <- dplyr::filter(layers, trait_name == trait) |>
+  d <- dplyr::filter(layers, trait_name == trait,
+                     woodiness_group %in% c("woody", "non_woody")) |>
     dplyr::mutate(woodiness_group = factor(woodiness_group,
                                            c("woody", "non_woody"),
                                            c("Woody", "Non-woody")))

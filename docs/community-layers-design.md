@@ -13,7 +13,7 @@ This first draft is built on **provisional choices**. Each is open in a decision
 | Spatial unit | regular 0.25° grid in EPSG:4326 over 112–154° E, 44–9° S (168 × 140 cells) | [#20](https://github.com/traitecoevo/austraits-means/issues/20) | 0.1° grid; bioregions; survey plots |
 | Minimum species | statistics only where at least 10 species of the group present in the cell have a species mean | [#20](https://github.com/traitecoevo/austraits-means/issues/20) | other thresholds; a coverage threshold |
 | Occurrence source | the cleaned GBIF occurrences (download `0001494-250914085247600`); a species is present in a cell if it has any occurrence there | [#20](https://github.com/traitecoevo/austraits-means/issues/20) | AVH; both; range estimates (alpha hulls) instead of points |
-| Species-means input | two variants are built: `combined` (the modelled mean, TMB, where there is one, otherwise the geometric observed mean) and `modelled` (modelled means only); recorded in metadata, not in the name | [#20](https://github.com/traitecoevo/austraits-means/issues/20) | one of the two; observed means only |
+| Species-means input | three variants are built for review: `combined` (the modelled mean, TMB, where there is one, otherwise the geometric observed mean), `modelled_centre` (modelled means only) and `model_surface` (the hierarchical model's own prediction, below); recorded in metadata, not in the name | [#20](https://github.com/traitecoevo/austraits-means/issues/20) | observed means only |
 
 Two further choices follow decisions already taken (`roadmap.md`): species means are per species, with subspecies, varieties and forms rolled up, and GBIF names are matched to them through the name crosswalk aligned to APC release 2026-07-30.
 
@@ -21,20 +21,28 @@ Two further choices follow decisions already taken (`roadmap.md`): species means
 
 `R/community/community_layers.R`, run by the pipeline:
 
-1. `combine_species_means()`: for each of the nine modelled traits, the modelled mean where there is one, otherwise the geometric observed mean (`species_means_combined` target). `select_species_means()` gives each variant its input: all of it (`combined`) or the modelled means only (`modelled`).
+1. `combine_species_means()`: for each of the nine modelled traits, the modelled mean where there is one, otherwise the geometric observed mean (`species_means_combined` target). `select_species_means()` gives each variant its input: all of it (`combined`) or the modelled means only (`modelled_centre`).
 2. `gbif_presence_cells()`: each GBIF occurrence is assigned to its 0.25° cell; one row per GBIF name × cell (`gbif_presence`; 2.06 million rows over 11,143 cells).
 3. `gbif_to_species()`: each GBIF name is mapped to one species-means name, directly or through the crosswalk with its names rolled up to species (22,130 of 22,136 GBIF names map; 22,115 to a taxon with a woody or non-woody class).
-4. `compute_community_layers()`: species present in a cell are split by group; for each trait, the species with a mean give `n_species`, the community mean and the community variance, and `coverage` = `n_species / n_species_present`. Below 10 species the statistics are empty but the counts are kept. It runs once per variant (targets `community_layers_combined`, `community_layers_modelled`).
+4. `compute_community_layers()`: species present in a cell are split by group; for each trait, the species with a mean give `n_species`, the community mean and the community variance, and `coverage` = `n_species / n_species_present`. Below 10 species the statistics are empty but the counts are kept. It runs once per variant (targets `community_layers_combined`, `community_layers_modelled_centre`). Besides `woody` and `non_woody`, a third group, `all`, pools every species present, including those the lookup leaves unassigned.
 
 ## Outputs
 
-In `outputs/community/<build version>/<variant>/`, where the variant is `combined` or `modelled`:
+In `outputs/community/<build version>/<variant>/`, where the variant is `combined` or `modelled_centre`:
 
 - `community_layers.parquet`: one row per trait × cell × group with species present: `trait_name`, `cell_x`, `cell_y`, `longitude`, `latitude` (cell centre), `woodiness_group`, `n_species_present`, `n_species`, `coverage`, `community_mean`, `community_variance`.
 - `community_layers_metadata.json`: definitions, the provisional choices, the species-means input, the occurrence source, the spatial unit, and the data basis (build version and commit, APC release, GBIF extract, medoid build).
 - `geotiff/<trait>_<group>_<statistic>.tif`: one single-band GeoTIFF per trait × group × statistic (`community_mean`, `community_variance`, `n_species`, `coverage`) on the 0.25° grid, EPSG:4326.
 - `figures/<trait>_community.png` and `.pdf`: quick-look maps of community mean and variance, woody and non-woody. Grey cells have species present but fewer than 10 with a mean.
 - `../woody_lookup_provisional.csv`: the group of each taxon (#22), shared by both variants.
+
+## The model surface
+
+A third, model-based variant (`R/community/model_surface.R`, folder `model_surface/`). For each trait, the community mean of a cell is the population-level prediction of the trait's hierarchical model at the cell's mean climate, exp(b0 + b_P log P + b_T T): the expected trait of a species whose climate centre is that climate, with species effects and within-species terms set to zero, so averaged over species. It covers every land cell, needs no occurrence data, and has a 94% interval from the fixed-effect uncertainty. Under the model the community variance is the between-species intercept variance, the same in every cell; it is recorded in the metadata (`sd_species`), not mapped. The per-trait models are not split into woody and non-woody, so the surface is for all species. Cells whose climate lies outside the range of the species centres in the fit are flagged `extrapolated` (grey on the maps).
+
+Outputs: `model_surface.parquet` (trait × cell: climate, `community_mean`, `lower`, `upper`, `extrapolated`, `sd_species`), `geotiff/<trait>_all_community_mean_modelled.tif`, metadata, and maps placing the surface beside the observed community mean of all species (combined input) on one colour scale.
+
+Against the observed community mean of all species (cells with both), the surface agrees well for wood density and leaf N per area (log correlation 0.87 and 0.90, median offset near zero), moderately for leaf area, seed mass and plant height (0.83, 0.62, 0.52) but with the surface higher by a median 0.77, 1.25 and 0.18 log units, and poorly for leaf N and P per mass (correlation −0.28 and −0.19). The surface rests on the species with a modelled mean, which are few and well studied for most traits (212 for seed mass), and their climate centres cover only part of the continent: 55% of cells are extrapolated for seed mass and 38% for wood density, against 1.4% for plant height.
 
 ## Coverage in this draft
 
