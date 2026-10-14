@@ -332,6 +332,16 @@ list(
   # The layer variants, one per species-means input (#20 decides).
   community_variants,
 
+  # ===== Observed vs modelled means (#24) ===================================
+  tar_target(observed_modelled,
+             compare_observed_modelled(tmb_fits, observed_means_geometric, unified)),
+  tar_target(portal_geometric,
+             compare_portal_geometric(observed_means_portal,
+                                      observed_means_geometric)),
+  tar_target(means_comparison_files,
+             write_means_comparison(observed_modelled, portal_geometric),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")

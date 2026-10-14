@@ -195,6 +195,53 @@ baseline_comparison$centres |>
 plot_baseline_centres(baseline_comparison$pairs)
 ```
 
+## Observed vs modelled means
+
+The two species estimates (`terminology.md`) answer different questions: the observed mean summarises the records wherever they were collected; the modelled mean is the model's estimate at the centre of the species' climate distribution. They also use different records: the observed mean keeps every basis of record and needs no medoid; the modelled mean uses field records of species with a medoid and more than 5 records. `compare_observed_modelled()` pairs them for every species that has both; tables and figures are also written to `outputs/comparisons/`. Differences are `log(modelled) − log(observed)`, so 0.1 is about 10%.
+
+```{r obs-mod-setup}
+tar_load(observed_modelled)
+tar_load(portal_geometric)
+```
+
+### Coverage and agreement
+
+```{r obs-mod-summary}
+observed_modelled$summary |>
+  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+The modelled mean exists for a minority of the species with an observed mean (from 2% of species for seed mass to 40% for plant height). Where both exist they agree closely on the log scale (correlation 0.90 to 0.996) with a median difference near zero; for plant height the modelled mean is a median 5% lower. The spread is widest for seed mass and leaf area, where more than a third of species differ by more than 0.2 log units (about 22%).
+
+```{r obs-mod-fig, fig.width = 10, fig.height = 9}
+plot_observed_modelled(observed_modelled$pairs)
+```
+
+### Where they differ
+
+Two candidate drivers: how far a species' records sit from its climate centre (the mean offset of its records, scaled by the across-species spread of centres), and how many records the model had. The absolute difference rises with the climate offset for every trait (Spearman correlation 0.12 to 0.47) and is largest where the offset exceeds 0.5, which is the adjustment the modelled mean is designed to make; the number of records matters less, except for plant height, where species with fewer records differ more.
+
+```{r obs-mod-drivers, fig.width = 8, fig.height = 4}
+plot_difference_drivers(observed_modelled$drivers)
+```
+
+### Portal-method against geometric observed means
+
+The portal-method means (AusTraits 7.0.0, arithmetic) against the geometric observed means (development build), per trait. `median_diff_log` combines the change of method and of data; `median_diff_log_data` compares the two arithmetic means and so isolates the data (new records, the AVH height dataset, the roll-up to species); `pct_data_unchanged` is the share of taxa whose arithmetic mean did not change.
+
+```{r portal-geo-summary}
+portal_geometric$summary |>
+  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+For most traits the data are unchanged for over 95% of taxa and the geometric mean sits slightly below the arithmetic one, as it must. Plant height changes most (a median 19% lower), because the AVH height dataset adds specimen records for most species; leaf length and width are a median 10 to 12% lower, because their flora ranges are wide and the geometric midpoint of a range sits below its arithmetic midpoint.
+
+```{r portal-geo-fig, fig.width = 8, fig.height = 9}
+plot_portal_geometric(portal_geometric$summary)
+```
+
 ## Across-species turnover
 
 For each trait, the predicted species mean at the climate centre against the
