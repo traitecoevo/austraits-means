@@ -19,7 +19,7 @@ Two framings:
 (An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report survives as `Data_height_AVH.qmd`, kept because it also builds the crosswalk — see [Producer notebooks](#producer-notebooks).)
 
 The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `demo.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
-The full roadmap is in **`refactor_plan.md`** — read it before making structural changes.
+The roadmap, milestones and decisions log are in **`roadmap.md`** — read it before making structural changes.
 
 **Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average".
 
@@ -133,7 +133,7 @@ Package versions are pinned with `renv` so the pipeline is reproducible.
   implicitly-used package, add a similar reference or it will be dropped from the
   lockfile on the next `snapshot()`.
 
-## Modelling decisions (locked — see refactor_plan.md §5)
+## Modelling decisions (locked — see the decisions log in roadmap.md)
 
 - **Centring on the medoid (Option B):** `x_c = obs − medoid`, `x_mn = medoid`
   per climate var; consistent across traits.

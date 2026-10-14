@@ -2,7 +2,7 @@
 
 This project publishes two species-level trait estimates, plus community-level summaries of them mapped across space. This file fixes what they are called and what each one means. The paper, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
 
-Species terms decided 14 October 2026. Community terms proposed 14 October 2026; two choices still open (see "Open choices" below).
+Species terms decided 14 October 2026. Community terms proposed 14 October 2026; two choices still open (see "Open choices" below). The choice of "mean" over "average" was confirmed on 14 October 2026: "average" had been suggested to leave room for medians and trimmed means, but both published estimates are geometric means, so "mean" is accurate, and flexibility of method is carried by the `method` column (below), not by the term.
 
 ## The terms
 
@@ -41,6 +41,20 @@ That last difference is why both are published. The observed mean gives coverage
 - **TMB:** the point estimate is `exp(fit)`. The interval is `exp(fit ± z·se)`, computed on the log scale.
 - **BRMS:** the point estimate is `exp(posterior mean of log value)`. The interval is the exp of the posterior quantiles on the log scale. This is not the posterior mean of the trait on its original scale, so the methods section should say so.
 
+## Product versions and methods
+
+The species means product carries the **same version tag as the AusTraits release it derives from**, so the two are easily related: "species means 7.0.0" derives from AusTraits 7.0.0. A re-issue for the same release appends a fourth component (7.0.0.1). Products built from a development build carry that build's version string until the corresponding release exists.
+
+Each row records how it was computed in a `method` column:
+
+| `estimate_type` | `method` | Meaning |
+|---|---|---|
+| `observed_mean` | `portal_arithmetic` | The method the AusTraits data portal used for 7.0.0: an unweighted **arithmetic** mean of per-location means (raw, mean and median records) and per-observation flora midpoints (minimum and maximum records). Reproduced exactly from the portal code at the commit that built the deployed data, quirks included, so that product can be archived as what users have been seeing. |
+| `observed_mean` | `geometric` | The observed mean as defined above (geometric), used from the next AusTraits build onward. The arithmetic mean is kept in its own clearly labelled column. |
+| `modelled_mean` | `tmb` or `brms` | The modelled mean as defined above, by fitting backend. |
+
+The rule that both estimates are geometric means therefore holds from the `geometric` method onward. The `portal_arithmetic` product is the one exception, and it is labelled as arithmetic wherever it appears.
+
 ## Community means
 
 These summarise the species means of all species present at a location. They are computed for **woody** and **non-woody** plants separately, and then modelled across space.
@@ -72,6 +86,6 @@ Rules:
 The current outputs predate these terms:
 
 - `combine_estimates()` writes a bare `estimate` column plus a `method` column with values `climate_centre` and `simple_mean`. The round-1 exports call it `estimate`, and the round-2 column is `geom_mean`.
-- These should become `estimate_type` with values `modelled_mean` and `observed_mean`, matching the table above.
+- These should become `estimate_type` with values `modelled_mean` and `observed_mean`, matching the table above, plus a `method` column with the values in "Product versions and methods".
 
 Not yet done.

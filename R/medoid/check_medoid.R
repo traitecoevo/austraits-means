@@ -1,4 +1,4 @@
-# Medoid reasonableness checks (data-quality gate; refactor_plan.md §3.2a).
+# Medoid reasonableness checks (data-quality gate; see the decisions log in roadmap.md).
 #
 # Two distinct questions, two functions:
 #

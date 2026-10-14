@@ -11,7 +11,7 @@ the **centre of the species' climate distribution** (a 2D precipitation–temper
 medoid), using a hierarchical within-group-centred model. Two interchangeable
 fitting backends are available: `tmb` (fast) and `brms` (full posterior).
 
-See `AGENTS.md` for conventions, `refactor_plan.md` for the design/roadmap, and
+See `AGENTS.md` for conventions, `roadmap.md` for the roadmap and decisions log, and
 `demo.qmd` for the statistical motivation.
 
 ## Workflow
@@ -63,7 +63,7 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── demo.qmd                     # within-group-centring method illustration
 ├── climate_centres.qmd          # producer: species climate medoids (run deliberately)
 ├── Data_height_AVH.qmd          # producer: AVH<->GBIF crosswalk (+ retired NVIS height report)
-├── AGENTS.md  terminology.md  refactor_plan.md
+├── AGENTS.md  terminology.md  roadmap.md
 ├── R/
 │   ├── init.R                   # source() this to load the whole library
 │   ├── data/                    # build_dataset, build_sources, extract_climate, assign_state, load_data_height_avh

@@ -1,5 +1,5 @@
 # Build the analysis dataset: trait records + climate + species climate centre,
-# with within-group centring on the medoid (Option B; see refactor_plan.md §3.2).
+# with within-group centring on the medoid (Option B; see the decisions log in roadmap.md).
 #
 # Phase 1 covers height (AVH). The same machinery generalizes to the unified
 # multi-trait table in Phase 2 (height becomes one trait among many).
