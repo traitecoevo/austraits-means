@@ -9,7 +9,7 @@
 
 local({
   lib_dirs <- c("utils", "data", "medoid", "model", "process", "plot", "means",
-                "release", "panels")
+                "release", "community", "panels")
   files <- list.files(
     file.path("R", lib_dirs),
     pattern = "\\.R$", full.names = TRUE, recursive = TRUE

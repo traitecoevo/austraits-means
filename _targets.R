@@ -284,6 +284,15 @@ list(
                                                             geometric_traits)),
              format = "file"),
 
+  # ===== Community layers, first draft (provisional choices; #22, #23) =====
+  # Woody / non-woody per taxon, provisional pending #19.
+  tar_target(woody_lookup, build_woody_lookup(observed_means_geometric)),
+  tar_target(woody_lookup_files,
+             write_woody_lookup(woody_lookup,
+                                file.path("outputs/community",
+                                          austraits_dev_info$austraits_version)),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")
