@@ -251,6 +251,19 @@ list(
   tar_target(portal_reproduction_files,
              write_portal_reproduction(portal_reproduction), format = "file"),
 
+  # Draft Zenodo deposit for species means 7.0.0 (#10): the files, README and
+  # deposit metadata. Uploading is a separate, deliberate step
+  # (R/scripts/create_zenodo_draft.R); nothing publishes.
+  tar_target(portal_method_doc, "docs/observed-means-portal-method.md",
+             format = "file"),
+  tar_target(zenodo_package_portal,
+             prepare_zenodo_package(observed_means_portal_files,
+                                    portal_method_doc,
+                                    dir = "outputs/zenodo/7.0.0",
+                                    version = "7.0.0",
+                                    austraits_doi = "10.5281/zenodo.15718081"),
+             format = "file"),
+
   # ===== Observed means, geometric method (development build; #15) =========
   # Successor to the portal method: same recipe on the log scale
   # (R/means/observed_means_geometric.R, docs/observed-means-geometric-method.md).

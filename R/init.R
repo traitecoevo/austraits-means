@@ -8,7 +8,8 @@
 # load the packages each notebook needs separately.
 
 local({
-  lib_dirs <- c("utils", "data", "medoid", "model", "process", "plot", "means", "panels")
+  lib_dirs <- c("utils", "data", "medoid", "model", "process", "plot", "means",
+                "release", "panels")
   files <- list.files(
     file.path("R", lib_dirs),
     pattern = "\\.R$", full.names = TRUE, recursive = TRUE
