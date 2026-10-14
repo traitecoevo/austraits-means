@@ -193,6 +193,18 @@ list(
                metadata = observed_means_portal_metadata()),
              format = "file"),
 
+  # Reproduction check against the parquet the portal deployed (built 9 Feb
+  # 2026; copied from the portal's git-ignored data build). Also asserted by
+  # tests/testthat/test-observed-means-portal.R.
+  tar_target(portal_deployed_file,
+             "data/portal/austraits-7.0.0-full/austraits-species-averages.parquet",
+             format = "file"),
+  tar_target(portal_reproduction,
+             compare_portal_reproduction(observed_means_portal,
+                                         arrow::read_parquet(portal_deployed_file))),
+  tar_target(portal_reproduction_files,
+             write_portal_reproduction(portal_reproduction), format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")

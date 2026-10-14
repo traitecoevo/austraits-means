@@ -83,7 +83,7 @@ R/
   process/     process_fit.R, species_centres.R, export_centres.R
   plot/        plot_fitted.R, plot_trait_centres.R
   means/       simple_means.R (round-2 fallback), observed_means_portal.R,
-               species_means_io.R
+               species_means_io.R, compare_portal.R
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,
                combine_species_panels.R   # RUN-SCRIPTS — execute on source,
