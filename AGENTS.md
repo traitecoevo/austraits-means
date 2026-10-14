@@ -242,6 +242,6 @@ Source-of-truth rules that bite here: trait definitions and units come from **AP
 
 **Filing issues:** the whole family is tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9) (new issues auto-add to it). Follow the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/main/governance/issue-guide.md): pick one work-type label (`bug` / `task` / `epic`); Status and Priority are set on the board, not as labels.
 
-**Commit messages:** every family repo squash-merges, so the **PR title and body become the permanent commit message**. Keep the subject ≤50 characters as typed and the body ≤10 lines; put the working detail — what you tried, benchmarks, test counts, rejected alternatives — in the **first PR comment** instead. Full convention: [`commit-messages.md`](https://github.com/traitecoevo/austraits-meta/blob/main/governance/commit-messages.md).
+**No PRs in this repo — push straight to `master`** (maintainer decision, 2026-10-14). This is a deliberate exception to the family's feature-branch + PR discipline; don't open PRs here unless asked. The family's commit-message shape still applies to the commits themselves: subject ≤50 characters as typed, body ≤10 lines saying why and what changed. See [`commit-messages.md`](https://github.com/traitecoevo/austraits-meta/blob/main/governance/commit-messages.md).
 
 > austraits-meta is hand-maintained prose — a map, not ground truth. Verify specifics against the actual repos.
