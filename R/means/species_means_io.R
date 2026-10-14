@@ -75,7 +75,7 @@ observed_means_portal_dictionary <- function() {
     "value_min", "Numeric traits only: smallest record value across the location records and flora bounds used.",
     "value_max", "Numeric traits only: largest record value across the location records and flora bounds used.",
     "value_median", "Numeric traits only: median of the location medians and flora midpoints (a median of group medians, not the median of all records).",
-    "value_geom_mean", "Numeric traits only: equal to value_mean. Despite its name this is not a geometric mean; the portal method computes it from the already-averaged value. Kept for fidelity to the deployed portal output.",
+    "value_geom_mean", "Numeric traits only: equal to value_mean where that is positive, and NaN where it is negative (leaf_delta13C). Despite its name this is not a geometric mean; the portal method computes it from the already-averaged value. Kept for fidelity to the deployed portal output.",
     "all_replicates", "Number of records used: each raw, mean or median record counts once and each flora observation counts once (whether it has one bound or two). For categorical traits, the number of records carrying the values on this row.",
     "location_replicates", "Numeric traits only: number of dataset × location groups contributing a location mean.",
     "flora_replicates", "Numeric traits only: number of flora observations contributing a midpoint.",
