@@ -32,7 +32,7 @@ The recipe is the portal method's, on the log scale. `estimate_observed_means_ge
 
 **Categorical traits.** One row per taxon × trait. Each record's value is split at spaces and every value counted; `value_count` lists `value (n)` for every value and `value_mode` gives the most frequent one, with tied values joined by a space.
 
-**Counts.** `n_records` is the number of records used (each bound counts as a record), `n_locations` the number of dataset × location groups, `n_flora` the number of flora observations, and `n_datasets` the number of datasets.
+**Reliability indicators** (#16; `R/means/reliability.R`). `n_records` is the number of records used (each bound counts as a record), `n_datasets` the number of datasets, `n_locations` the number of dataset × location groups, `n_flora` the number of flora minimum/maximum records, `n_field` the number of field records, and `sd_log` the standard deviation of the log record values. `reliability` is a provisional class: high with at least 3 datasets and 10 records, medium with at least 2 datasets or 5 records, low otherwise. The same columns are added to the portal-method product (after its own columns) and to the modelled means.
 
 ## Differences from the portal method
 

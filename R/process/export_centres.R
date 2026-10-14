@@ -11,7 +11,8 @@
 #' @param trait trait name.
 #' @param unit the trait's unit.
 #' @param backend "tmb" or "brms" (becomes `method`).
-centres_to_modelled_means <- function(centres, trait, unit, backend) {
+#' @param data the fit's records, for the reliability indicators (#16).
+centres_to_modelled_means <- function(centres, trait, unit, backend, data) {
   centres |>
     dplyr::transmute(
       taxon_name, trait_name = trait, unit = unit,
@@ -25,7 +26,12 @@ centres_to_modelled_means <- function(centres, trait, unit, backend) {
       species_slope_precipitation = g_log_annual_precipitation_c,
       species_slope_temperature = g_average_temperature_c,
       family, genus
-    )
+    ) |>
+    dplyr::left_join(modelled_reliability(data), by = "taxon_name") |>
+    dplyr::relocate(n_datasets, n_locations, n_flora, n_field, sd_log,
+                    .after = n_records) |>
+    dplyr::mutate(reliability = reliability_class(n_datasets, n_records),
+                  .after = sd_log)
 }
 
 #' Modelled means of every fitted trait, in the product schema.
@@ -33,7 +39,8 @@ centres_to_modelled_means <- function(centres, trait, unit, backend) {
 #' @param fits list of `trait_climate_fit` (e.g. the `tmb_fits` target).
 modelled_means_table <- function(fits) {
   purrr::map_dfr(purrr::compact(fits), \(f) centres_to_modelled_means(
-    f$centres, f$trait, unit = f$data$unit[1], backend = f$backend))
+    f$centres, f$trait, unit = f$data$unit[1], backend = f$backend,
+    data = f$data))
 }
 
 #' Column dictionary for the modelled means.
@@ -51,7 +58,6 @@ modelled_means_dictionary <- function() {
     "log_value", "Natural log of value: the prediction on the model scale.",
     "log_value_lower", "Lower bound of the 94% interval on the log scale.",
     "log_value_upper", "Upper bound of the 94% interval on the log scale.",
-    "n_records", "Number of field records of the species used in the fit (species need more than 5).",
     "annual_precipitation_centre", "Mean annual precipitation (mm, WorldClim BIO12) at the species' climate centre, the medoid of its GBIF occurrences.",
     "average_temperature_centre", "Mean annual temperature (degC, WorldClim BIO1) at the species' climate centre.",
     "species_intercept", "The species' random intercept (log scale): its departure from the across-species prediction at its climate centre.",
@@ -59,7 +65,14 @@ modelled_means_dictionary <- function() {
     "species_slope_temperature", "The species' random slope for within-species temperature (departure from the mean within-species slope).",
     "family", "Family.",
     "genus", "Genus."
-  )
+  ) |>
+    dplyr::bind_rows(
+      reliability_dictionary() |>
+        dplyr::mutate(definition = dplyr::if_else(
+          column == "n_records",
+          "Number of field records of the species used in the fit (species need more than 5).",
+          definition))
+    )
 }
 
 #' Column dictionary for the combined species means.
@@ -108,9 +121,9 @@ species_means_combined_metadata <- function(data_basis) {
 #'
 #' @return (invisibly) the data CSV path.
 export_species_centres <- function(centres, trait, out_dir = "outputs/traits",
-                                   unit = NA_character_, backend = "tmb") {
+                                   unit = NA_character_, backend = "tmb", data) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  table <- centres_to_modelled_means(centres, trait, unit, backend)
+  table <- centres_to_modelled_means(centres, trait, unit, backend, data)
   stem <- file.path(out_dir, paste0(clean_species_filename(trait), "_climate_response"))
   readr::write_csv(table, paste0(stem, ".csv.gz"))
   readr::write_csv(

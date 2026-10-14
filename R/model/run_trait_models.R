@@ -22,7 +22,7 @@ run_one_trait <- function(data, trait, backend = "tmb", n_min = 5,
                                  n_min = n_min, file = file, ...)
   fit$centres <- species_centres(fit)
   export_species_centres(fit$centres, trait, out_dir,
-                         unit = sub$unit[1], backend = backend)
+                         unit = sub$unit[1], backend = backend, data = fit$data)
 
   if (backend == "brms") {
     fit$diagnostics <- brms_diagnostics(fit$fit)

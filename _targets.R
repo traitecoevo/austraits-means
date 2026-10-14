@@ -253,9 +253,12 @@ list(
              estimate_observed_means_portal(portal_records)),
   tar_target(observed_means_portal_files,
              write_species_means(
-               label_estimates(observed_means_portal,
-                               "observed_mean", "portal_arithmetic"),
-               observed_means_portal_dictionary(),
+               label_estimates(
+                 add_portal_reliability(observed_means_portal,
+                                        portal_reliability(portal_records)),
+                 "observed_mean", "portal_arithmetic"),
+               dplyr::bind_rows(observed_means_portal_dictionary(),
+                                reliability_dictionary()),
                dir = "outputs/species_means/7.0.0",
                stem = "observed_means_portal_arithmetic",
                metadata = observed_means_portal_metadata()),

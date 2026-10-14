@@ -121,6 +121,16 @@ estimate_observed_means_geometric <- function(records,
     )
   }
 
+  record_stats <- dplyr::bind_rows(
+    dplyr::mutate(location_records, flora = FALSE),
+    dplyr::mutate(flora_records, flora = TRUE)
+  ) |>
+    dplyr::group_by(taxon_name, trait_name, unit) |>
+    dplyr::summarise(.groups = "drop",
+                     n_flora = sum(flora),
+                     n_field = sum(basis_of_record %in% "field"),
+                     sd_log = if (dplyr::n() > 1) stats::sd(log(value)) else NA_real_)
+
   locations <- location_records |>
     dplyr::group_by(taxon_name, trait_name, unit, dataset_id, location_id) |>
     group_summary() |>
@@ -142,14 +152,17 @@ estimate_observed_means_geometric <- function(records,
       value_max = max(value_max),
       n_records = sum(n_records),
       n_locations = sum(kind == "location"),
-      n_flora = sum(kind == "flora"),
       n_datasets = dplyr::n_distinct(dataset_id),
       dataset_id = paste(sort(unique(dataset_id)), collapse = "; "),
       source_primary_key = paste(sort(unique(unlist(strsplit(
         source_primary_key[source_primary_key != ""], "; ", fixed = TRUE)))),
         collapse = "; ")
     ) |>
-    dplyr::mutate(value = exp(log_value), .after = unit)
+    dplyr::mutate(value = exp(log_value), .after = unit) |>
+    dplyr::left_join(record_stats, by = c("taxon_name", "trait_name", "unit")) |>
+    dplyr::relocate(n_flora, n_field, sd_log, .after = n_datasets) |>
+    dplyr::mutate(reliability = reliability_class(n_datasets, n_records),
+                  .after = sd_log)
 }
 
 # Categorical traits: one row per taxon × trait, with value counts and the
@@ -176,11 +189,13 @@ estimate_observed_means_geometric <- function(records,
       .groups = "drop",
       n_records = dplyr::n(),
       n_datasets = dplyr::n_distinct(dataset_id),
+      n_field = sum(basis_of_record %in% "field"),
       dataset_id = paste(sort(unique(dataset_id)), collapse = "; "),
       source_primary_key = paste(sort(unique(stats::na.omit(source_primary_key))),
                                  collapse = "; ")
     ) |>
-    dplyr::left_join(modes, by = c("taxon_name", "trait_name"))
+    dplyr::left_join(modes, by = c("taxon_name", "trait_name")) |>
+    dplyr::mutate(reliability = reliability_class(n_datasets, n_records))
 }
 
 #' Column dictionary for the geometric observed means.
@@ -197,10 +212,6 @@ observed_means_geometric_dictionary <- function() {
     "arithmetic_mean", "Arithmetic mean over the same groups and records (each group's arithmetic mean or midpoint, then their mean). Not the observed mean; given for comparison.",
     "value_min", "Smallest record value used.",
     "value_max", "Largest record value used.",
-    "n_records", "Number of records used (each minimum and maximum bound counts as a record).",
-    "n_locations", "Numeric traits: number of dataset × location groups.",
-    "n_flora", "Numeric traits: number of flora observations (minimum/maximum bounds from preserved specimens or the literature).",
-    "n_datasets", "Number of datasets contributing.",
     "dataset_id", "Datasets contributing, sorted, joined by '; '.",
     "source_primary_key", "Primary source keys of the contributing records, sorted, joined by '; '.",
     "value_mode", "Categorical traits: the most frequent value; tied values are joined by a space.",
@@ -211,7 +222,8 @@ observed_means_geometric_dictionary <- function() {
     "family", "Family.",
     "establishment_means", "Native, naturalised or both, as given by APC.",
     "taxon_id", "APC taxon identifier."
-  )
+  ) |>
+    dplyr::bind_rows(reliability_dictionary())
 }
 
 #' Provenance written alongside the geometric observed means.
