@@ -119,6 +119,26 @@ gbif_taxon_names <- function(gbif_path) {
     sort()
 }
 
+#' GBIF download the cleaned occurrence extract was made from (see the default
+#' `gbif_raw` path of `build_gbif_climate()`).
+gbif_download_key <- "0001494-250914085247600"
+
+#' Data basis of the modelled means: where each input came from and when.
+#'
+#' @param austraits_info output of `austraits_build_info()`.
+#' @param apc_version APC release of the name crosswalk.
+#' @param gbif_file,medoids_file the cleaned GBIF parquet and the medoids.
+#' @return named list, written into product metadata.
+data_basis <- function(austraits_info, apc_version, gbif_file, medoids_file) {
+  c(austraits_info, list(
+    apc_version = apc_version,
+    gbif_download = paste0("GBIF download ", gbif_download_key,
+                           " (September 2025), cleaned with build_gbif_climate()"),
+    gbif_extract_built = format(file.mtime(gbif_file), "%Y-%m-%d"),
+    medoids_built = format(file.mtime(medoids_file), "%Y-%m-%d")
+  ))
+}
+
 #' Version string and commit of an austraits.build export.
 #'
 #' @param austraits_rds an rds written by austraits.build (`build.R`).

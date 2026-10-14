@@ -1,0 +1,10 @@
+trait_name,n_records_unified,n_species_unified,n_records_fitted,n_species_fitted,n_species_observed_mean
+leaf_N_per_area,2742,545,1879,142,626
+leaf_N_per_dry_mass,7741,1480,5658,380,1781
+leaf_P_per_area,1741,326,1250,116,359
+leaf_P_per_dry_mass,4452,964,3044,237,1079
+leaf_area,14650,2655,10493,712,3164
+leaf_mass_per_area,19481,2839,15370,973,3334
+plant_height,324870,17364,306346,10221,19014
+seed_dry_mass,16568,1826,14514,198,2062
+wood_density,6008,1196,3671,309,1327

@@ -147,6 +147,54 @@ trait_summary |>
   knitr::kable()
 ```
 
+## Refit on the development build: shifts against June 2026
+
+The modelled means were refitted after the data basis changed (#12, #13): trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, and the name crosswalk is rebuilt against a pinned APC release, with infraspecific taxa centred on their parent species' medoid where they have none of their own (provisional). The GBIF extract and the medoids are unchanged. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
+
+```{r baseline-setup}
+tar_load(baseline_comparison)
+tar_load(data_basis_info)
+```
+
+Data basis of this fit:
+
+```{r data-basis}
+tibble::enframe(unlist(data_basis_info), "item", "value") |> knitr::kable()
+```
+
+### Records and species
+
+Records and species per trait in `unified` (records with a medoid) and in the fits (species with more than 5 records), June baseline against the refit.
+
+```{r baseline-counts}
+baseline_comparison$counts |> knitr::kable(format.args = list(big.mark = ","))
+```
+
+### Fixed effects
+
+Shift in each fixed effect (refit minus baseline), also in units of the baseline standard error.
+
+```{r baseline-fixed}
+baseline_comparison$fixed |>
+  dplyr::select(trait, term, estimate_baseline, estimate_new, shift, shift_in_se) |>
+  dplyr::mutate(dplyr::across(where(is.numeric), \(x) round(x, 3))) |>
+  knitr::kable()
+```
+
+### Species centres
+
+For species fitted in both, the modelled mean (log scale) from the baseline against the refit: correlation, median and 95th-percentile absolute shift, and the share of species whose new value falls outside their baseline 94% interval.
+
+```{r baseline-centres}
+baseline_comparison$centres |>
+  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+```{r baseline-centres-fig, fig.width = 10, fig.height = 9}
+plot_baseline_centres(baseline_comparison$pairs)
+```
+
 ## Across-species turnover
 
 For each trait, the predicted species mean at the climate centre against the

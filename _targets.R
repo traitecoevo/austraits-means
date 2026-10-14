@@ -183,6 +183,24 @@ list(
   # List of fits — used to gate the combined product on all exports existing.
   tar_combine(tmb_fits, mapped[["tmb_fit"]], command = list(!!!.x)),
 
+  # Data basis of the fits (build version, APC release, GBIF extract, medoid
+  # build), written next to the exports.
+  tar_target(data_basis_info,
+             data_basis(austraits_dev_info, apc_version, gbif_cleaned_file,
+                        medoids_file)),
+  tar_target(data_basis_file, {
+    p <- file.path(out_dir, "data_basis.json")
+    jsonlite::write_json(data_basis_info, p, auto_unbox = TRUE, pretty = TRUE)
+    p
+  }, format = "file"),
+
+  # Shifts against the June 2026 outputs, snapshotted before the refit (#14).
+  tar_target(baseline_dir, "docs/baselines/2026-06", format = "file"),
+  tar_target(baseline_comparison,
+             compare_with_baseline(tmb_fits, unified, baseline_dir)),
+  tar_target(baseline_comparison_files,
+             write_baseline_comparison(baseline_comparison), format = "file"),
+
   # ---- Round 2: simple means + combined best-estimate product -------------
   tar_target(simple_means, estimate_simple_means(records_all)),
   tar_target(combined, {
