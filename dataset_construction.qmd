@@ -9,11 +9,7 @@ editor_options:
 
 # Background & aims
 
-This notebook documents the **data-construction half** of the pipeline and runs
-the medoid reasonableness checks. It is a *reporting layer*: the computation is
-done by the `targets` pipeline (`_targets.R`), and here we only `tar_load()` the
-results and narrate them. To (re)build the data, run `targets::tar_make()` from
-the project root; see `_targets.R` for the DAG and `CLAUDE.md` for the layout.
+This notebook documents the **data-construction half** of the pipeline and runs the medoid reasonableness checks. It is a *reporting layer*: the computation is done by the `targets` pipeline (`_targets.R`), and here we only `tar_load()` the results and narrate them. To (re)build the data, run `targets::tar_make()` from the project root; see `_targets.R` for the DAG, `AGENTS.md` for the layout and `roadmap.md` for the decisions behind each step.
 
 ```{r setup}
 #| message: false
@@ -24,61 +20,48 @@ source("R/init.R")
 # Results built by the targets pipeline.
 tar_load(unified)
 tar_load(medoid_gbif_check)
+tar_load(name_matching)
+tar_load(data_basis_info)
 ```
 
-# Datasets
+# Data basis
 
-Reusing data from the Cornsters annuals project via symlinks:
-
-```
-ln -s ../Cornsters-australian_annuals/data data
-ln -s ../Cornsters-australian_annuals/downloads downloads
+```{r data-basis}
+tibble::enframe(unlist(data_basis_info), "item", "value") |> knitr::kable()
 ```
 
-## Pipeline inputs
+- **Trait records, height included**, come from an austraits.build development build (`data/austraits/`; how it was built: `data-raw/austraits/README.md`). Plant height comes from the build's AVH dataset `AVH_2026`, which replaced the separate AVH CSV. `build_austraits_climate()` flattens the build, keeps field records of the nine analysis traits that have coordinates, and attaches climate.
+- **Value types**: `load_austraits_records()` keeps raw, mean and median records, except where `dataset_value_type_rules()` says otherwise: `AVH_2026` carries one label bound per specimen (a minimum or a maximum) and no raw values, so its bounds are used as observations.
+- **Taxa**: subspecies, varieties and forms are rolled up to species (`roll_up_to_species()`); the build's own name is kept in `taxon_name_aligned`.
+- **Climate**: WorldClim 2.1 at 2.5′, BIO1 (annual mean temperature, °C) and BIO12 (annual precipitation, mm/yr; modelled on the log scale), cropped to Australia (`load_climate_rasters()`).
+- **Occurrences and medoids** (tracked file inputs, rebuilt deliberately): the cleaned GBIF occurrences (`data-processed/data_gbif_cleaned.parquet`, `build_gbif_climate()`) and the 2D precipitation–temperature medoid per GBIF name (`data-processed/climate_centres.parquet`, `climate_centres.qmd`).
+- **Name crosswalk**: the build's taxon names and the GBIF names are both aligned to one pinned APC release with APCalign and matched on the accepted name (`build_name_crosswalk()`, target `name_crosswalk`); `build_medoid_lookup()` uses it to give each species its medoid.
 
-The data-construction targets are wired in `_targets.R`. The expensive, rarely
-rebuilt artefacts are tracked as **file inputs** (targets watches their hashes
-but does not recompute them on every `tar_make()`); regenerate them deliberately
-with the builders in `R/data/build_sources.R`:
+## Name matching
 
-- **Climate** — WorldClim 2.5′ BIO_1 (annual mean temperature, °C) and BIO_12
-  (annual precipitation, mm/yr; modelled on the log scale), cropped to Australia
-  (`load_climate_rasters()`).
-- **GBIF** (`data_gbif_cleaned.parquet`) — cleaned GBIF/ALA occurrences with
-  names aligned and climate attached (`build_gbif_climate()`).
-- **Climate centres / medoids** (`climate_centres.parquet`) — the 2D
-  precipitation–temperature medoid per species (`process_taxon_medoid()`;
-  produced by `archive/climate_centres.qmd`).
-- **Trait sources** — plant height from AVH (`load_data()` →
-  `data_height_climate.parquet`) and the AusTraits field traits
-  (`build_austraits_climate()` → `data_traits_climate.parquet`).
-- **Crosswalk** (`gbif_avh_name_crosswalk.parquet`) — bridges AVH/AusTraits names
-  to the GBIF medoid names (produced by `archive/Data_height_AVH.qmd`).
+Species per trait in the field records, how many reach a GBIF name, and how many have a medoid:
+
+```{r name-matching}
+name_matching |> knitr::kable(format.args = list(big.mark = ","))
+```
 
 # Unified analysis dataset
 
-`unified` is the single table consumed by `analysis.qmd`. It binds the two trait
-sources into one long table (one row per trait record) — plant height from AVH
-and the remaining traits from AusTraits — attaches each species' climate centre
-(the 2D medoid) and centres the climate predictors on it (`x_c = obs − medoid`;
-Option B). Species without a medoid are dropped (handled by the round-2 means
-workflow). All the work is done by `build_dataset()` in `R/data/`.
+`unified` is the single record-level table the models use: one row per trait record, with each species' climate centre (the medoid) attached and the climate predictors centred on it (`x_c = obs − medoid`; Option B). Species without a medoid are dropped here; they still get an observed mean. All the work is done by `build_dataset()` in `R/data/`.
 
 ```{r unified-summary}
 unified |>
-  count(source, trait_name) |>
-  arrange(desc(n))
+  count(trait_name, dataset_is_avh = dataset_id == "AVH_2026") |>
+  arrange(desc(n)) |>
+  knitr::kable(format.args = list(big.mark = ","))
 ```
 
 ## Medoid reasonableness checks
 
 Two complementary checks (functions in `R/medoid/check_medoid.R`):
 
-1. **Reasonableness vs the occurrence cloud** — for a sample of species, is the
-   medoid central within the species' GBIF occurrence distribution?
-2. **Extrapolation vs the trait records** — does the medoid fall within the span
-   of a species' trait-record climate (since we centre those records on it)?
+1. **Reasonableness vs the occurrence cloud**: for a sample of species, is the medoid central within the species' GBIF occurrence distribution?
+2. **Extrapolation vs the trait records**: does the medoid fall within the span of a species' trait-record climate (since we centre those records on it)?
 
 ```{r medoid-checks}
 # 1. Medoid sits centrally within its own occurrence cloud (computed by the

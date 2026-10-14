@@ -4,10 +4,11 @@ Guidance for working in this repository, for agents and contributors alike (`.cl
 
 ## What this project does
 
-Estimates the **mean of each plant trait at the centre of a species' climate
-distribution** (mean annual precipitation + mean annual temperature), from
-AusTraits + AVH data, using a hierarchical within-group-centred ("Mundlak")
-model.
+Builds species-level and community-level trait means for the Australian flora from AusTraits, with WorldClim climate and GBIF occurrences. Three products (`terminology.md`, `roadmap.md`):
+
+1. **Observed means**, computed directly from the records: the *portal method* (`method = portal_arithmetic`), which reproduces exactly the species means the AusTraits data portal shows for release 7.0.0, and its successor the *geometric method* (`method = geometric`), on the austraits.build development build.
+2. **Modelled means** (`method = tmb` or `brms`): the mean of each trait at the centre of a species' climate distribution (the 2D precipitation–temperature medoid of its occurrences), from a hierarchical within-group-centred ("Mundlak") model.
+3. **Community layers**: the community mean and community variance of the species means present in each spatial unit, woody and non-woody, first on provisional choices (`docs/community-layers-design.md`).
 
 Two framings:
 1. **National species-trait estimates** for Australia, under the ARDC-funded
@@ -16,46 +17,32 @@ Two framings:
    estimates (uncertainty intervals, within/between decomposition, full
    posterior inference via the BRMS backend).
 
-(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report survives as `Data_height_AVH.qmd`, kept because it also builds the crosswalk — see [Producer notebooks](#producer-notebooks).)
+(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report survives as `Data_height_AVH.qmd`, which reads the old AVH caches and no longer feeds the pipeline.)
 
 The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `demo.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
 The roadmap, milestones and decisions log are in **`roadmap.md`** — read it before making structural changes.
 
-**Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average".
+**Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric from the geometric method onward; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average". Exports carry `estimate_type` and `method` and name values `value`, `log_value`, `value_lower`, `value_upper`.
 
 ## Workflow: `targets` pipeline + two reporting notebooks
 
-The analysis is orchestrated by a **`targets` pipeline** (`_targets.R`);
-`targets::tar_make()` builds the DAG and only rebuilds what changed. All logic
-still lives in `R/` functions — `_targets.R` and the notebooks only call them.
+The analysis is orchestrated by a **`targets` pipeline** (`_targets.R`); `targets::tar_make()` builds the DAG and only rebuilds what changed. All logic lives in `R/` functions — `_targets.R` and the notebooks only call them. Tests: `testthat::test_dir("tests/testthat")` from the root.
 
-The two Quarto notebooks are now **reporting layers** (rendered by `tar_quarto`
-targets): they `tar_load()` pipeline results and narrate them, they do not
-compute.
+The two Quarto notebooks are **reporting layers** (rendered by `tar_quarto` targets): they `tar_load()` pipeline results and narrate them, they do not compute.
 
-- `dataset_construction.qmd` — provenance of the data-construction inputs +
-  medoid reasonableness checks (loads `unified`, `medoid_gbif_check`).
-- `analysis.qmd` — the write-up: fitted fixed effects, across-species turnover
-  figures, the round-2 combined product (loads `trait_summary`, `tmb_fits`,
-  `combined`).
+- `dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
+- `analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
+
+Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait TMB fits and their exports (modelled means); the portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means; the woody lookup, combined species means and community layers (variants via `tar_map`) and the model surface; the comparisons; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
-- *Tier B — tracked file inputs.* The heavy, rarely rebuilt artefacts
-  (`data_gbif_cleaned.parquet` ~1.2GB, the 22k-species O(n²) medoids
-  `climate_centres.parquet`, the AVH↔GBIF crosswalk, the AusTraits flatten) are
-  tracked by hash but **not** recomputed by `tar_make()`. Regenerate them
-  deliberately with the builders in `R/data/build_sources.R`
-  (`build_gbif_climate()`, `build_austraits_climate()`), `load_data()` (height),
-  and the producer notebooks (medoids, crosswalk) — see [Producer notebooks](#producer-notebooks).
-- *Tier A — computed.* Everything from `unified` (the linchpin, was
-  `data_traits_climate_unified.parquet`) forward: per-trait TMB fits (one branch
-  per trait via `tar_map`), exports, the combined product, figures, and the two
-  rendered reports. This is the part `targets` rebuilds incrementally.
+- *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `build_gbif_climate()` (`R/data/build_sources.R`) and `climate_centres.qmd` — see [Producer notebooks](#producer-notebooks). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
+- *Tier A — computed.* Everything else: flattening the AusTraits builds, the name crosswalk (APC release pinned as `apc_version`), the unified record table, the fits, the products, the community layers, the figures and the rendered reports.
 
 BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
 `brms_fits`/`brms_diag` targets (height excluded — TMB only).
 
-Supporting files: `demo.qmd` (method illustration — the justification for the within-group-centred approach), `trait_species_means.qmd` (round-2 simple means for low-coverage traits — WIP).
+Supporting files: `demo.qmd` (method illustration — the justification for the within-group-centred approach), `trait_species_means.qmd` (legacy notebook; predates the products and calls functions since retired).
 
 ### Producer notebooks
 
@@ -72,18 +59,24 @@ All logic lives in functions under `R/`, loaded via **`source("R/init.R")`**
 R/
   init.R       # source this once; loads the whole library
   utils/       save_figure.R (png+pdf), parallel_setup.R (multisession)
-  data/        build_dataset.R, build_sources.R (regen seeded inputs),
-               extract_climate.R, assign_state.R
+  data/        build_dataset.R (records, value-type rules, roll-up, medoid
+               lookup, name matching), build_sources.R (crosswalk, AusTraits
+               flatten, GBIF builder, data basis), extract_climate.R,
+               assign_state.R
   medoid/      locate_medoid_2d.R, check_medoid.R
   model/       model_formula.R, fit_trait_climate_model.R (tmb | brms),
                run_trait_models.R
-  process/     process_fit.R, species_centres.R, export_centres.R
-  plot/        plot_fitted.R, plot_trait_centres.R
+  process/     process_fit.R, species_centres.R, export_centres.R (modelled
+               means product), compare_baseline.R, compare_means.R
+  plot/        plot_fitted.R, plot_trait_centres.R, figure_set.R
   means/       observed_means_portal.R, observed_means_geometric.R,
-               species_means_io.R, compare_portal.R
+               reliability.R, species_means_io.R, compare_portal.R
+  community/   woody_lookup.R, community_layers.R, model_surface.R
+  release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,
-               combine_species_panels.R   # RUN-SCRIPTS — execute on source,
+               combine_species_panels.R, create_zenodo_draft.R
+                                           # RUN-SCRIPTS — execute on source,
                                            # NOT loaded by init.R
 ```
 
@@ -135,17 +128,22 @@ Package versions are pinned with `renv` so the pipeline is reproducible.
 
 - **Centring on the medoid (Option B):** `x_c = obs − medoid`, `x_mn = medoid`
   per climate var; consistent across traits.
-- **Per-trait models** now (TMB default, BRMS for the deliverable); joint
-  multivariate / gap-filling deferred to round 2.
+- **Per-trait models** now (TMB default; BRMS postponed to the paper
+  milestone); joint multivariate / gap-filling deferred.
 - **Two backends** behind one interface: `fit_trait_climate_model(backend =
-  "tmb" | "brms")`. Build BRMS validated against TMB on a subset, then scale
-  (`cmdstanr`, non-centered parameterization). Consult the `bayesian-workflow`
-  skill before writing Stan/brms code.
-- **No medoid → dropped** from the climate-response models (routed to round-2
-  means). Medoid quality is gated by a reasonableness check.
-- **AusTraits records:** field, `value_type ∈ {raw, mean, median}`.
-- **`dataset_id`:** one per AVH collector (+ AusTraits study id) — carried for
-  the future methodology-factor extension.
+  "tmb" | "brms")`. Consult the `bayesian-workflow` skill before writing
+  Stan/brms code.
+- **No medoid → dropped** from the climate-response models; such species still
+  get an observed mean.
+- **Records:** field records with `value_type ∈ {raw, mean, median}`, except
+  where `dataset_value_type_rules()` says otherwise: the AVH height dataset
+  `AVH_2026` carries one label bound per specimen and enters by its minimum
+  and maximum records.
+- **Taxa:** subspecies, varieties and forms are rolled up to species
+  (`roll_up_to_species()`), for the modelled and geometric observed means;
+  the portal-method product is not rolled up (one of its kept quirks).
+- **`dataset_id`:** height records are all `AVH_2026` (the per-collector
+  grouping of the old AVH CSV is not carried by the build; see #3).
 
 ## Running BRMS at scale
 
@@ -168,7 +166,7 @@ summarise_trait_diagnostics(fits)   # divergences, max Rhat, min ESS per trait
 ```
 
 - **Height is TMB-only, excluded from BRMS.** In the unified dataset height is
-  ~306k records / ~10,200 species (n>5) → ~30,000 random-effect parameters. NUTS
+  ~332k records / ~10,300 species (n>5) → ~31,000 random-effect parameters. NUTS
   there runs many hours: the per-iteration cost stays flat (~11s) across warmup, so
   mass-matrix adaptation never rescues it, with real divergence/memory risk. Not
   worth the full posterior for one trait — use TMB's asymptotic intervals. (The old
@@ -201,25 +199,21 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 
 ## Data locations (git-ignored; large)
 
-- `data/` — inputs (AVH CSV, GBIF/ALA, WorldClim `data/climate/`, `australia.tif`,
-  AusTraits `data/data-ausplants/`). `data/` and `downloads/` are symlinks into
-  the sibling `Cornsters-australian_annuals` project.
-- `data-processed/` — seeded pipeline inputs (tracked by `targets` as file
-  inputs, not recomputed by `tar_make`): `data_gbif_cleaned.parquet`,
-  `climate_centres.parquet` (medoids), `gbif_avh_name_crosswalk.parquet`, and the
-  source caches `data_height_climate.parquet` + `data_traits_climate.parquet`;
-  plus `brms_fits/` (BRMS fit cache). The unified record-level table is now a
-  `targets` object (`unified`) in the `_targets/` store, not a standalone parquet
-  (`data_traits_climate_unified.parquet` is the legacy/orphaned cache).
-- `outputs/traits/` — per-trait `<trait>_climate_response.csv.gz` (+ `_meta.csv`),
-  `species_trait_means_combined.csv.gz`, `trait_model_summary.csv`, figures.
+- `data/` — a directory of inputs (only `data/data-ausplants` is a symlink, into a shared drive):
+  `austraits/` (the AusTraits 7.0.0 release rds and the development-build export), `portal/` (the portal's deployed species means, for the reproduction check), `climate/` (WorldClim), `australia.tif`; the older AVH height CSVs are no longer read. Raw GBIF downloads live outside the repository; only the cleaned extract is used.
+- `data-processed/` — seeded pipeline inputs tracked by `targets` as file inputs: `data_gbif_cleaned.parquet`, `climate_centres.parquet` (medoids), plus `brms_fits/` (BRMS fit cache). `data_height_climate.parquet`, `data_traits_climate.parquet`, `gbif_avh_name_crosswalk.parquet` and `data_traits_climate_unified.parquet` are no longer read by the pipeline (left in place; don't delete without asking).
+- `outputs/` — `species_means/<version>/` (the products), `community/<version>/` (layers), `traits/` (per-trait modelled means, fixed-effect summary, `data_basis.json`), `comparisons/`, `checks/`, `figures/`, `zenodo/` (deposit packages).
 
 ## Gotchas
 
-- **Taxonomy across releases:** AVH, AusTraits and GBIF were aligned to
-  different APC releases. Joining medoids/occurrences to trait records needs a
-  crosswalk (align all to current APC with `APCalign`); `build_medoid_lookup()`
-  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also the crosswalk build in `Data_height_AVH.qmd` ([Producer notebooks](#producer-notebooks)), and open issue #1 (APC versions out of sync).
+- **Taxonomy across releases:** the AusTraits build and the GBIF extract were
+  aligned to different APC releases. `build_name_crosswalk()` aligns both name
+  sets to one pinned release (`apc_version` in `_targets.R`) and
+  `build_medoid_lookup()` uses it to bridge trait names to GBIF medoids; open
+  issue #1 tracks aligning the GBIF side itself (release candidate).
+- **Global `*.gz` git ignore:** the maintainer's global gitignore ignores
+  `*.gz`, so a tracked `.csv.gz` (such as `docs/baselines/2026-06/species_centres.csv.gz`)
+  needs `git add -f`.
 - **Medoid memory:** the 2D distance matrix in `locate_medoid_2d()` is O(n²);
   `process_taxon_medoid()` subsamples species with >20k occurrences.
 - **`.Rprofile` may set `mc.cores` low** — use `setup_parallel()`.

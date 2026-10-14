@@ -35,8 +35,8 @@ decomposition, and — via the BRMS backend — full posterior inference). See
 
 This notebook is a *reporting layer*: model fitting, exports and figures are
 produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the
-results and narrate them. The dataset (`dataset_construction.qmd`) combines plant
-height from AVH with the remaining traits from AusTraits. Two interchangeable
+results and narrate them. The dataset (`dataset_construction.qmd`) takes every
+trait record, plant height included, from an austraits.build development build. Two interchangeable
 fitting backends are available — `tmb` (fast, used here) and `brms` (full
 posterior, opt-in via `run_brms` in `_targets.R`) — behind one interface
 (`fit_trait_climate_model()`); all logic lives in `R/`.
@@ -129,7 +129,7 @@ One-time `cmdstanr::rebuild_cmdstan()` resolves stale precompiled-header warning
 when threading first turns on.
 
 **Height is excluded from the BRMS backend and kept on TMB.** After unifying the
-sources it carries ~306k records across ~10,200 species, i.e. ~30,000 random-
+sources it carries ~332k records across ~10,300 species, i.e. ~31,000 random-
 effect parameters — a NUTS fit there runs many hours (the per-iteration cost is
 flat across warmup, so the mass-matrix adaptation never rescues it) with real risk
 of memory pressure and divergences. The full posterior is not worth that for one

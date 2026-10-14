@@ -266,15 +266,18 @@ list(
 
   # Reproduction check against the parquet the portal deployed (built 9 Feb
   # 2026; copied from the portal's git-ignored data build). Also asserted by
-  # tests/testthat/test-observed-means-portal.R.
+  # tests/testthat/test-observed-means-portal.R. Optional: without that file
+  # these targets error and the rest of the pipeline carries on.
   tar_target(portal_deployed_file,
              "data/portal/austraits-7.0.0-full/austraits-species-averages.parquet",
-             format = "file"),
+             format = "file", error = "continue"),
   tar_target(portal_reproduction,
              compare_portal_reproduction(observed_means_portal,
-                                         arrow::read_parquet(portal_deployed_file))),
+                                         arrow::read_parquet(portal_deployed_file)),
+             error = "continue"),
   tar_target(portal_reproduction_files,
-             write_portal_reproduction(portal_reproduction), format = "file"),
+             write_portal_reproduction(portal_reproduction), format = "file",
+             error = "continue"),
 
   # Draft Zenodo deposit for species means 7.0.0 (#10): the files, README and
   # deposit metadata. Uploading is a separate, deliberate step
