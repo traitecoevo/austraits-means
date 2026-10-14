@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for working in this repository.
+Guidance for working in this repository, for agents and contributors alike (`.claude/CLAUDE.md` defers here). Family-wide conventions are at the end: [AusTraits family — cross-package context](#austraits-family--cross-package-context).
 
 ## What this project does
 
@@ -16,13 +16,9 @@ Two framings:
    estimates (uncertainty intervals, within/between decomposition, full
    posterior inference via the BRMS backend).
 
-(An earlier height analysis for the NVIS team was a reportable subproject; that
-framing is retired — see `archive/Data_height_AVH.qmd`.)
+(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report was `archive/Data_height_AVH.qmd`, removed from the tree in `eecdbf2` — see [Retired notebooks](#retired-notebooks).)
 
-The method and its statistical motivation (why naive mixed models bias the
-within-species slope when group means correlate with predictors) are in
-`demo.qmd`; the case for full posterior inference is in
-`archive/notes_why_bayesian.md` (rough working notes).
+The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `demo.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
 The full roadmap is in **`refactor_plan.md`** — read it before making structural changes.
 
 **Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average".
@@ -50,7 +46,7 @@ compute.
   tracked by hash but **not** recomputed by `tar_make()`. Regenerate them
   deliberately with the builders in `R/data/build_sources.R`
   (`build_gbif_climate()`, `build_austraits_climate()`), `load_data()` (height),
-  and the archive notebooks (medoids, crosswalk).
+  and the retired notebooks (medoids, crosswalk) — see [Retired notebooks](#retired-notebooks).
 - *Tier A — computed.* Everything from `unified` (the linchpin, was
   `data_traits_climate_unified.parquet`) forward: per-trait TMB fits (one branch
   per trait via `tar_map`), exports, the combined product, figures, and the two
@@ -59,11 +55,16 @@ compute.
 BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
 `brms_fits`/`brms_diag` targets (height excluded — TMB only).
 
-Supporting files: `demo.qmd` (method illustration — the justification for the
-within-group-centred approach), `trait_species_means.qmd` (round-2 simple means
-for low-coverage traits — WIP). Superseded/scratch material lives in `archive/`
-(the retired NVIS height report, the medoid + crosswalk producers
-`climate_centres.qmd` / `Data_height_AVH.qmd`, and `notes_why_bayesian.md`).
+Supporting files: `demo.qmd` (method illustration — the justification for the within-group-centred approach), `trait_species_means.qmd` (round-2 simple means for low-coverage traits — WIP).
+
+### Retired notebooks
+
+`archive/` was removed from the tree in `eecdbf2`. It held the retired NVIS height report, `notes_why_bayesian.md`, and — still needed to regenerate two Tier B inputs — the **medoid producer** `climate_centres.qmd` and the **AVH↔GBIF crosswalk producer** `Data_height_AVH.qmd`. Recover any of them from history:
+
+```sh
+git show daeaa36:archive/climate_centres.qmd > climate_centres.qmd
+git show daeaa36:archive/Data_height_AVH.qmd > Data_height_AVH.qmd
+```
 
 ## R/ library layout
 
@@ -220,11 +221,27 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 - **Taxonomy across releases:** AVH, AusTraits and GBIF were aligned to
   different APC releases. Joining medoids/occurrences to trait records needs a
   crosswalk (align all to current APC with `APCalign`); `build_medoid_lookup()`
-  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also
-  the crosswalk build in `archive/Data_height_AVH.qmd`, and open issue #1 (APC
-  versions out of sync).
+  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also the crosswalk build in the retired `Data_height_AVH.qmd` ([Retired notebooks](#retired-notebooks)), and open issue #1 (APC versions out of sync).
 - **Medoid memory:** the 2D distance matrix in `locate_medoid_2d()` is O(n²);
   `process_taxon_medoid()` subsamples species with >20k occurrences.
 - **`.Rprofile` may set `mc.cores` low** — use `setup_parallel()`.
 - Rerunning the full pipeline is expensive but acceptable; outputs are
   regenerated rather than preserved bit-for-bit across refactors.
+
+---
+
+## AusTraits family — cross-package context
+
+`austraits-means` is part of the **AusTraits family** (a subset of the [`traitecoevo`](https://github.com/traitecoevo) org) — here, species-level trait means (observed and climate-centred modelled) built downstream of the released AusTraits database, with taxonomy aligned by `APCalign`. Family-wide concerns are documented centrally in **[austraits-meta](https://github.com/traitecoevo/austraits-meta)** — don't restate them here, read them there:
+
+- **Start with [`AGENTS.md`](https://github.com/traitecoevo/austraits-meta/blob/main/AGENTS.md)** — pipeline order, who owns what, dependency direction, source-of-truth rules, cross-boundary artifacts, gotchas.
+- **[`dependencies.yml`](https://github.com/traitecoevo/austraits-meta/blob/main/dependencies.yml)** — machine-readable package graph + cross-boundary artifacts.
+- **[`governance/`](https://github.com/traitecoevo/austraits-meta/tree/main/governance)** — label taxonomy, board #9 conventions, release playbooks, triage.
+
+Source-of-truth rules that bite here: trait definitions and units come from **APD**, and taxonomy from **APCalign** — consume them, never redefine them in this repo.
+
+**Filing issues:** the whole family is tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9) (new issues auto-add to it). Follow the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/main/governance/issue-guide.md): pick one work-type label (`bug` / `task` / `epic`); Status and Priority are set on the board, not as labels.
+
+**Commit messages:** every family repo squash-merges, so the **PR title and body become the permanent commit message**. Keep the subject ≤50 characters as typed and the body ≤10 lines; put the working detail — what you tried, benchmarks, test counts, rejected alternatives — in the **first PR comment** instead. Full convention: [`commit-messages.md`](https://github.com/traitecoevo/austraits-meta/blob/main/governance/commit-messages.md).
+
+> austraits-meta is hand-maintained prose — a map, not ground truth. Verify specifics against the actual repos.

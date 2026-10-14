@@ -1,4 +1,4 @@
-# Vesk-austraits-means
+# austraits-means
 
 Estimating **national means of plant traits at the centre of each species'
 climate distribution** for Australia, from AusTraits + AVH herbarium records and
@@ -11,7 +11,7 @@ the **centre of the species' climate distribution** (a 2D precipitation–temper
 medoid), using a hierarchical within-group-centred model. Two interchangeable
 fitting backends are available: `tmb` (fast) and `brms` (full posterior).
 
-See `CLAUDE.md` for conventions, `refactor_plan.md` for the design/roadmap, and
+See `AGENTS.md` for conventions, `refactor_plan.md` for the design/roadmap, and
 `demo.qmd` for the statistical motivation.
 
 ## Workflow
@@ -44,8 +44,9 @@ the 22k-species medoids, the AVH↔GBIF crosswalk, the AusTraits flatten) are
 tracked as **file inputs** — `tar_make()` watches their hashes but does not
 recompute them. Regenerate them deliberately with the builders in
 `R/data/build_sources.R` (`build_gbif_climate()`, `build_austraits_climate()`),
-`load_data()` (height), and the archive notebooks (`climate_centres.qmd` for
-medoids, `Data_height_AVH.qmd` for the crosswalk). Everything from the **unified
+`load_data()` (height), and the retired notebooks (`climate_centres.qmd` for
+medoids, `Data_height_AVH.qmd` for the crosswalk; now in git history only —
+see `AGENTS.md`). Everything from the **unified
 record-level dataset** forward is computed and rebuilt incrementally.
 
 The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
@@ -61,7 +62,7 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── analysis.qmd                 # report: per-trait models -> estimates + figures
 ├── trait_species_means.qmd      # round-2 simple means (low-coverage traits, WIP)
 ├── demo.qmd                     # within-group-centring method illustration
-├── CLAUDE.md  refactor_plan.md
+├── AGENTS.md  terminology.md  refactor_plan.md
 ├── R/
 │   ├── init.R                   # source() this to load the whole library
 │   ├── data/                    # build_dataset, build_sources, extract_climate, assign_state, load_data_height_avh
@@ -76,6 +77,26 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── _targets/                    # targets store (git-ignored; rebuilt by tar_make)
 ├── data/                        # inputs (git-ignored): AVH, GBIF, WorldClim, AusTraits
 ├── data-processed/              # cached intermediates + seeded inputs (git-ignored)
-├── outputs/                     # figures + per-trait response CSVs (git-ignored)
-└── archive/                     # superseded notebooks (incl. medoid + crosswalk producers)
+└── outputs/                     # figures + per-trait response CSVs (git-ignored)
 ```
+
+## Contributing
+
+Issues across the AusTraits family are tracked on one board, [AusTraits #9](https://github.com/orgs/traitecoevo/projects/9), and new issues are auto-added. Please read the [issue & labelling guide](https://github.com/traitecoevo/austraits-meta/blob/main/governance/issue-guide.md) in [`austraits-meta`](https://github.com/traitecoevo/austraits-meta) — the family's cross-package knowledge and governance hub — before filing.
+
+## Acknowledgements
+
+AusTraits is made possible by contributions from our partner organisations — the
+[University of New South Wales](https://www.unsw.edu.au/),
+[Western Sydney University](https://www.westernsydney.edu.au/),
+[Botanic Gardens of Sydney](https://www.botanicgardens.org.au/),
+[the University of Melbourne](https://www.unimelb.edu.au/),
+the [Atlas of Living Australia](https://www.ala.org.au/), and the Australian Government
+[Department of Climate Change, Energy, the Environment and Water](https://www.dcceew.gov.au) — and
+from our [advisory board, data contributors, and past partners](https://austraits.org/team/team-partners.html).
+
+AusTraits is a co-investment partnership with the
+[Australian Research Data Commons](https://ardc.edu.au/) (ARDC) through the Planet Research Data
+Commons ([DOI: 10.3565/nyk4-4r91](https://doi.org/10.3565/nyk4-4r91)). The ARDC is enabled by the
+Australian Government's [National Collaborative Research Infrastructure Strategy](https://www.education.gov.au/ncris)
+(NCRIS).
