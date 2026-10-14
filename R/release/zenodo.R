@@ -117,42 +117,63 @@ prepare_zenodo_package <- function(product_files, doc_file, dir, version,
   list.files(dir, full.names = TRUE)
 }
 
-#' Upload a prepared package as a new draft deposition. Never publishes.
+#' Upload a prepared package as a draft deposition. Never publishes.
+#'
+#' Creates a new draft, or with `id` resumes an existing one: files already in
+#' the draft with a matching MD5 are skipped, so an interrupted upload can be
+#' rerun. Requests are retried on transient failures.
 #'
 #' @param dir a directory from `prepare_zenodo_package()`.
 #' @param token a Zenodo personal access token (scope `deposit:write`).
 #' @param sandbox TRUE for sandbox.zenodo.org (for trying the upload), FALSE
 #'   for zenodo.org.
+#' @param id an existing draft's id to resume, or NULL for a new draft.
 #' @return list(id, url): the draft's id and the page to review it.
 create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
-                                sandbox = TRUE) {
+                                sandbox = TRUE, id = NULL) {
   if (!nzchar(token)) stop("Set ZENODO_TOKEN (a personal access token).")
   base <- if (sandbox) "https://sandbox.zenodo.org/api" else "https://zenodo.org/api"
-  req <- function(path) {
-    httr2::request(base) |>
-      httr2::req_url_path_append(path) |>
-      httr2::req_auth_bearer_token(token)
+  authed <- function(url) {
+    httr2::request(url) |>
+      httr2::req_auth_bearer_token(token) |>
+      httr2::req_retry(max_tries = 5, retry_on_failure = TRUE)
   }
+  api <- function(path) authed(base) |> httr2::req_url_path_append(path)
 
   metadata <- jsonlite::read_json(file.path(dir, "zenodo_metadata.json"))
   files <- setdiff(list.files(dir, full.names = TRUE),
                    file.path(dir, "zenodo_metadata.json"))
 
-  draft <- req("deposit/depositions") |>
-    httr2::req_body_json(list()) |>
+  draft <- if (is.null(id)) {
+    api("deposit/depositions") |>
+      httr2::req_body_raw("{}", type = "application/json") |>
+      httr2::req_perform() |>
+      httr2::resp_body_json()
+  } else {
+    api(paste0("deposit/depositions/", id)) |>
+      httr2::req_perform() |>
+      httr2::resp_body_json()
+  }
+  if (!identical(draft$submitted, FALSE)) stop("Deposition ", draft$id, " is not a draft.")
+
+  present <- authed(draft$links$bucket) |>
     httr2::req_perform() |>
     httr2::resp_body_json()
+  present_md5 <- vapply(present$contents, \(x) sub("^md5:", "", x$checksum %||% ""),
+                        character(1))
+  names(present_md5) <- vapply(present$contents, \(x) x$key, character(1))
 
   for (f in files) {
-    httr2::request(draft$links$bucket) |>
+    if (identical(unname(present_md5[basename(f)]), unname(tools::md5sum(f)))) next
+    message("Uploading ", basename(f))
+    authed(draft$links$bucket) |>
       httr2::req_url_path_append(basename(f)) |>
-      httr2::req_auth_bearer_token(token) |>
       httr2::req_method("PUT") |>
-      httr2::req_body_file(f) |>
+      httr2::req_body_file(f, type = "application/octet-stream") |>
       httr2::req_perform()
   }
 
-  req(paste0("deposit/depositions/", draft$id)) |>
+  api(paste0("deposit/depositions/", draft$id)) |>
     httr2::req_method("PUT") |>
     httr2::req_body_json(list(metadata = metadata)) |>
     httr2::req_perform()
