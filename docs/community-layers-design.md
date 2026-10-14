@@ -62,6 +62,23 @@ Cells with statistics (of about 10,700 cells per group with any species present)
 
 The modelled-only variant is close to the combined one for plant height, where most species present have enough records and a medoid, and much sparser for the other traits, where a modelled mean needs more than 5 field records per species.
 
+## Precedent: Andrew et al. 2025
+
+Andrew, Martín-Forés, Guerin, Coleman, Falster, Wenk, Wright and Gallagher (2025), "Mapping plant functional traits using gap-filled datasets to inform management and modelling", *Global Ecology and Biogeography* 34: e70136 ([doi:10.1111/geb.70136](https://doi.org/10.1111/geb.70136)), mapped the community mean and variability of maximum height, seed mass, leaf area and LMA across Australia from AusTraits species means. It is the closest precedent for these layers, and each of its choices bears on an open decision:
+
+| Choice | Andrew et al. 2025 | This draft | Bears on |
+|---|---|---|---|
+| Presence | binary range maps from species distribution models (Poisson point process models, range bagging or area of occupancy) fitted to vouchered ALA specimens collected since 1950, limited to bioregions where the species occurs | raw GBIF occurrence points | #20: range estimates instead of points would remove the collecting-effort gaps in the interior |
+| Taxa | native angiosperms and gymnosperms only (17,251 species) | all species with a GBIF record, native or naturalised | #20 |
+| Species trait values | AusTraits species means, gap-filled with BHPMF and Rphylopars to 95–100% coverage; gap-filled and raw maps agree (R² 0.8–0.99) except mean LMA (0.37) | combined species means, no gap-filling | coverage of the leaf traits; gap-filling is #40 |
+| Weighting | presence only, every species equal | presence only | #18 |
+| Spatial unit | 10 × 10 km equal-area grid (Lambert Azimuthal Equal Area) | 0.25° grid, EPSG:4326 | #20 |
+| Statistics | mean of log trait values; variability as the log of their SD | community mean and community variance of log species means | naming in `terminology.md` |
+| Groups | all species together | woody and non-woody, plus all | #19 |
+| Validation | community means and variability from 747 AusPlots plot inventories, compared on their trait-climate slopes | not yet | review of these layers; plot data also carry the abundances #18 would need |
+
+Its maps, gap-filled traits and species range maps are published with the paper, so the range maps are a candidate occurrence source for #20 and its maps a direct check on these layers.
+
 ## Known limitations of the draft
 
 - Where coverage is low, the statistic describes the well-studied fraction of the community, which is unlikely to be a random sample of it.
