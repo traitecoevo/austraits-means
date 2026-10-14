@@ -119,9 +119,11 @@ prepare_zenodo_package <- function(product_files, doc_file, dir, version,
 
 #' Upload a prepared package as a draft deposition. Never publishes.
 #'
-#' Creates a new draft, or with `id` resumes an existing one: files already in
-#' the draft with a matching MD5 are skipped, so an interrupted upload can be
-#' rerun. Requests are retried on transient failures.
+#' Creates a new draft, or with `id` resumes an existing one. The metadata is
+#' set first and files go up smallest first, so an interrupted upload leaves a
+#' draft that lacks only the largest files; files already in the draft with a
+#' matching MD5 are skipped, so the upload can simply be rerun. Requests are
+#' retried on transient failures.
 #'
 #' @param dir a directory from `prepare_zenodo_package()`.
 #' @param token a Zenodo personal access token (scope `deposit:write`).
@@ -143,6 +145,7 @@ create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
   metadata <- jsonlite::read_json(file.path(dir, "zenodo_metadata.json"))
   files <- setdiff(list.files(dir, full.names = TRUE),
                    file.path(dir, "zenodo_metadata.json"))
+  files <- files[order(file.size(files))]
 
   draft <- if (is.null(id)) {
     api("deposit/depositions") |>
@@ -156,6 +159,11 @@ create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
   }
   if (!identical(draft$submitted, FALSE)) stop("Deposition ", draft$id, " is not a draft.")
 
+  api(paste0("deposit/depositions/", draft$id)) |>
+    httr2::req_method("PUT") |>
+    httr2::req_body_json(list(metadata = metadata)) |>
+    httr2::req_perform()
+
   present <- authed(draft$links$bucket) |>
     httr2::req_perform() |>
     httr2::resp_body_json()
@@ -165,18 +173,14 @@ create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
 
   for (f in files) {
     if (identical(unname(present_md5[basename(f)]), unname(tools::md5sum(f)))) next
-    message("Uploading ", basename(f))
+    message(format(Sys.time(), "%H:%M:%S"), " uploading ", basename(f), " (",
+            round(file.size(f) / 1e6, 1), " MB)")
     authed(draft$links$bucket) |>
       httr2::req_url_path_append(basename(f)) |>
       httr2::req_method("PUT") |>
       httr2::req_body_file(f, type = "application/octet-stream") |>
       httr2::req_perform()
   }
-
-  api(paste0("deposit/depositions/", draft$id)) |>
-    httr2::req_method("PUT") |>
-    httr2::req_body_json(list(metadata = metadata)) |>
-    httr2::req_perform()
 
   list(id = draft$id, url = draft$links$html)
 }
