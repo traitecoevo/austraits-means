@@ -23,8 +23,9 @@ The method and its statistical motivation (why naive mixed models bias the
 within-species slope when group means correlate with predictors) are in
 `demo.qmd`; the case for full posterior inference is in
 `archive/notes_why_bayesian.md` (rough working notes).
-The full roadmap is in **`refactor_plan.md`** — read it before making structural
-changes.
+The full roadmap is in **`refactor_plan.md`** — read it before making structural changes.
+
+**Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average".
 
 ## Workflow: `targets` pipeline + two reporting notebooks
 

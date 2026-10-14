@@ -16,6 +16,10 @@ data/AVH_height_records_20260311.csv
 *_cache/
 data/AVH_final_fewer_columns.csv
 
+# private working notes and local scratch (contract paths, drive links) — never publish
+/update/
+/x_archive/
+
 # targets store (rebuilt by tar_make)
 /_targets/
 
