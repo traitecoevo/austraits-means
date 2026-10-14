@@ -48,7 +48,7 @@ source("R/init.R")
 
 tar_load(trait_summary)   # fitted fixed effects per trait
 tar_load(tmb_fits)        # list of per-trait fits (with $centres)
-tar_load(combined)        # integrated best-estimate product
+tar_load(species_means_combined)  # modelled where available, else observed
 tmb_fits <- purrr::compact(tmb_fits)
 out_dir <- "outputs/traits"
 ```
@@ -257,42 +257,32 @@ for (tr in names(tmb_fits)) {
 }
 ```
 
-## Round 2: simple means + combined product
+## Species means products
 
-The climate-centre model (round 1) covers species with enough records *and* a
-climate medoid. For the remainder — low-coverage species, and species dropped for
-having no medoid — we fall back to a simple per-species mean (the geometric mean
-of all available records, since traits are log-normal). These run on the full,
-un-medoid-filtered record pool, so every species with any data gets an estimate.
+Each species × trait has an observed mean (geometric method) wherever it has records; the modelled mean adds the model's estimate at the climate centre for species with more than 5 field records and a medoid. The combined product (`species_means_combined` target) gives one value per species × trait for the modelled traits: the modelled mean where there is one, otherwise the observed mean, with `estimate_type` and `method` recording which.
 
-The combined product (`combined` target → `species_trait_means_combined.csv.gz`)
-gives one **best estimate** per species × trait: the climate-centre estimate where
-available, otherwise the simple mean, with a `method` flag recording which was
-used.
-
-### Coverage by method
-
-How many species per trait are estimated by the climate-centre model vs the
-simple-mean fallback.
+### Coverage by estimate type
 
 ```{r coverage}
-combined |>
-  count(trait_name, method) |>
-  tidyr::pivot_wider(names_from = method, values_from = n, values_fill = 0) |>
-  dplyr::mutate(total = climate_centre + simple_mean) |>
-  knitr::kable()
+species_means_combined |>
+  count(trait_name, estimate_type) |>
+  tidyr::pivot_wider(names_from = estimate_type, values_from = n, values_fill = 0) |>
+  dplyr::mutate(total = modelled_mean + observed_mean) |>
+  knitr::kable(format.args = list(big.mark = ","))
 ```
 
 ## Exported files
 
+In `outputs/species_means/<build version>/`, each as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`, with `estimate_type` and `method` on every row (`terminology.md`):
+
+- `modelled_means_tmb`: the modelled means of every trait, with their 94% interval, the climate centre and the species' random effects (`modelled_means_files` target).
+- `observed_means_geometric`: the geometric observed means (`observed_means_geometric_files`).
+- `species_means_combined`: one value per species × trait for the modelled traits, modelled where available, otherwise observed (`species_means_combined_files`).
+
+The portal-method observed means for AusTraits 7.0.0 are in `outputs/species_means/7.0.0/` (`docs/observed-means-portal-method.md`).
+
 Per trait, in `outputs/traits/`:
 
-- `<trait>_climate_response.csv.gz` — round-1 climate-centre estimates: one row
-  per species with the predicted trait value at the climate centre (with
-  interval), the centre climate, sample size, and species random effects.
-- `<trait>_climate_response_meta.csv` — a column dictionary.
-- `trait_model_summary.csv` — fitted fixed effects for every trait
-  (`trait_summary_file` target).
-- `species_trait_means_combined.csv.gz` — the integrated best-estimate product
-  across all traits: climate-centre estimate where available, else the simple
-  mean, with a `method` flag (`combined_file` target).
+- `<trait>_climate_response.csv.gz`: that trait's modelled means in the same schema, with a `_meta.csv` column dictionary.
+- `trait_model_summary.csv`: fitted fixed effects for every trait (`trait_summary_file` target).
+- `data_basis.json`: the build, APC release, GBIF extract and medoid build behind the fits.

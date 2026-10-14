@@ -72,7 +72,7 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 │   ├── process/                 # process_fit, species_centres, export_centres
 │   ├── plot/                    # plot_fitted, plot_trait_centres
 │   ├── panels/                  # species diagnostic panels
-│   ├── means/                   # simple_means (round-2 fallback) + observed_means_portal
+│   ├── means/                   # observed means: portal and geometric methods; product writers
 │   ├── utils/                   # save_figure (png+pdf), parallel_setup (multisession)
 │   └── scripts/                 # run-scripts (NOT sourced by init.R)
 ├── _targets/                    # targets store (git-ignored; rebuilt by tar_make)

@@ -227,18 +227,16 @@ list(
   tar_target(baseline_comparison_files,
              write_baseline_comparison(baseline_comparison), format = "file"),
 
-  # ---- Round 2: simple means + combined best-estimate product -------------
-  tar_target(simple_means, estimate_simple_means(records_all)),
-  tar_target(combined, {
-    tmb_fits  # dependency: ensures per-trait centre CSVs are exported first
-    centre_estimates <- load_centre_estimates(
-      sort(unique(simple_means$trait_name)), dir = out_dir)
-    combine_estimates(simple_means, centre_estimates)
-  }),
-  tar_target(combined_file, {
-    p <- file.path(out_dir, "species_trait_means_combined.csv.gz")
-    readr::write_csv(combined, p); p
-  }, format = "file"),
+  # ---- Modelled means product (all traits, product schema; #17) ----------
+  tar_target(modelled_means, modelled_means_table(tmb_fits)),
+  tar_target(modelled_means_files,
+             write_species_means(
+               modelled_means, modelled_means_dictionary(),
+               dir = file.path("outputs/species_means",
+                               austraits_dev_info$austraits_version),
+               stem = "modelled_means_tmb",
+               metadata = modelled_means_metadata(data_basis_info)),
+             format = "file"),
 
   # ===== Observed means, portal method: species means 7.0.0 ================
   # Reproduces the AusTraits data portal's species averages for release 7.0.0
@@ -323,6 +321,14 @@ list(
              file.path("outputs/community", austraits_dev_info$austraits_version)),
   tar_target(species_means_combined,
              combine_species_means(tmb_fits, observed_means_geometric)),
+  tar_target(species_means_combined_files,
+             write_species_means(
+               species_means_combined, species_means_combined_dictionary(),
+               dir = file.path("outputs/species_means",
+                               austraits_dev_info$austraits_version),
+               stem = "species_means_combined",
+               metadata = species_means_combined_metadata(data_basis_info)),
+             format = "file"),
   tar_target(gbif_presence,
              gbif_presence_cells(gbif_cleaned_file,
                                  community_layer_settings()$resolution)),

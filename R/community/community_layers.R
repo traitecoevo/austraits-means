@@ -27,30 +27,22 @@ community_layer_settings <- function() {
 #'
 #' @param fits list of `trait_climate_fit` (the `tmb_fits` target).
 #' @param observed_means geometric observed means.
-#' @return one row per taxon × trait: value, log_value, unit, estimate_type,
-#'   method.
+#' @return one row per taxon × trait of the modelled traits, in the product
+#'   schema: estimate_type, method, value (with an interval for modelled
+#'   means), log_value, n_records.
 combine_species_means <- function(fits, observed_means) {
-  fits <- purrr::compact(fits)
-  modelled <- purrr::map_dfr(fits, \(f) f$centres |>
-    dplyr::transmute(taxon_name, trait_name = f$trait, value = estimate,
-                     log_value = log_estimate, estimate_type = "modelled_mean",
-                     method = f$backend))
-  traits <- unique(modelled$trait_name)
+  modelled <- modelled_means_table(fits) |>
+    dplyr::select(taxon_name, trait_name, unit, estimate_type, method, value,
+                  value_lower, value_upper, log_value, n_records)
   observed <- observed_means |>
-    dplyr::filter(type == "numerical", trait_name %in% traits) |>
-    dplyr::transmute(taxon_name, trait_name, value, log_value,
-                     estimate_type = "observed_mean", method = "geometric")
-  units <- observed_means |>
-    dplyr::filter(type == "numerical", trait_name %in% traits) |>
-    dplyr::distinct(trait_name, unit)
-  stopifnot(!anyDuplicated(units$trait_name))
+    dplyr::filter(type == "numerical", trait_name %in% unique(modelled$trait_name)) |>
+    dplyr::transmute(taxon_name, trait_name, unit, estimate_type = "observed_mean",
+                     method = "geometric", value, log_value, n_records)
 
   dplyr::bind_rows(
     modelled,
     dplyr::anti_join(observed, modelled, by = c("taxon_name", "trait_name"))
   ) |>
-    dplyr::left_join(units, by = "trait_name") |>
-    dplyr::relocate(unit, estimate_type, method, .after = trait_name) |>
     dplyr::arrange(trait_name, taxon_name)
 }
 

@@ -21,7 +21,8 @@ run_one_trait <- function(data, trait, backend = "tmb", n_min = 5,
   fit <- fit_trait_climate_model(sub, trait = trait, backend = backend,
                                  n_min = n_min, file = file, ...)
   fit$centres <- species_centres(fit)
-  export_species_centres(fit$centres, trait, out_dir)
+  export_species_centres(fit$centres, trait, out_dir,
+                         unit = sub$unit[1], backend = backend)
 
   if (backend == "brms") {
     fit$diagnostics <- brms_diagnostics(fit$fit)

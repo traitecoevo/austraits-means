@@ -84,11 +84,16 @@ Rules:
 1. **Weighting. This decides the name.** If species are counted equally (presence only, as occurrence data such as AVH or GBIF allow), the terms above stand. If species are weighted by abundance or cover (for example from plot surveys), the field-standard terms apply instead: **community-weighted mean (CWM)** and **community-weighted variance (CWV)**. Do not call unweighted statistics CWM, because readers will assume abundance weighting.
 2. **Woody / non-woody assignment.** Decide where intermediate AusTraits woodiness categories go (for example semi-woody, or woody only at the base), and how to handle species with conflicting or missing woodiness. Record the mapping here once decided.
 
-## Code still to rename
+## Column names in the exports
 
-The current outputs predate these terms:
+Every species means export carries `estimate_type` and `method` (values in "Product versions and methods"), and names its values the same way:
 
-- `combine_estimates()` writes a bare `estimate` column plus a `method` column with values `climate_centre` and `simple_mean`. The round-1 exports call it `estimate`, and the round-2 column is `geom_mean`.
-- These should become `estimate_type` with values `modelled_mean` and `observed_mean`, matching the table above, plus a `method` column with the values in "Product versions and methods".
+| Column | Meaning |
+|---|---|
+| `value` | the species mean (observed or modelled, as `estimate_type` says) in trait units |
+| `log_value` | its natural log |
+| `value_lower`, `value_upper` | the 94% interval of a modelled mean (and `log_value_lower`, `log_value_upper` on the log scale) |
+| `arithmetic_mean` | the arithmetic mean, where an observed product gives it alongside the geometric `value` |
+| `n_records` | records behind the value |
 
-Not yet done.
+A bare `estimate`, `geom_mean`, or the older `method` values `climate_centre` and `simple_mean` are not used (renamed in #17). The portal-method product keeps the portal's own column names (`value_mean`, `value_geom_mean`, ...), because it reproduces the deployed portal output; its rows carry `estimate_type` and `method` like the others.
