@@ -66,7 +66,7 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── AGENTS.md  terminology.md  roadmap.md
 ├── R/
 │   ├── init.R                   # source() this to load the whole library
-│   ├── data/                    # build_dataset, build_sources, extract_climate, assign_state, load_data_height_avh
+│   ├── data/                    # build_dataset, build_sources, extract_climate, assign_state
 │   ├── medoid/                  # locate_medoid_2d, check_medoid
 │   ├── model/                   # model_formula, fit_trait_climate_model, run_trait_models
 │   ├── process/                 # process_fit, species_centres, export_centres

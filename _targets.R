@@ -10,8 +10,8 @@
 #
 # TIERING ----------------------------------------------------------------------
 # The heavy upstream artefacts (raw GBIF cleaning ~1.2GB, the 22k-species O(n^2)
-# medoid build, the AVH<->GBIF crosswalk, the AusTraits flatten) are expensive
-# and rarely rebuilt, and their producers live outside the two notebooks
+# medoid build, the name crosswalk) are expensive and rarely rebuilt, and
+# their producers live outside the two notebooks
 # (producer notebooks climate_centres.qmd, Data_height_AVH.qmd at the root; builders in
 # R/data/build_sources.R). They are tracked here as *file inputs* — targets
 # watches their hashes and invalidates downstream when they change, but never
@@ -51,8 +51,13 @@ tar_option_set(
 # ---- configuration ---------------------------------------------------------
 out_dir <- "outputs/traits"
 
+# austraits.build development export the trait records come from (height
+# included, via the AVH_2026 dataset). How it was built:
+# data-raw/austraits/README.md.
+austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-cd26bb2.rds"
+
 # Static trait list for per-trait branching (must be known at pipeline-build
-# time). Matches the sources in build_dataset(): height (AVH) + AusTraits.
+# time); also the traits read from the austraits.build export.
 trait_names <- c(
   "plant_height", "leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass",
   "leaf_N_per_area", "leaf_P_per_area", "leaf_P_per_dry_mass",
@@ -107,24 +112,32 @@ list(
   tar_target(crosswalk_file,
              "data-processed/gbif_avh_name_crosswalk.parquet",
              format = "file"),
-  tar_target(height_climate_file,
-             "data-processed/data_height_climate.parquet", format = "file"),
-  tar_target(austraits_climate_file,
-             "data-processed/data_traits_climate.parquet", format = "file"),
+  tar_target(austraits_dev_file, austraits_dev_rds, format = "file"),
 
   # ===== Tier A: computed modelling pipeline ================================
+  # Version string and commit of the austraits.build export, carried into the
+  # product metadata.
+  tar_target(austraits_dev_info, austraits_build_info(austraits_dev_file)),
+
+  # Field records of the analysis traits with climate attached, then the
+  # value-type rule (per-dataset exceptions: dataset_value_type_rules()).
+  tar_target(austraits_climate,
+             build_austraits_climate(
+               austraits_dev_file, traits = trait_names,
+               rasters = load_climate_rasters(
+                 vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
+                 climate_dir = dirname(climate_bio1_tif),
+                 australia_tif = climate_australia_tif))),
+  tar_target(records_all, load_austraits_records(austraits_climate)),
+
   # Per-species medoid lookup (crosswalk-bridged), rebuilt if either input
   # parquet changes.
   tar_target(medoid_lookup,
              build_medoid_lookup(medoids = medoids_file,
                                  crosswalk = crosswalk_file)),
 
-  # The linchpin: unified record-level table (AVH height + AusTraits), medoid-
-  # centred. Was data-processed/data_traits_climate_unified.parquet.
-  tar_target(unified,
-             build_dataset(height_climate = height_climate_file,
-                           austraits_climate = austraits_climate_file,
-                           medoid_lookup = medoid_lookup)),
+  # The linchpin: unified record-level table, medoid-centred.
+  tar_target(unified, build_dataset(records_all, medoid_lookup)),
 
   # Medoid reasonableness check (vs the GBIF occurrence cloud). Reads the large
   # GBIF parquet, so depends on gbif_cleaned_file.
@@ -155,9 +168,6 @@ list(
   tar_combine(tmb_fits, mapped[["tmb_fit"]], command = list(!!!.x)),
 
   # ---- Round 2: simple means + combined best-estimate product -------------
-  tar_target(records_all,
-             dplyr::bind_rows(load_height_records(height_climate_file),
-                              load_austraits_records(austraits_climate_file))),
   tar_target(simple_means, estimate_simple_means(records_all)),
   tar_target(combined, {
     tmb_fits  # dependency: ensures per-trait centre CSVs are exported first

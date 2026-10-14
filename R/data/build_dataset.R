@@ -1,8 +1,7 @@
 # Build the analysis dataset: trait records + climate + species climate centre,
-# with within-group centring on the medoid (Option B; see the decisions log in roadmap.md).
-#
-# Phase 1 covers height (AVH). The same machinery generalizes to the unified
-# multi-trait table in Phase 2 (height becomes one trait among many).
+# with within-group centring on the medoid (Option B; see the decisions log in
+# roadmap.md). All trait records, height included, come from one
+# austraits.build export.
 
 #' Per-species climate centre (medoid), keyed by trait-data `taxon_name`.
 #'
@@ -82,7 +81,7 @@ add_medoid_centring <- function(data, medoid_lookup = build_medoid_lookup()) {
   out
 }
 
-# Common record-level schema shared by all sources.
+# Common record-level schema of the unified table.
 .unified_cols <- c(
   "source", "dataset_id", "taxon_name", "original_name", "family", "genus",
   "trait_name", "value", "log_value", "unit", "value_type",
@@ -90,79 +89,73 @@ add_medoid_centring <- function(data, medoid_lookup = build_medoid_lookup()) {
   "annual_precipitation", "average_temperature", "log_annual_precipitation"
 )
 
-#' Load AVH height records (uncentred), in the unified schema.
+#' Per-dataset value-type rules (roadmap.md, Invariants).
 #'
-#' Height is AVH-only (`trait_name = "plant_height"`); `dataset_id` is one per
-#' AVH collector (placeholder: institution code, refined in round 3).
-load_height_records <- function(
-    height_climate = "data-processed/data_height_climate.parquet") {
-  arrow::read_parquet(height_climate) |>
-    dplyr::filter(!is.na(value), value > 0) |>
-    dplyr::mutate(
-      source = "AVH",
-      trait_name = "plant_height",
-      unit = "m",
-      log_value = log(value),
-      dataset_id = paste0("AVH:", dplyr::coalesce(institutionCode, "unknown"))
-    ) |>
-    assign_state_fast() |>
-    dplyr::select(dplyr::any_of(.unified_cols))
+#' A dataset listed here enters the means with the value types given here
+#' instead of the default raw/mean/median.
+#'
+#' `AVH_2026` (herbarium specimen heights in austraits.build) carries one bound
+#' per specimen, a minimum or a maximum read from the label, and no raw values,
+#' so the default filter would drop all of it. Each bound is used as one
+#' observation, as the earlier AVH CSV loader did.
+#'
+#' @return tibble(dataset_id, value_type), one row per allowed combination.
+dataset_value_type_rules <- function() {
+  tibble::tribble(
+    ~dataset_id, ~value_type,
+    "AVH_2026",  "minimum",
+    "AVH_2026",  "maximum"
+  )
 }
 
-#' Load AusTraits multi-trait field records (uncentred), in the unified schema.
+#' Field trait records (uncentred), in the unified schema.
 #'
-#' @param value_types kept value types (field raw/mean/median; flora min/max go
-#'   to the round-2 means path).
+#' Keeps field records with a positive value and climate, and applies the
+#' value-type rule: datasets in `rules` keep their listed value types, all
+#' others keep `value_types`. Height comes from `AVH_2026` like any other
+#' dataset, so `dataset_id` is `AVH_2026` for all its records (the earlier
+#' per-collector grouping is not carried by the austraits.build dataset).
+#'
+#' @param records output of `build_austraits_climate()`, or a parquet path.
+#' @param value_types default value types kept.
+#' @param rules per-dataset exceptions (`dataset_value_type_rules()`).
 load_austraits_records <- function(
-    austraits_climate = "data-processed/data_traits_climate.parquet",
-    value_types = c("raw", "mean", "median")) {
-  arrow::read_parquet(austraits_climate) |>
+    records,
+    value_types = c("raw", "mean", "median"),
+    rules = dataset_value_type_rules()) {
+  if (is.character(records)) records <- arrow::read_parquet(records)
+  ruled <- paste(rules$dataset_id, rules$value_type)
+
+  records |>
     dplyr::filter(
       basis_of_record == "field",
-      value_type %in% value_types,
+      dplyr::if_else(dataset_id %in% rules$dataset_id,
+                     paste(dataset_id, value_type) %in% ruled,
+                     value_type %in% value_types),
       !is.na(value), value > 0,
       !is.na(annual_precipitation), !is.na(average_temperature)
     ) |>
     dplyr::mutate(
       source = "AusTraits",
       log_value = log(value),
-      log_annual_precipitation = log(annual_precipitation)
+      log_annual_precipitation = log(annual_precipitation),
+      year = suppressWarnings(as.integer(substr(collection_date, 1, 4)))
     ) |>
     assign_state_fast() |>
     dplyr::select(dplyr::any_of(.unified_cols))
 }
 
-#' Build the unified analysis dataset (AVH height + AusTraits traits).
+#' Build the unified analysis dataset.
 #'
-#' Binds the sources into one long table (one row per trait record), attaches
-#' the medoid centre with Option-B centring, and drops species with no medoid.
-#' Climate centring is per species (shared across traits).
+#' Attaches the medoid centre to the trait records with Option-B centring and
+#' drops species with no medoid. Climate centring is per species (shared
+#' across traits).
 #'
-#' @param traits optional character vector to restrict to; NULL keeps all.
-#' @param sources which sources to include.
-#' @param height_climate path to the cached AVH height+climate parquet
-#'   (forwarded to `load_height_records()`).
-#' @param austraits_climate path to the cached AusTraits trait+climate parquet
-#'   (forwarded to `load_austraits_records()`).
+#' @param records output of `load_austraits_records()`.
 #' @param medoid_lookup output of `build_medoid_lookup()`.
-build_dataset <- function(traits = NULL,
-                          sources = c("AVH", "AusTraits"),
-                          height_climate = "data-processed/data_height_climate.parquet",
-                          austraits_climate = "data-processed/data_traits_climate.parquet",
-                          medoid_lookup = build_medoid_lookup()) {
-  sources <- match.arg(sources, several.ok = TRUE)
-  parts <- list()
-  if ("AVH" %in% sources) parts$avh <- load_height_records(height_climate)
-  if ("AusTraits" %in% sources) parts$austraits <- load_austraits_records(austraits_climate)
-
-  data <- dplyr::bind_rows(parts)
-  if (!is.null(traits)) data <- dplyr::filter(data, trait_name %in% traits)
-
-  add_medoid_centring(data, medoid_lookup)
-}
-
-#' Convenience wrapper: the height-only dataset.
-build_dataset_height <- function(medoid_lookup = build_medoid_lookup()) {
-  build_dataset(traits = "plant_height", sources = "AVH",
-                medoid_lookup = medoid_lookup)
+#' @param traits optional character vector to restrict to; NULL keeps all.
+build_dataset <- function(records, medoid_lookup = build_medoid_lookup(),
+                          traits = NULL) {
+  if (!is.null(traits)) records <- dplyr::filter(records, trait_name %in% traits)
+  add_medoid_centring(records, medoid_lookup)
 }

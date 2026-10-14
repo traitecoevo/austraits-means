@@ -3,13 +3,13 @@
 # can't handle — too few records to fit, or no medoid (dropped from the model).
 #
 # These run on the *uncentred, un-medoid-filtered* record pool
-# (load_height_records() + load_austraits_records()), so coverage is maximal.
+# (load_austraits_records()), so coverage is maximal.
 # Traits are log-normal, so the central estimate is the geometric mean.
 
 #' Per-species, per-trait simple summary (geometric mean + spread).
 #'
 #' @param records record-level data with `taxon_name`, `trait_name`, `value`,
-#'   `log_value` (e.g. `bind_rows(load_height_records(), load_austraits_records())`).
+#'   `log_value` (e.g. `load_austraits_records()`).
 #' @return tibble, one row per species x trait.
 estimate_simple_means <- function(records) {
   records |>

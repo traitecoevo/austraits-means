@@ -76,7 +76,7 @@ R/
   init.R       # source this once; loads the whole library
   utils/       save_figure.R (png+pdf), parallel_setup.R (multisession)
   data/        build_dataset.R, build_sources.R (regen seeded inputs),
-               extract_climate.R, assign_state.R, load_data_height_avh.R
+               extract_climate.R, assign_state.R
   medoid/      locate_medoid_2d.R, check_medoid.R
   model/       model_formula.R, fit_trait_climate_model.R (tmb | brms),
                run_trait_models.R

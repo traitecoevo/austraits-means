@@ -1,18 +1,18 @@
-# Builders for the heavy upstream source artefacts. These are expensive and
-# rarely rebuilt (GBIF cleaning ~1.2GB; AusTraits flatten is the slow step), so
-# in the targets pipeline (`_targets.R`) the resulting parquets are tracked as
-# *file inputs* rather than recomputed on every `tar_make()`. Use these builders
-# to (re)generate the cached inputs, then commit the refreshed parquet.
+# Builders for the upstream source artefacts.
 #
-# Regeneration (from the project root):
+# The GBIF occurrences (~1.2GB) are expensive and rarely rebuilt, so in the
+# targets pipeline (`_targets.R`) the resulting parquet is tracked as a *file
+# input* rather than recomputed on every `tar_make()`. Regenerate it from the
+# project root with
 #   source("R/init.R")
 #   arrow::write_parquet(build_gbif_climate(),
 #                        "data-processed/data_gbif_cleaned.parquet")
-#   arrow::write_parquet(build_austraits_climate(),
-#                        "data-processed/data_traits_climate.parquet")
-# Height is built by `load_data()` (R/data/load_data_height_avh.R); medoids by
-# `climate_centres.qmd` (process_taxon_medoid over all taxa); the
-# AVH<->GBIF crosswalk by `Data_height_AVH.qmd` (see AGENTS.md).
+# Medoids are built by `climate_centres.qmd` (process_taxon_medoid over all
+# taxa); the name crosswalk by `Data_height_AVH.qmd` (see AGENTS.md).
+#
+# Trait records, height included, come from an austraits.build export
+# (`data-raw/austraits/README.md`); `build_austraits_climate()` runs inside the
+# pipeline, because flattening a build takes seconds.
 
 #' Clean the raw GBIF/ALA occurrences, align names, attach climate, centre.
 #'
@@ -72,17 +72,32 @@ build_gbif_climate <- function(
     dplyr::relocate(dplyr::contains("_centered"), .after = "average_temperature")
 }
 
+#' Version string and commit of an austraits.build export.
+#'
+#' @param austraits_rds an rds written by austraits.build (`build.R`).
+#' @return list(austraits_version, austraits_build_commit).
+austraits_build_info <- function(austraits_rds) {
+  info <- readRDS(austraits_rds)$build_info
+  list(austraits_version = info$version,
+       austraits_build_commit = info$git_SHA)
+}
+
 #' Flatten AusTraits and attach climate for the analysis traits.
 #'
-#' Lifted from the AusTraits chunk of the original `dataset_construction.qmd`.
-#' The `flatten_database()` step is the expensive one, hence the file cache.
+#' Reads an austraits.build export (a development build since #12; it carries
+#' the AVH height dataset `AVH_2026`), keeps field records of the analysis
+#' traits that have coordinates, and attaches WorldClim climate. Value-type
+#' rules are applied later, in `load_austraits_records()`.
 #'
+#' @param austraits_rds the austraits.build export.
+#' @param traits trait names to keep.
+#' @param rasters climate rasters (`load_climate_rasters()`).
 #' @return tibble of field, georeferenced trait records with climate attached.
 build_austraits_climate <- function(
-    austraits_rds = "data/data-ausplants/austraits/austraits-7.0.0.rds",
-    traits = c("leaf_mass_per_area", "leaf_area", "leaf_N_per_dry_mass",
-               "leaf_N_per_area", "leaf_P_per_area", "leaf_P_per_dry_mass",
-               "seed_dry_mass", "wood_density"),
+    austraits_rds,
+    traits = c("plant_height", "leaf_mass_per_area", "leaf_area",
+               "leaf_N_per_dry_mass", "leaf_N_per_area", "leaf_P_per_area",
+               "leaf_P_per_dry_mass", "seed_dry_mass", "wood_density"),
     rasters = load_climate_rasters()) {
 
   austraits <- readRDS(austraits_rds) |>
@@ -93,6 +108,12 @@ build_austraits_climate <- function(
       trait_name %in% traits,
       basis_of_record == "field",
       !is.na(`latitude (deg)`), !is.na(`longitude (deg)`)
+    ) |>
+    dplyr::select(
+      dataset_id, taxon_name, observation_id, trait_name, value, unit,
+      value_type, basis_of_record, life_stage, location_id, collection_date,
+      original_name, taxon_rank, genus, family,
+      `latitude (deg)`, `longitude (deg)`
     ) |>
     dplyr::mutate(dplyr::across(
       c("latitude (deg)", "longitude (deg)", value),
