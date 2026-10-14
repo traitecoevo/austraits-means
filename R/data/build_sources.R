@@ -11,8 +11,8 @@
 #   arrow::write_parquet(build_austraits_climate(),
 #                        "data-processed/data_traits_climate.parquet")
 # Height is built by `load_data()` (R/data/load_data_height_avh.R); medoids by
-# retired `climate_centres.qmd` (process_taxon_medoid over all taxa); the
-# AVH<->GBIF crosswalk by retired `Data_height_AVH.qmd` (git history; see AGENTS.md).
+# `climate_centres.qmd` (process_taxon_medoid over all taxa); the
+# AVH<->GBIF crosswalk by `Data_height_AVH.qmd` (see AGENTS.md).
 
 #' Clean the raw GBIF/ALA occurrences, align names, attach climate, centre.
 #'

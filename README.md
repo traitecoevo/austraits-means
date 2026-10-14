@@ -44,9 +44,8 @@ the 22k-species medoids, the AVH↔GBIF crosswalk, the AusTraits flatten) are
 tracked as **file inputs** — `tar_make()` watches their hashes but does not
 recompute them. Regenerate them deliberately with the builders in
 `R/data/build_sources.R` (`build_gbif_climate()`, `build_austraits_climate()`),
-`load_data()` (height), and the retired notebooks (`climate_centres.qmd` for
-medoids, `Data_height_AVH.qmd` for the crosswalk; now in git history only —
-see `AGENTS.md`). Everything from the **unified
+`load_data()` (height), and the producer notebooks at the root
+(`climate_centres.qmd` for medoids, `Data_height_AVH.qmd` for the crosswalk). Everything from the **unified
 record-level dataset** forward is computed and rebuilt incrementally.
 
 The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
@@ -62,6 +61,8 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── analysis.qmd                 # report: per-trait models -> estimates + figures
 ├── trait_species_means.qmd      # round-2 simple means (low-coverage traits, WIP)
 ├── demo.qmd                     # within-group-centring method illustration
+├── climate_centres.qmd          # producer: species climate medoids (run deliberately)
+├── Data_height_AVH.qmd          # producer: AVH<->GBIF crosswalk (+ retired NVIS height report)
 ├── AGENTS.md  terminology.md  refactor_plan.md
 ├── R/
 │   ├── init.R                   # source() this to load the whole library
@@ -79,6 +80,10 @@ The full posterior (`brms`) backend is opt-in: set `run_brms <- TRUE` in
 ├── data-processed/              # cached intermediates + seeded inputs (git-ignored)
 └── outputs/                     # figures + per-trait response CSVs (git-ignored)
 ```
+
+## Licence
+
+The code and the data products in this repository are licensed under [CC BY 4.0](LICENSE). The input data keep their own licences and citation requirements: AusTraits, AVH, GBIF/ALA and WorldClim.
 
 ## Contributing
 

@@ -16,7 +16,7 @@ Two framings:
    estimates (uncertainty intervals, within/between decomposition, full
    posterior inference via the BRMS backend).
 
-(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report was `archive/Data_height_AVH.qmd`, removed from the tree in `eecdbf2` — see [Retired notebooks](#retired-notebooks).)
+(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report survives as `Data_height_AVH.qmd`, kept because it also builds the crosswalk — see [Producer notebooks](#producer-notebooks).)
 
 The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `demo.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
 The full roadmap is in **`refactor_plan.md`** — read it before making structural changes.
@@ -46,7 +46,7 @@ compute.
   tracked by hash but **not** recomputed by `tar_make()`. Regenerate them
   deliberately with the builders in `R/data/build_sources.R`
   (`build_gbif_climate()`, `build_austraits_climate()`), `load_data()` (height),
-  and the retired notebooks (medoids, crosswalk) — see [Retired notebooks](#retired-notebooks).
+  and the producer notebooks (medoids, crosswalk) — see [Producer notebooks](#producer-notebooks).
 - *Tier A — computed.* Everything from `unified` (the linchpin, was
   `data_traits_climate_unified.parquet`) forward: per-trait TMB fits (one branch
   per trait via `tar_map`), exports, the combined product, figures, and the two
@@ -57,14 +57,14 @@ BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
 
 Supporting files: `demo.qmd` (method illustration — the justification for the within-group-centred approach), `trait_species_means.qmd` (round-2 simple means for low-coverage traits — WIP).
 
-### Retired notebooks
+### Producer notebooks
 
-`archive/` was removed from the tree in `eecdbf2`. It held the retired NVIS height report, `notes_why_bayesian.md`, and — still needed to regenerate two Tier B inputs — the **medoid producer** `climate_centres.qmd` and the **AVH↔GBIF crosswalk producer** `Data_height_AVH.qmd`. Recover any of them from history:
+Two notebooks at the project root are the only code that regenerates two Tier B inputs, so they must stay in the tree:
 
-```sh
-git show daeaa36:archive/climate_centres.qmd > climate_centres.qmd
-git show daeaa36:archive/Data_height_AVH.qmd > Data_height_AVH.qmd
-```
+- `climate_centres.qmd` — the 22k-species medoids, `data-processed/climate_centres.parquet` (O(n²); run deliberately).
+- `Data_height_AVH.qmd` — the AVH↔GBIF name crosswalk, `data-processed/gbif_avh_name_crosswalk.parquet`. The rest of this notebook is the retired NVIS height report.
+
+Both use paths relative to the project root and `source("R/init.R")`, so run them from the root. They are not `tar_quarto` targets. Porting their producer chunks into `R/data/build_sources.R` would bring them under the same pattern as the other builders. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
 
 ## R/ library layout
 
@@ -221,7 +221,7 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 - **Taxonomy across releases:** AVH, AusTraits and GBIF were aligned to
   different APC releases. Joining medoids/occurrences to trait records needs a
   crosswalk (align all to current APC with `APCalign`); `build_medoid_lookup()`
-  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also the crosswalk build in the retired `Data_height_AVH.qmd` ([Retired notebooks](#retired-notebooks)), and open issue #1 (APC versions out of sync).
+  bridges AVH/AusTraits names to GBIF medoids via the cached crosswalk. See also the crosswalk build in `Data_height_AVH.qmd` ([Producer notebooks](#producer-notebooks)), and open issue #1 (APC versions out of sync).
 - **Medoid memory:** the 2D distance matrix in `locate_medoid_2d()` is O(n²);
   `process_taxon_medoid()` subsamples species with >20k occurrences.
 - **`.Rprofile` may set `mc.cores` low** — use `setup_parallel()`.

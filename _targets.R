@@ -12,7 +12,7 @@
 # The heavy upstream artefacts (raw GBIF cleaning ~1.2GB, the 22k-species O(n^2)
 # medoid build, the AVH<->GBIF crosswalk, the AusTraits flatten) are expensive
 # and rarely rebuilt, and their producers live outside the two notebooks
-# (retired climate_centres.qmd, Data_height_AVH.qmd — git history, see AGENTS.md; builders in
+# (producer notebooks climate_centres.qmd, Data_height_AVH.qmd at the root; builders in
 # R/data/build_sources.R). They are tracked here as *file inputs* — targets
 # watches their hashes and invalidates downstream when they change, but never
 # recomputes them as part of tar_make(). Regenerate them deliberately with the
