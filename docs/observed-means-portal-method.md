@@ -187,6 +187,15 @@ Missing values are `NA` in the parquet file and empty in the CSV. "Numeric" and 
 | `scientific_name_id` | all | APNI scientific name identifier. |
 | `row_id` | all | Row number in this table. It depends on row order and is not a stable identifier. |
 | `source_primary_citation` | all | Citations for `source_primary_key`, joined by `"; "`. |
+| `n_records` | all | Reliability indicator (added by this repository, not part of the portal output): number of records used. |
+| `n_datasets` | all | Reliability indicator: number of datasets contributing records. |
+| `n_locations` | numeric | Reliability indicator: number of dataset × location groups (equals `location_replicates`). |
+| `n_flora` | numeric | Reliability indicator: number of flora minimum/maximum records used. |
+| `n_field` | all | Reliability indicator: number of records used whose basis of record is field. |
+| `sd_log` | numeric | Reliability indicator: standard deviation of the natural log of the record values used. |
+| `reliability` | all | Provisional class: high (at least 3 datasets and 10 records), medium (at least 2 datasets or 5 records), low (otherwise). |
+
+The last seven columns are not in the portal's deployed output. They are added after the portal's own columns, which are unchanged, so the reproduction test below is unaffected.
 
 ## Reproduction
 
