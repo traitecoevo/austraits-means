@@ -371,6 +371,14 @@ list(
              write_means_comparison(observed_modelled, portal_geometric),
              format = "file"),
 
+  # ===== Figure set (#25) ====================================================
+  tar_target(figure_set,
+             write_figure_set(observed_means_portal, observed_means_geometric,
+                              modelled_means, tmb_fits, observed_modelled,
+                              community_layers_combined, means_comparison_files,
+                              community_maps_combined),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")
