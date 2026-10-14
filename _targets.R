@@ -1,5 +1,5 @@
 # ============================================================================
-# targets pipeline for Vesk-austraits-means
+# targets pipeline for austraits-means
 # ============================================================================
 # Orchestration lives here; all logic stays in R/ functions (loaded via
 # R/init.R). The two Quarto notebooks are now *reporting layers* rendered at the
@@ -12,7 +12,7 @@
 # The heavy upstream artefacts (raw GBIF cleaning ~1.2GB, the 22k-species O(n^2)
 # medoid build, the AVH<->GBIF crosswalk, the AusTraits flatten) are expensive
 # and rarely rebuilt, and their producers live outside the two notebooks
-# (archive/climate_centres.qmd, archive/Data_height_AVH.qmd; builders in
+# (retired climate_centres.qmd, Data_height_AVH.qmd — git history, see AGENTS.md; builders in
 # R/data/build_sources.R). They are tracked here as *file inputs* — targets
 # watches their hashes and invalidates downstream when they change, but never
 # recomputes them as part of tar_make(). Regenerate them deliberately with the
