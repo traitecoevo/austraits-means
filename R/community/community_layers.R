@@ -8,8 +8,9 @@
 #   - a regular 0.25° grid in EPSG:4326 (#20);
 #   - a statistic only where at least 10 species in the group have a mean (#20);
 #   - presence from the cleaned GBIF occurrences (#20);
-#   - species means from the combined product: the modelled mean where there
-#     is one, otherwise the geometric observed mean (#20).
+#   - species means: two variants are built, `combined` (the modelled mean
+#     where there is one, otherwise the geometric observed mean) and
+#     `modelled` (modelled means only) (#20).
 #
 # Definitions (terminology.md): community mean = exp(mean of the log species
 # means); community variance = variance of the log species means, between
@@ -51,6 +52,20 @@ combine_species_means <- function(fits, observed_means) {
     dplyr::relocate(unit, estimate_type, method, .after = trait_name) |>
     dplyr::arrange(trait_name, taxon_name)
 }
+
+#' The species means a layer variant uses.
+#'
+#' @param means output of `combine_species_means()`.
+#' @param input "combined" (all rows) or "modelled" (modelled means only).
+select_species_means <- function(means, input = c("combined", "modelled")) {
+  input <- match.arg(input)
+  if (input == "modelled") dplyr::filter(means, estimate_type == "modelled_mean") else means
+}
+
+species_means_input_description <- c(
+  combined = "combined: the modelled mean (TMB) where there is one, otherwise the geometric observed mean",
+  modelled = "modelled means (TMB) only; species without a modelled mean are counted as present but have no mean"
+)
 
 #' Species present per grid cell, from the GBIF occurrences.
 #'
@@ -189,7 +204,7 @@ write_community_layers <- function(layers, dir, metadata,
 #' Quick-look map of one trait: community mean and variance, woody and
 #' non-woody. Grey cells have species present but fewer than the minimum with
 #' a mean.
-plot_community_layers <- function(layers, trait, unit = NULL) {
+plot_community_layers <- function(layers, trait, unit = NULL, input = "combined") {
   d <- dplyr::filter(layers, trait_name == trait) |>
     dplyr::mutate(woodiness_group = factor(woodiness_group,
                                            c("woody", "non_woody"),
@@ -224,23 +239,26 @@ plot_community_layers <- function(layers, trait, unit = NULL) {
   ) +
     patchwork::plot_annotation(
       title = trait,
-      subtitle = "First draft, provisional choices; grey: fewer than 10 species with a mean",
+      subtitle = paste0("First draft, provisional choices; species means: ", input,
+                        "; grey: fewer than 10 species with a mean"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 12),
                              plot.subtitle = ggplot2::element_text(size = 9, colour = "#6b6a66")))
 }
 
 #' Save one quick-look map per trait; returns the file paths.
-write_community_maps <- function(layers, means, dir) {
+write_community_maps <- function(layers, means, dir, input = "combined") {
   units <- dplyr::distinct(means, trait_name, unit)
   unlist(lapply(sort(unique(layers$trait_name)), function(tr) {
-    p <- plot_community_layers(layers, tr, units$unit[units$trait_name == tr])
+    p <- plot_community_layers(layers, tr, units$unit[units$trait_name == tr],
+                               input = input)
     save_figure(p, file.path(dir, "figures", paste0(tr, "_community")),
                 width = 9, height = 8)
   }), use.names = FALSE)
 }
 
 #' Metadata written with the layers: what they are and their provisional basis.
-community_layers_metadata <- function(data_basis, settings = community_layer_settings()) {
+community_layers_metadata <- function(data_basis, input = "combined",
+                                      settings = community_layer_settings()) {
   c(list(
     product = "AusTraits community layers, observed (first draft)",
     status = "provisional: built on choices still open in issues #18, #19 and #20",
@@ -256,6 +274,7 @@ community_layers_metadata <- function(data_basis, settings = community_layer_set
                           " (provisional, #20); longitude and latitude give cell centres"),
     min_species = paste0(settings$min_species, " species with a mean per cell and group; statistics are empty below that (provisional, #20)"),
     occurrence_source = "cleaned GBIF occurrences, points (provisional, #20)",
-    species_means_input = "combined: the modelled mean (TMB) where there is one, otherwise the geometric observed mean (provisional, #20)"
+    species_means_input = paste0(species_means_input_description[[input]],
+                                 " (one of two variants built; the choice is #20)")
   ), data_basis, repo_provenance())
 }

@@ -98,6 +98,29 @@ mapped <- tar_map(
   }, format = "file")
 )
 
+# Community layers per species-means input (#20 is open, so both are built):
+# combined (modelled where available, else observed) and modelled only.
+community_variants <- tar_map(
+  values = list(input = c("combined", "modelled")),
+  names = "input",
+
+  tar_target(community_layers,
+             compute_community_layers(gbif_presence, gbif_species_map,
+                                      woody_lookup,
+                                      select_species_means(species_means_combined,
+                                                           input))),
+  tar_target(community_layers_files,
+             write_community_layers(community_layers,
+                                    file.path(community_dir, input),
+                                    community_layers_metadata(data_basis_info,
+                                                              input = input)),
+             format = "file"),
+  tar_target(community_maps,
+             write_community_maps(community_layers, species_means_combined,
+                                  file.path(community_dir, input), input = input),
+             format = "file")
+)
+
 list(
 
   # ===== Tier B: tracked file inputs (raw + seeded heavy artefacts) =========
@@ -306,17 +329,8 @@ list(
              gbif_to_species(gbif_names, name_crosswalk, dev_taxa,
                              union(species_means_combined$taxon_name,
                                    woody_lookup$taxon_name))),
-  tar_target(community_layers,
-             compute_community_layers(gbif_presence, gbif_species_map,
-                                      woody_lookup, species_means_combined)),
-  tar_target(community_layers_files,
-             write_community_layers(community_layers, community_dir,
-                                    community_layers_metadata(data_basis_info)),
-             format = "file"),
-  tar_target(community_maps,
-             write_community_maps(community_layers, species_means_combined,
-                                  community_dir),
-             format = "file"),
+  # The layer variants, one per species-means input (#20 decides).
+  community_variants,
 
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
