@@ -138,7 +138,9 @@ create_zenodo_draft <- function(dir, token = Sys.getenv("ZENODO_TOKEN"),
   authed <- function(url) {
     httr2::request(url) |>
       httr2::req_auth_bearer_token(token) |>
-      httr2::req_retry(max_tries = 5, retry_on_failure = TRUE)
+      httr2::req_retry(max_tries = 5, retry_on_failure = TRUE,
+                       is_transient = \(resp) httr2::resp_status(resp) %in%
+                         c(429, 502, 503, 504))
   }
   api <- function(path) authed(base) |> httr2::req_url_path_append(path)
 
