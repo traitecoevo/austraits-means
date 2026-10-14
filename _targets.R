@@ -293,6 +293,31 @@ list(
                                           austraits_dev_info$austraits_version)),
              format = "file"),
 
+  # Combined species means (modelled where available, else observed), GBIF
+  # presence per 0.25 degree cell, and the community statistics (#23).
+  tar_target(community_dir,
+             file.path("outputs/community", austraits_dev_info$austraits_version)),
+  tar_target(species_means_combined,
+             combine_species_means(tmb_fits, observed_means_geometric)),
+  tar_target(gbif_presence,
+             gbif_presence_cells(gbif_cleaned_file,
+                                 community_layer_settings()$resolution)),
+  tar_target(gbif_species_map,
+             gbif_to_species(gbif_names, name_crosswalk, dev_taxa,
+                             union(species_means_combined$taxon_name,
+                                   woody_lookup$taxon_name))),
+  tar_target(community_layers,
+             compute_community_layers(gbif_presence, gbif_species_map,
+                                      woody_lookup, species_means_combined)),
+  tar_target(community_layers_files,
+             write_community_layers(community_layers, community_dir,
+                                    community_layers_metadata(data_basis_info)),
+             format = "file"),
+  tar_target(community_maps,
+             write_community_maps(community_layers, species_means_combined,
+                                  community_dir),
+             format = "file"),
+
   # ---- reporting layers (rendered notebooks) ------------------------------
   tar_quarto(report_dataset, "dataset_construction.qmd"),
   tar_quarto(report_analysis, "analysis.qmd")
