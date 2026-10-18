@@ -1,77 +1,17 @@
 # Builders for the upstream source artefacts.
 #
-# The GBIF occurrences (~1.2GB) are expensive and rarely rebuilt, so in the
-# targets pipeline (`_targets.R`) the resulting parquet is tracked as a *file
-# input* rather than recomputed on every `tar_make()`. Regenerate it from the
-# project root with
-#   source("R/init.R")
-#   arrow::write_parquet(build_gbif_climate(),
-#                        "data-processed/data_gbif_cleaned.parquet")
-# Medoids are built by `climate_centres.qmd` (process_taxon_medoid over all
-# taxa). The name crosswalk (`build_name_crosswalk()`) runs inside the
-# pipeline, with the APC release pinned in `_targets.R`.
+# The GBIF occurrences are expensive and rarely rebuilt, so in the targets
+# pipeline (`_targets.R`) the cleaned extract is tracked as a *file input*
+# rather than recomputed on every `tar_make()`. Its builders (download,
+# cleaning, name alignment, climate) are in R/data/gbif.R and run by
+# R/scripts/build_gbif.R. Medoids are built by `climate_centres.qmd`
+# (process_taxon_medoid over all taxa). The name crosswalk
+# (`build_name_crosswalk()`) runs inside the pipeline, with the APC release
+# pinned in `_targets.R`.
 #
 # Trait records, height included, come from an austraits.build export
 # (`data-raw/austraits/README.md`); `build_austraits_climate()` runs inside the
 # pipeline, because flattening a build takes seconds.
-
-#' Clean the raw GBIF/ALA occurrences, align names, attach climate, centre.
-#'
-#' Lifted from the GBIF chunk of the original `dataset_construction.qmd`. Reads
-#' the raw GBIF parquet + the aligned-names lookup, extracts climate at each
-#' occurrence, drops rogue points, and standardises the climate predictors.
-#'
-#' @return tibble of cleaned, climate-tagged occurrences (one row per record).
-build_gbif_climate <- function(
-    gbif_raw = "data/GBIF/2025/GBIF_aus_clean_0001494-250914085247600.parquet",
-    gbif_names = "data/GBIF/2025/gbif_names_aligned_2025.parquet",
-    rasters = load_climate_rasters()) {
-
-  data_gbif <- arrow::read_parquet(gbif_raw) |>
-    janitor::clean_names()
-
-  data_gbif_vect <- data_gbif |>
-    terra::vect(
-      geom = c("decimal_longitude", "decimal_latitude"),
-      crs = terra::crs(rasters)
-    )
-
-  data_gbif_climate <-
-    terra::extract(x = rasters, y = data_gbif_vect, method = "simple",
-                   xy = TRUE, ID = FALSE, dataframe = TRUE) |>
-    tibble::as_tibble() |>
-    dplyr::select(x, y, dplyr::everything())
-
-  aligned_species_list <- arrow::read_parquet(gbif_names)
-
-  data_gbif |>
-    dplyr::rename(original_name = species) |>
-    dplyr::select(-taxon_rank) |>
-    dplyr::left_join(aligned_species_list, by = "original_name") |>
-    dplyr::bind_cols(data_gbif_climate |> dplyr::select(-x, -y)) |>
-    dplyr::select(
-      original_name, taxon_name = accepted_name, genus, scientific_name,
-      dplyr::starts_with("decimal"),
-      annual_precipitation = wc2.1_2.5m_bio_12,
-      average_temperature = wc2.1_2.5m_bio_1,
-      dplyr::everything()
-    ) |>
-    dplyr::filter(
-      !is.na(annual_precipitation), !is.na(average_temperature),
-      annual_precipitation > 0,
-      !(decimal_longitude == 134.1 & decimal_latitude == -25.7)
-    ) |>
-    dplyr::mutate(
-      log_annual_precipitation = log(annual_precipitation),
-      log_annual_precipitation_centered =
-        (log_annual_precipitation - mean(log_annual_precipitation)) /
-          stats::sd(log_annual_precipitation),
-      average_temperature_centered =
-        (average_temperature - mean(average_temperature)) /
-          stats::sd(average_temperature)
-    ) |>
-    dplyr::relocate(dplyr::contains("_centered"), .after = "average_temperature")
-}
 
 #' Name crosswalk from trait-record names to GBIF names, via one APC release.
 #'
@@ -119,8 +59,8 @@ gbif_taxon_names <- function(gbif_path) {
     sort()
 }
 
-#' GBIF download the cleaned occurrence extract was made from (see the default
-#' `gbif_raw` path of `build_gbif_climate()`).
+#' GBIF download the cleaned occurrence extract in use was made from (a key
+#' in `gbif_downloads`, R/data/gbif.R).
 gbif_download_key <- "0001494-250914085247600"
 
 #' Data basis of the modelled means: where each input came from and when.
@@ -132,8 +72,8 @@ gbif_download_key <- "0001494-250914085247600"
 data_basis <- function(austraits_info, apc_version, gbif_file, medoids_file) {
   c(austraits_info, list(
     apc_version = apc_version,
-    gbif_download = paste0("GBIF download ", gbif_download_key,
-                           " (September 2025), cleaned with build_gbif_climate()"),
+    apcalign_package = as.character(utils::packageVersion("APCalign")),
+    gbif_download = gbif_citation(gbif_download_key),
     gbif_extract_built = format(file.mtime(gbif_file), "%Y-%m-%d"),
     medoids_built = format(file.mtime(medoids_file), "%Y-%m-%d")
   ))

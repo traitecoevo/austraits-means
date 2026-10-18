@@ -56,6 +56,11 @@ Status, 14 October 2026: every first-draft issue is done except [#10](https://gi
 
 Dated decisions, newest first. Earlier decisions from the refactor plan are kept below them.
 
+### 19 October 2026
+
+- **Only openly licensed GBIF records are used (CC0 and CC BY), so every product can be CC BY 4.0** ([#30](https://github.com/traitecoevo/austraits-means/issues/30), [#32](https://github.com/traitecoevo/austraits-means/issues/32)). GBIF licenses a download as its most restrictive record, and both downloads used are CC BY-NC 4.0. In the October 2026 download the CC BY-NC records are 12.3% (3.36 million, mostly iNaturalist research-grade observations, NSW weeds and the ACT Wildlife Atlas); dropping them leaves 603 of 27,730 species names with no records, of which only 49 have a trait mean. Alternatives considered: licensing the occurrence-derived products CC BY-NC, or treating aggregates as outside the NC terms.
+- **The occurrence refresh uses GBIF download `0027765-260928105237408`** ([10.15468/dl.766erw](https://doi.org/10.15468/dl.766erw), 15 October 2026), cleaned with the current cornsters_australian_annuals method, whose capital-city buffer is 2 km rather than the 20 km of the 2025 extract (fewer genuine urban records lost). That download uses GBIF's new taxonomic backbone (Catalogue of Life), so its names are realigned to APC rather than reusing the 2025 alignment.
+
 ### 14 October 2026
 
 - **The term is "mean", not "average".** Both species estimates are geometric means, so "mean" is accurate; "average" is ambiguous and clashes with `average_temperature`. Flexibility of method is carried by the `method` column, not by the term. An earlier preference for "average" (to leave room for medians and trimmed means) was considered and set aside.
