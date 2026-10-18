@@ -54,7 +54,7 @@ out_dir <- "outputs/traits"
 # austraits.build development export the trait records come from (height
 # included, via the AVH_2026 dataset). How it was built:
 # data-raw/austraits/README.md.
-austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-cd26bb2.rds"
+austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-62aa0e7.rds"
 
 # APC/APNI release that trait-record names and GBIF names are both aligned to
 # for the crosswalk (an APCalign release tag; #13). Changing it rebuilds the

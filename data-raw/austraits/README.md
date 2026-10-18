@@ -14,14 +14,12 @@ austraits::load_austraits(version = "7.0.0", path = "data/austraits")
 
 An export of austraits.build `develop`, input to everything built on the development build (geometric observed means, modelled means, community layers). It carries the AVH height dataset `AVH_2026`, which replaced the separate AVH height CSV. The file in use is set by `austraits_dev_rds` in `_targets.R`; its version and commit are read from the build's `build_info` into the product metadata.
 
-Current file: `austraits-7.0.0.9000-cd26bb2.rds`, built from austraits.build `develop` at `cd26bb21` (442 datasets, 2,294,019 trait records). Building it needed two local adjustments, both reported in [traitecoevo/austraits.build#868](https://github.com/traitecoevo/austraits.build/issues/868):
+Current file: `austraits-7.0.0.9000-62aa0e7.rds`, built from austraits.build `develop` at `62aa0e79` (16 October 2026; 470 datasets, 2,325,498 trait records) with traits.build 2.2.0, as `develop` requires. One local adjustment was needed, reported in [traitecoevo/austraits.build#868](https://github.com/traitecoevo/austraits.build/issues/868): `build.R` was regenerated, because the committed file lists 410 of the 470 datasets, `AVH_2026` among those missing:
 
-- `build.R` was regenerated, because the committed file omits 32 datasets, `AVH_2026` among them:
+```r
+traits.build::build_setup_pipeline(method = "base", database_name = "austraits")
+```
 
-  ```r
-  traits.build::build_setup_pipeline(method = "base", database_name = "austraits")
-  ```
+The previous file, `austraits-7.0.0.9000-cd26bb2.rds` (`cd26bb21`, 442 datasets), was built the same way but with traits.build from its `add-date-parsing` branch, which some datasets then needed; that is no longer necessary.
 
-- traits.build was installed from the branch `add-date-parsing` (`3f21320`), because eight datasets call `util_parse_collection_date()`, which traits.build `develop` does not yet have.
-
-To rebuild, check out austraits.build `develop` in a separate worktree (not a working checkout you curate in), apply the same two steps until #868 is resolved, run `source("build.R")`, and copy `export/data/curr/austraits.rds` to `data/austraits/austraits-<version>-<short commit>.rds`. Then point `austraits_dev_rds` at it.
+To rebuild, check out austraits.build `develop` in a separate worktree (not a working checkout you curate in), regenerate `build.R` as above until #868 is resolved, run `source("build.R")`, and copy `export/data/curr/austraits.rds` to `data/austraits/austraits-<version>-<short commit>.rds`. Then point `austraits_dev_rds` at it.

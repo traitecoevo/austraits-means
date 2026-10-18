@@ -11,14 +11,14 @@
   "Packages": {
     "APCalign": {
       "Package": "APCalign",
-      "Version": "2.0.0",
+      "Version": "2.0.1",
       "Source": "GitHub",
       "Title": "Resolving Plant Taxon Names Using the Australian Plant Census",
       "Authors@R": "c( person(given = \"Elizabeth\", family = \"Wenk\", role = c(\"aut\", \"cre\", \"cph\"), email = \"e.wenk@unsw.edu.au\", comment = c(ORCID = \"0000-0001-5640-5910\")), person(given = \"Daniel\", family = \"Falster\", role = c(\"aut\", \"ctb\"), email = \"daniel.falster@unsw.edu.au\", comment = c(ORCID = \"0000-0002-9814-092X\")), person(given = \"Will\", family = \"Cornwell\", role = c(\"aut\", \"ctb\"), email = \"w.cornwell@unsw.edu.au\", comment = c(ORCID = \"0000-0003-4080-4073\")), person(given = \"Fonti\", family = \"Kar\", role = c(\"aut\", \"ctb\"), email = \"f.kar@unsw.edu.au\", comment = c(ORCID = \"0000-0002-2760-3974\")), person(given = \"Carl\", family=  \"Boettiger\", role = c(\"ctb\"), email = \"cboettig@gmail.com\", comment = c(ORCID = \"0000-0002-1642-628X\")) )",
       "Description": "The process of resolving and updating taxon names is necessary when working with biodiversity data. 'APCalign' uses the Australian Plant Census (APC) and the Australian Plant Name Index (APNI) to align and update plant taxon names to current, accepted standards. 'APCalign' also supplies information about the establishment status (i.e. native or introduced) of plant taxa across different states/territories.",
       "License": "MIT + file LICENSE",
       "Encoding": "UTF-8",
-      "Language": "en",
+      "Language": "en-GB",
       "LazyData": "true",
       "Depends": [
         "R (>= 4.1.0)"
@@ -53,15 +53,14 @@
       "VignetteBuilder": "knitr",
       "URL": "https://traitecoevo.github.io/APCalign/, https://github.com/traitecoevo/APCalign, https://doi.org/10.1071/BT24014",
       "BugReports": "https://github.com/traitecoevo/APCalign/issues",
+      "Author": "Elizabeth Wenk [aut, cre, cph] (ORCID: <https://orcid.org/0000-0001-5640-5910>), Daniel Falster [aut, ctb] (ORCID: <https://orcid.org/0000-0002-9814-092X>), Will Cornwell [aut, ctb] (ORCID: <https://orcid.org/0000-0003-4080-4073>), Fonti Kar [aut, ctb] (ORCID: <https://orcid.org/0000-0002-2760-3974>), Carl Boettiger [ctb] (ORCID: <https://orcid.org/0000-0002-1642-628X>)",
+      "Maintainer": "Elizabeth Wenk <e.wenk@unsw.edu.au>",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
-      "RemoteRepo": "APCalign",
       "RemoteUsername": "traitecoevo",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "cb57a165ebaf5fc196c7946a7090884765610ef1",
-      "NeedsCompilation": "no",
-      "Author": "Elizabeth Wenk [aut, cre, cph] (ORCID: <https://orcid.org/0000-0001-5640-5910>), Daniel Falster [aut, ctb] (ORCID: <https://orcid.org/0000-0002-9814-092X>), Will Cornwell [aut, ctb] (ORCID: <https://orcid.org/0000-0003-4080-4073>), Fonti Kar [aut, ctb] (ORCID: <https://orcid.org/0000-0002-2760-3974>), Carl Boettiger [ctb] (ORCID: <https://orcid.org/0000-0002-1642-628X>)",
-      "Maintainer": "Elizabeth Wenk <e.wenk@unsw.edu.au>"
+      "RemoteRepo": "APCalign",
+      "RemoteRef": "6050b445dab47c0d5956bf7a961dfdb9dfc78b9c",
+      "RemoteSha": "6050b445dab47c0d5956bf7a961dfdb9dfc78b9c"
     },
     "BH": {
       "Package": "BH",
@@ -130,6 +129,57 @@
       "SystemRequirements": "cairo (>= 1.2 http://www.cairographics.org/)",
       "URL": "http://www.rforge.net/Cairo/",
       "NeedsCompilation": "yes",
+      "Repository": "CRAN"
+    },
+    "CoordinateCleaner": {
+      "Package": "CoordinateCleaner",
+      "Version": "3.0.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Automated Cleaning of Occurrence Records from Biological Collections",
+      "Authors@R": "c(person(given = \"Alexander\", family = \"Zizka\", email = \"zizka.alexander@gmail.com\", role = c(\"aut\", \"cre\")), person(given = \"Daniele\", family = \"Silvestro\", role = \"ctb\"), person(given = \"Tobias\", family = \"Andermann\", role = \"ctb\"), person(given = \"Josue\", family = \"Azevedo\", role = \"ctb\"), person(given = \"Camila\", family = \"Duarte Ritter\", role = \"ctb\"), person(given = \"Daniel\", family = \"Edler\", role = \"ctb\"), person(given = \"Harith\", family = \"Farooq\", role = \"ctb\"), person(given = \"Andrei\", family = \"Herdean\", role = \"ctb\"), person(given = \"Maria\", family = \"Ariza\", role = \"ctb\"), person(given = \"Ruud\", family = \"Scharn\", role = \"ctb\"), person(given = \"Sten\", family = \"Svanteson\", role = \"ctb\"), person(given = \"Niklas\", family = \"Wengstrom\", role = \"ctb\"), person(given = \"Vera\", family = \"Zizka\", role = \"ctb\"), person(given = \"Alexandre\", family =\"Antonelli\", role = \"ctb\"), person(given = \"Bruno\", family = \"Vilela\", role = \"ctb\", comment = \"Bruno updated the package to remove dependencies on sp, raster, rgdal, maptools, and rgeos packages\"), person(\"Irene\", \"Steves\", role = \"rev\", comment = \"Irene reviewed the package for ropensci, see <https://github.com/ropensci/onboarding/issues/210>\"), person(\"Francisco\", \"Rodriguez-Sanchez\", role = \"rev\", comment = \"Francisco reviewed the package for ropensci, see <https://github.com/ropensci/onboarding/issues/210>\"))",
+      "Description": "Automated flagging of common spatial and temporal errors in biological and paleontological collection data, for the use in conservation, ecology and paleontology. Includes automated tests to easily flag (and exclude) records assigned to country or province centroid, the open ocean, the headquarters of the Global Biodiversity Information Facility, urban areas or the location of biodiversity institutions (museums, zoos, botanical gardens, universities). Furthermore identifies per species outlier coordinates, zero coordinates, identical latitude/longitude and invalid coordinates. Also implements an algorithm to identify data sets with a significant proportion of rounded coordinates. Especially suited for large data sets. The reference for the methodology is: Zizka et al. (2019) <doi:10.1111/2041-210X.13152>.",
+      "License": "GPL-3",
+      "URL": "https://ropensci.github.io/CoordinateCleaner/",
+      "BugReports": "https://github.com/ropensci/CoordinateCleaner/issues",
+      "Depends": [
+        "R (>= 3.5.0)"
+      ],
+      "Imports": [
+        "dplyr",
+        "geosphere",
+        "ggplot2",
+        "graphics",
+        "grDevices",
+        "methods",
+        "rgbif",
+        "rnaturalearth (>= 0.3.2)",
+        "stats",
+        "terra",
+        "tidyselect",
+        "utils"
+      ],
+      "Suggests": [
+        "countrycode",
+        "covr",
+        "knitr",
+        "magrittr",
+        "maps",
+        "rmarkdown",
+        "rnaturalearthdata",
+        "sf",
+        "testthat",
+        "viridis"
+      ],
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "Language": "en-gb",
+      "LazyData": "true",
+      "RoxygenNote": "7.2.3",
+      "SystemRequirements": "GDAL (>= 2.0.1)",
+      "NeedsCompilation": "no",
+      "Author": "Alexander Zizka [aut, cre], Daniele Silvestro [ctb], Tobias Andermann [ctb], Josue Azevedo [ctb], Camila Duarte Ritter [ctb], Daniel Edler [ctb], Harith Farooq [ctb], Andrei Herdean [ctb], Maria Ariza [ctb], Ruud Scharn [ctb], Sten Svanteson [ctb], Niklas Wengstrom [ctb], Vera Zizka [ctb], Alexandre Antonelli [ctb], Bruno Vilela [ctb] (Bruno updated the package to remove dependencies on sp, raster, rgdal, maptools, and rgeos packages), Irene Steves [rev] (Irene reviewed the package for ropensci, see <https://github.com/ropensci/onboarding/issues/210>), Francisco Rodriguez-Sanchez [rev] (Francisco reviewed the package for ropensci, see <https://github.com/ropensci/onboarding/issues/210>)",
+      "Maintainer": "Alexander Zizka <zizka.alexander@gmail.com>",
       "Repository": "CRAN"
     },
     "DBI": {
@@ -228,10 +278,10 @@
     },
     "KernSmooth": {
       "Package": "KernSmooth",
-      "Version": "2.23-26",
+      "Version": "2.23-27",
       "Source": "Repository",
       "Priority": "recommended",
-      "Date": "2024-12-10",
+      "Date": "2026-08-11",
       "Title": "Functions for Kernel Smoothing Supporting Wand & Jones (1995)",
       "Authors@R": "c(person(\"Matt\", \"Wand\", role = \"aut\", email = \"Matt.Wand@uts.edu.au\"), person(\"Cleve\", \"Moler\", role = \"ctb\", comment = \"LINPACK routines in src/d*\"), person(\"Brian\", \"Ripley\", role = c(\"trl\", \"cre\", \"ctb\"), email = \"Brian.Ripley@R-project.org\", comment = \"R port and updates\"))",
       "Note": "Maintainers are not available to give advice on using a package they did not author.",
@@ -1884,16 +1934,16 @@
     },
     "class": {
       "Package": "class",
-      "Version": "7.3-23",
+      "Version": "7.3-24",
       "Source": "Repository",
       "Priority": "recommended",
-      "Date": "2025-01-01",
+      "Date": "2026-08-01",
       "Depends": [
         "R (>= 3.0.0)",
         "stats",
         "utils"
       ],
-      "Imports": [
+      "Suggests": [
         "MASS"
       ],
       "Authors@R": "c(person(\"Brian\", \"Ripley\", role = c(\"aut\", \"cre\", \"cph\"), email = \"Brian.Ripley@R-project.org\"), person(\"William\", \"Venables\", role = \"cph\"))",
@@ -2493,6 +2543,49 @@
       "NeedsCompilation": "no",
       "Author": "Joe Cheng [aut], Carson Sievert [aut, cre] (ORCID: <https://orcid.org/0000-0002-4958-2844>), Posit Software, PBC [cph, fnd], jQuery Foundation [cph] (jQuery library and jQuery UI library), jQuery contributors [ctb, cph] (jQuery library; authors listed in inst/www/shared/jquery-AUTHORS.txt), Mark Otto [ctb] (Bootstrap library), Jacob Thornton [ctb] (Bootstrap library), Bootstrap contributors [ctb] (Bootstrap library), Twitter, Inc [cph] (Bootstrap library), Brian Reavis [ctb, cph] (selectize.js library), Kristopher Michael Kowal [ctb, cph] (es5-shim library), es5-shim contributors [ctb, cph] (es5-shim library), Denis Ineshin [ctb, cph] (ion.rangeSlider library), Sami Samhuri [ctb, cph] (Javascript strftime library)",
       "Maintainer": "Carson Sievert <carson@posit.co>",
+      "Repository": "CRAN"
+    },
+    "crul": {
+      "Package": "crul",
+      "Version": "1.6.0",
+      "Source": "Repository",
+      "Title": "HTTP Client",
+      "Description": "A simple HTTP client, with tools for making HTTP requests, and mocking HTTP requests. The package is built on R6, and takes inspiration from Ruby's 'faraday' gem (<https://rubygems.org/gems/faraday>). The package name is a play on curl, the widely used command line tool for HTTP, and this package is built on top of the R package 'curl', an interface to 'libcurl' (<https://curl.se/libcurl/>).",
+      "License": "MIT + file LICENSE",
+      "Authors@R": "c( person(\"Scott\", \"Chamberlain\", role = c(\"aut\", \"cre\"), email = \"myrmecocystus@gmail.com\", comment = c(ORCID = \"0000-0003-1444-9135\")) )",
+      "URL": "https://docs.ropensci.org/crul/, https://github.com/ropensci/crul, https://books.ropensci.org/http-testing/",
+      "BugReports": "https://github.com/ropensci/crul/issues",
+      "Encoding": "UTF-8",
+      "Language": "en-US",
+      "Imports": [
+        "curl (>= 3.3)",
+        "R6 (>= 2.2.0)",
+        "urltools (>= 1.6.0)",
+        "httpcode (>= 0.2.0)",
+        "jsonlite",
+        "mime",
+        "rlang",
+        "lifecycle"
+      ],
+      "Suggests": [
+        "testthat (>= 3.0.0)",
+        "roxygen2 (>= 7.1.1)",
+        "fauxpas (>= 0.1.0)",
+        "webmockr (>= 2.2.0)",
+        "withr",
+        "knitr",
+        "rmarkdown"
+      ],
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "7.3.2",
+      "Config/testthat/edition": "3",
+      "Config/testthat/parallel": "true",
+      "X-schema.org-applicationCategory": "Web",
+      "X-schema.org-keywords": "http, https, API, web-services, curl, download, libcurl, async, mocking, caching",
+      "X-schema.org-isPartOf": "https://ropensci.org",
+      "NeedsCompilation": "no",
+      "Author": "Scott Chamberlain [aut, cre] (ORCID: <https://orcid.org/0000-0003-1444-9135>)",
+      "Maintainer": "Scott Chamberlain <myrmecocystus@gmail.com>",
       "Repository": "CRAN"
     },
     "curl": {
@@ -3790,6 +3883,38 @@
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
       "Repository": "CRAN"
     },
+    "geosphere": {
+      "Package": "geosphere",
+      "Version": "1.6-8",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Spherical Trigonometry",
+      "Date": "2026-04-04",
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "Imports": [
+        "Rcpp"
+      ],
+      "Depends": [
+        "R (>= 3.0.0)",
+        "methods"
+      ],
+      "Suggests": [
+        "terra",
+        "sf",
+        "sp"
+      ],
+      "Authors@R": "c( person(\"Robert J.\", \"Hijmans\", role = c(\"cre\", \"aut\"),  email = \"r.hijmans@gmail.com\"), person(\"Charles\", \"Karney\", role = \"ctb\", comment=\"GeographicLib\"),\t person(\"Ed\", \"Williams\", role = \"ctb\"), person(\"Chris\", \"Vennes\", role = \"ctb\"))",
+      "Description": "Spherical trigonometry for geographic applications. That is, compute distances and related measures for angular (longitude/latitude) locations.",
+      "BugReports": "https://github.com/rspatial/geosphere/issues/",
+      "License": "GPL (>= 3)",
+      "LazyLoad": "yes",
+      "NeedsCompilation": "yes",
+      "Author": "Robert J. Hijmans [cre, aut], Charles Karney [ctb] (GeographicLib), Ed Williams [ctb], Chris Vennes [ctb]",
+      "Maintainer": "Robert J. Hijmans <r.hijmans@gmail.com>",
+      "Repository": "CRAN"
+    },
     "gert": {
       "Package": "gert",
       "Version": "2.3.1",
@@ -4659,6 +4784,27 @@
       "NeedsCompilation": "no",
       "Author": "Ramnath Vaidyanathan [aut, cph], Yihui Xie [aut], JJ Allaire [aut], Joe Cheng [aut], Carson Sievert [aut, cre] (<https://orcid.org/0000-0002-4958-2844>), Kenton Russell [aut, cph], Ellis Hughes [ctb], Posit Software, PBC [cph, fnd]",
       "Maintainer": "Carson Sievert <carson@posit.co>",
+      "Repository": "CRAN"
+    },
+    "httpcode": {
+      "Package": "httpcode",
+      "Version": "0.3.0",
+      "Source": "Repository",
+      "Title": "'HTTP' Status Code Helper",
+      "Description": "Find and explain the meaning of 'HTTP' status codes. Functions included for searching for codes by full or partial number, by message, and get appropriate dog and cat images for many status codes.",
+      "Authors@R": "person(\"Scott\", \"Chamberlain\", role = c(\"aut\",\"cre\"), email = \"myrmecocystus@gmail.com\",  comment = c(ORCID = \"0000-0003-1444-9135\"))",
+      "License": "MIT + file LICENSE",
+      "URL": "https://github.com/sckott/httpcode",
+      "BugReports": "https://github.com/sckott/httpcode/issues",
+      "Encoding": "UTF-8",
+      "Language": "en-US",
+      "Suggests": [
+        "testthat"
+      ],
+      "RoxygenNote": "7.1.0",
+      "NeedsCompilation": "no",
+      "Author": "Scott Chamberlain [aut, cre] (<https://orcid.org/0000-0003-1444-9135>)",
+      "Maintainer": "Scott Chamberlain <myrmecocystus@gmail.com>",
       "Repository": "CRAN"
     },
     "httpuv": {
@@ -6576,6 +6722,41 @@
       "NeedsCompilation": "no",
       "Repository": "CRAN"
     },
+    "oai": {
+      "Package": "oai",
+      "Version": "0.4.0",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "General Purpose 'Oai-PMH' Services Client",
+      "Description": "A general purpose client to work with any 'OAI-PMH' (Open Archives Initiative Protocol for 'Metadata' Harvesting) service. The 'OAI-PMH' protocol is described at <http://www.openarchives.org/OAI/openarchivesprotocol.html>. Functions are provided to work with the 'OAI-PMH' verbs: 'GetRecord', 'Identify', 'ListIdentifiers', 'ListMetadataFormats', 'ListRecords', and 'ListSets'.",
+      "License": "MIT + file LICENSE",
+      "Authors@R": "c( person(\"Scott\", \"Chamberlain\", role = \"aut\", email = \"myrmecocystus@gmail.com\"), person(\"Michal\", \"Bojanowski\", role = c(\"aut\", \"cre\"), email = \"michal2992@gmail.com\", comment=c(ORCID=\"0000-0001-7503-852X\")), person(\"National Science Centre\", role = \"fnd\", comment = \"Supported MB through grant 2012/07/D/HS6/01971, <https://ncn.gov.pl>\") )",
+      "URL": "https://docs.ropensci.org/oai/, https://github.com/ropensci/oai",
+      "BugReports": "https://github.com/ropensci/oai/issues",
+      "VignetteBuilder": "knitr",
+      "LazyData": "true",
+      "Encoding": "UTF-8",
+      "Imports": [
+        "xml2 (>= 1.0.0)",
+        "httr (>= 1.2.0)",
+        "plyr (>= 1.8.4)",
+        "stringr (>= 1.1.0)",
+        "tibble (>= 1.2)"
+      ],
+      "Suggests": [
+        "DBI",
+        "knitr",
+        "RSQLite",
+        "testthat",
+        "markdown",
+        "covr"
+      ],
+      "RoxygenNote": "7.2.1",
+      "NeedsCompilation": "no",
+      "Author": "Scott Chamberlain [aut], Michal Bojanowski [aut, cre] (<https://orcid.org/0000-0001-7503-852X>), National Science Centre [fnd] (Supported MB through grant 2012/07/D/HS6/01971, <https://ncn.gov.pl>)",
+      "Maintainer": "Michal Bojanowski <michal2992@gmail.com>",
+      "Repository": "CRAN"
+    },
     "openssl": {
       "Package": "openssl",
       "Version": "2.4.0",
@@ -8462,6 +8643,54 @@
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
       "Repository": "CRAN"
     },
+    "rgbif": {
+      "Package": "rgbif",
+      "Version": "3.8.5",
+      "Source": "Repository",
+      "Title": "Interface to the Global Biodiversity Information Facility API",
+      "Description": "A programmatic interface to the Web Service methods provided by the Global Biodiversity Information Facility (GBIF; <https://www.gbif.org/developer/summary>). GBIF is a database of species occurrence records from sources all over the globe. rgbif includes functions for searching for taxonomic names, retrieving information on data providers, getting species occurrence records, getting counts of occurrence records, and using the GBIF tile map service to make rasters summarizing huge amounts of data.",
+      "License": "MIT + file LICENSE",
+      "Authors@R": "c( person(\"Scott\", \"Chamberlain\", role = \"aut\", comment = c(\"0000-0003-1444-9135\")), person(\"Damiano\", \"Oldoni\", role = \"aut\", comment = c(\"0000-0003-3445-7562\")), person(\"Vijay\", \"Barve\", role = \"ctb\", comment = c(\"0000-0002-4852-2567\")), person(\"Peter\", \"Desmet\", role = \"ctb\", comment = c(\"0000-0002-8442-8025\")), person(\"Laurens\", \"Geffert\", role = \"ctb\"), person(\"Dan\", \"Mcglinn\", role = \"ctb\", comment = c(\"0000-0003-2359-3526\")), person(\"Karthik\", \"Ram\", role = \"ctb\", comment = c(\"0000-0002-0233-1757\")), person(given = \"rOpenSci\", role = \"fnd\", comment = c(\"019jywm96\")), person(\"John\",\"Waller\", role = c(\"aut\", \"cre\"), email = \"jwaller@gbif.org\", comment = c(\"0000-0002-7302-5976\")) )",
+      "URL": "https://github.com/ropensci/rgbif (devel), https://docs.ropensci.org/rgbif/ (documentation)",
+      "BugReports": "https://github.com/ropensci/rgbif/issues",
+      "LazyLoad": "true",
+      "Encoding": "UTF-8",
+      "Language": "en-US",
+      "Imports": [
+        "xml2",
+        "ggplot2",
+        "crul (>= 0.7.4)",
+        "data.table",
+        "whisker",
+        "magrittr",
+        "jsonlite (>= 1.6)",
+        "oai (>= 0.2.2)",
+        "tibble",
+        "lazyeval",
+        "R6",
+        "stats"
+      ],
+      "Suggests": [
+        "testthat",
+        "png",
+        "terra",
+        "magick",
+        "protolite (>= 2.0)",
+        "sf",
+        "vcr (>= 2.0.0)",
+        "knitr",
+        "rmarkdown",
+        "bit64"
+      ],
+      "RoxygenNote": "7.2.3",
+      "X-schema.org-applicationCategory": "Biodiversity",
+      "X-schema.org-keywords": "GBIF, specimens, API, web-services, occurrences, species, taxonomy",
+      "X-schema.org-isPartOf": "https://ropensci.org",
+      "NeedsCompilation": "no",
+      "Author": "Scott Chamberlain [aut] (0000-0003-1444-9135), Damiano Oldoni [aut] (0000-0003-3445-7562), Vijay Barve [ctb] (0000-0002-4852-2567), Peter Desmet [ctb] (0000-0002-8442-8025), Laurens Geffert [ctb], Dan Mcglinn [ctb] (0000-0003-2359-3526), Karthik Ram [ctb] (0000-0002-0233-1757), rOpenSci [fnd] (019jywm96), John Waller [aut, cre] (0000-0002-7302-5976)",
+      "Maintainer": "John Waller <jwaller@gbif.org>",
+      "Repository": "CRAN"
+    },
     "rlang": {
       "Package": "rlang",
       "Version": "1.2.0",
@@ -8567,6 +8796,55 @@
       "NeedsCompilation": "no",
       "Author": "JJ Allaire [aut], Yihui Xie [aut, cre] (ORCID: <https://orcid.org/0000-0003-0645-5666>), Christophe Dervieux [aut] (ORCID: <https://orcid.org/0000-0003-4474-2498>), Jonathan McPherson [aut], Javier Luraschi [aut], Kevin Ushey [aut], Aron Atkins [aut], Hadley Wickham [aut], Joe Cheng [aut], Winston Chang [aut], Richard Iannone [aut] (ORCID: <https://orcid.org/0000-0003-3925-190X>), Andrew Dunning [ctb] (ORCID: <https://orcid.org/0000-0003-0464-5036>), Atsushi Yasumoto [ctb, cph] (ORCID: <https://orcid.org/0000-0002-8335-495X>, cph: Number sections Lua filter), Barret Schloerke [ctb], Carson Sievert [ctb] (ORCID: <https://orcid.org/0000-0002-4958-2844>), Devon Ryan [ctb] (ORCID: <https://orcid.org/0000-0002-8549-0971>), Frederik Aust [ctb] (ORCID: <https://orcid.org/0000-0003-4900-788X>), Jeff Allen [ctb], JooYoung Seo [ctb] (ORCID: <https://orcid.org/0000-0002-4064-6012>), Malcolm Barrett [ctb], Rob Hyndman [ctb], Romain Lesur [ctb], Roy Storey [ctb], Ruben Arslan [ctb], Sergio Oller [ctb], Posit Software, PBC [cph, fnd], jQuery UI contributors [ctb, cph] (jQuery UI library; authors listed in inst/rmd/h/jqueryui/AUTHORS.txt), Mark Otto [ctb] (Bootstrap library), Jacob Thornton [ctb] (Bootstrap library), Bootstrap contributors [ctb] (Bootstrap library), Twitter, Inc [cph] (Bootstrap library), Alexander Farkas [ctb, cph] (html5shiv library), Scott Jehl [ctb, cph] (Respond.js library), Ivan Sagalaev [ctb, cph] (highlight.js library), Greg Franko [ctb, cph] (tocify library), John MacFarlane [ctb, cph] (Pandoc templates), Google, Inc. [ctb, cph] (ioslides library), Dave Raggett [ctb] (slidy library), W3C [cph] (slidy library), Dave Gandy [ctb, cph] (Font-Awesome), Ben Sperry [ctb] (Ionicons), Drifty [cph] (Ionicons), Aidan Lister [ctb, cph] (jQuery StickyTabs), Benct Philip Jonsson [ctb, cph] (pagebreak Lua filter), Albert Krewinkel [ctb, cph] (pagebreak Lua filter)",
       "Maintainer": "Yihui Xie <xie@yihui.name>",
+      "Repository": "CRAN"
+    },
+    "rnaturalearth": {
+      "Package": "rnaturalearth",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Title": "World Map Data from Natural Earth",
+      "Authors@R": "c( person( family = \"Massicotte\", given = \"Philippe\", email = \"pmassicotte@hotmail.com\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-5919-4116\") ), person( family = \"South\", given = \"Andy\", email = \"southandy@gmail.com\", role = c(\"aut\") ), person( family = \"Hufkens\", given = \"Koen\", email = \"koen.hufkens@gmail.com\", role = c(\"ctb\"), comment = c(ORCID = \"0000-0002-5070-8109\") ))",
+      "Description": "Facilitates mapping by making natural earth map data from <https://www.naturalearthdata.com/> more easily available to R users.",
+      "License": "MIT + file LICENSE",
+      "LazyData": "true",
+      "LazyDataCompression": "xz",
+      "Encoding": "UTF-8",
+      "URL": "https://docs.ropensci.org/rnaturalearth/, https://github.com/ropensci/rnaturalearth, https://docs.ropensci.org/rnaturalearthhires/",
+      "BugReports": "https://github.com/ropensci/rnaturalearth/issues",
+      "Additional_repositories": "https://ropensci.r-universe.dev",
+      "Depends": [
+        "R (>= 3.1.1)"
+      ],
+      "Imports": [
+        "cli",
+        "httr (>= 1.1.0)",
+        "jsonlite",
+        "sf (>= 0.3-4)",
+        "terra",
+        "utils (>= 3.2.3)"
+      ],
+      "Suggests": [
+        "pak",
+        "dplyr",
+        "ggplot2",
+        "ggrepel",
+        "knitr (>= 1.12.3)",
+        "lifecycle (>= 1.0.3)",
+        "pbapply",
+        "purrr",
+        "rlang",
+        "rmarkdown",
+        "rnaturalearthdata (>= 1.0.0)",
+        "rnaturalearthhires (>= 1.0.0)",
+        "testthat (>= 0.9.1)",
+        "tmap"
+      ],
+      "Config/Needs/website": "ropensci/rnaturalearthhires",
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "7.3.3",
+      "NeedsCompilation": "no",
+      "Author": "Philippe Massicotte [aut, cre] (ORCID: <https://orcid.org/0000-0002-5919-4116>), Andy South [aut], Koen Hufkens [ctb] (ORCID: <https://orcid.org/0000-0002-5070-8109>)",
+      "Maintainer": "Philippe Massicotte <pmassicotte@hotmail.com>",
       "Repository": "CRAN"
     },
     "roxygen2": {
@@ -10238,6 +10516,36 @@
       "Maintainer": "Yihui Xie <xie@yihui.name>",
       "Repository": "CRAN"
     },
+    "triebeard": {
+      "Package": "triebeard",
+      "Version": "0.4.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "'Radix' Trees in 'Rcpp'",
+      "Author": "Os Keyes [aut, cre], Drew Schmidt [aut], Yuuki Takano [cph]",
+      "Maintainer": "Os Keyes <ironholds@gmail.com>",
+      "Description": "'Radix trees', or 'tries', are key-value data structures optimised for efficient lookups, similar in purpose to hash tables. 'triebeard' provides an implementation of 'radix trees' for use in R programming and in developing packages with 'Rcpp'.",
+      "License": "MIT + file LICENSE",
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "Encoding": "UTF-8",
+      "Imports": [
+        "Rcpp"
+      ],
+      "RoxygenNote": "7.1.2",
+      "Suggests": [
+        "knitr",
+        "rmarkdown",
+        "testthat"
+      ],
+      "VignetteBuilder": "knitr",
+      "URL": "https://github.com/Ironholds/triebeard/",
+      "BugReports": "https://github.com/Ironholds/triebeard/issues",
+      "Date": "2023-03-04",
+      "NeedsCompilation": "yes",
+      "Repository": "CRAN"
+    },
     "tzdb": {
       "Package": "tzdb",
       "Version": "0.5.0",
@@ -10364,6 +10672,42 @@
       "Author": "R Core team [aut] (The code in urltools.R adapted from the tools package), Jim Hester [aut] (<https://orcid.org/0000-0002-2739-7082>), Gábor Csárdi [aut, cre], RStudio [cph, fnd]",
       "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
       "Repository": "CRAN"
+    },
+    "urltools": {
+      "Package": "urltools",
+      "Version": "1.7.3.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Vectorised Tools for URL Handling and Parsing",
+      "Date": "2019-04-14",
+      "Authors@R": "c(person(given = \"Os\", family = \"Keyes\", role = c(\"aut\", \"cre\"), email = \"ironholds@gmail.com\"), person(given = \"Jay\", family = \"Jacobs\", role = \"aut\"), person(given = \"Drew\", family = \"Schmidt\", role = \"aut\"), person(given = \"Mark\", family = \"Greenaway\", role = \"ctb\"), person(given = \"Bob\", family = \"Rudis\", role = \"ctb\"), person(given = \"Alex\", family = \"Pinto\", role = \"ctb\"), person(given = \"Maryam\", family = \"Khezrzadeh\", role = \"ctb\"), person(given = \"Peter\", family = \"Meilstrup\", role = \"ctb\"), person(given = c(\"Adam\", \"M.\"), family = \"Costello\", role = \"cph\"), person(given = \"Jeff\", family = \"Bezanson\", role = \"cph\"), person(given = \"Peter\", family = \"Meilstrup\", role = \"ctb\"), person(given = \"Xueyuan\", family = \"Jiang\", role = \"ctb\"))",
+      "Description": "A toolkit for all URL-handling needs, including encoding and decoding, parsing, parameter extraction and modification. All functions are designed to be both fast and entirely vectorised. It is intended to be useful for people dealing with web-related datasets, such as server-side logs, although may be useful for other situations involving large sets of URLs.",
+      "License": "MIT + file LICENSE",
+      "LazyData": "TRUE",
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "Imports": [
+        "Rcpp",
+        "methods",
+        "triebeard"
+      ],
+      "Suggests": [
+        "testthat",
+        "knitr"
+      ],
+      "URL": "https://github.com/Ironholds/urltools/",
+      "BugReports": "https://github.com/Ironholds/urltools/issues",
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "6.1.1",
+      "Encoding": "UTF-8",
+      "Depends": [
+        "R (>= 2.10)"
+      ],
+      "NeedsCompilation": "yes",
+      "Repository": "CRAN",
+      "Author": "Os Keyes [aut, cre], Jay Jacobs [aut], Drew Schmidt [aut], Mark Greenaway [ctb], Bob Rudis [ctb], Alex Pinto [ctb], Maryam Khezrzadeh [ctb], Peter Meilstrup [ctb], Adam M. Costello [cph], Jeff Bezanson [cph], Peter Meilstrup [ctb], Xueyuan Jiang [ctb]",
+      "Maintainer": "Os Keyes <ironholds@gmail.com>"
     },
     "usethis": {
       "Package": "usethis",
