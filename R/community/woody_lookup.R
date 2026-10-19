@@ -14,7 +14,11 @@
 #   3. Otherwise unassigned.
 #
 # Inputs are the categorical rows of the geometric observed means, so taxa
-# are already rolled up to species.
+# are already rolled up to species. Their `value_mode` is a species' most
+# likely value exactly as the AusTraits data portal computes it (master's
+# categorical summary: values counted per record, the most frequent kept, ties
+# joined); checked identical for all 57,830 taxon x trait combinations of
+# woodiness_detailed, plant_growth_form and woodiness on 19 October 2026.
 
 woodiness_detailed_class <- c(
   woody = "woody",

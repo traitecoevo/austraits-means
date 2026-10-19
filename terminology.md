@@ -77,11 +77,11 @@ Rules:
 - **Community variance is between-species only.** It is the spread of species means and leaves out variation within species. Say this wherever the term is defined. Report it in natural-log units. If the SD is also published, call it **community SD**.
 - **Name the input species means in the metadata, not in the term.** Record whether the community statistics use the modelled means only, or the combined product (modelled where available, otherwise observed). Do not build that into the name.
 - **Use "non-woody", not "herbaceous".** In AusTraits, "herbaceous" is one category of the `woodiness` trait, and non-woody is meant to cover everything that is not woody. The exact assignment of categories is an open choice below.
-- **The spatial unit is part of the definition.** "Location" means a stated unit, such as a grid cell of a given resolution or a survey plot. Give it wherever the community terms are defined.
+- **The spatial unit is part of the definition.** "Location" means a stated unit; for these layers, a 10 × 10 km cell of an equal-area (Lambert Azimuthal Equal Area) grid of Australia (decided 19 October 2026, #20). Give it wherever the community terms are defined.
 
 ## Open choices for community terms
 
-1. **Weighting. This decides the name.** If species are counted equally (presence only, as occurrence data such as AVH or GBIF allow), the terms above stand. If species are weighted by abundance or cover (for example from plot surveys), the field-standard terms apply instead: **community-weighted mean (CWM)** and **community-weighted variance (CWV)**. Do not call unweighted statistics CWM, because readers will assume abundance weighting.
+1. **Weighting: decided 19 October 2026 (#18).** Presence only: every species present in a unit counts equally, as occurrence data such as AVH or GBIF allow, so the terms above stand: community mean and community variance. Abundance- or cover-weighted statistics from plot surveys would be **community-weighted mean (CWM)** and **community-weighted variance (CWV)**; do not use those names for these layers, because readers assume abundance weighting.
 2. **Woody / non-woody assignment.** Decide where intermediate AusTraits woodiness categories go (for example semi-woody, or woody only at the base), and how to handle species with conflicting or missing woodiness. Record the mapping here once decided.
 
 ## Column names in the exports
