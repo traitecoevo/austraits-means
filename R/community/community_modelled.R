@@ -120,9 +120,9 @@ community_layers_modelled <- function(fits, climate, centres, groups = "all",
     dplyr::arrange(trait_name, woodiness_group, cell_y, cell_x)
 }
 
-community_modelled_metadata <- function(data_basis) {
+community_modelled_metadata <- function(data_basis, native_only = FALSE) {
   community_metadata(
-    data_basis, "modelled",
+    data_basis, paste0("modelled", if (native_only) ", native species"),
     paste("For each cell, the fitted trait-climate model's net average trait value over",
           "the species present: exp(b0 + b_within * x + (b_between - b_within) * m),",
           "where x is the cell's climate and m the mean climate centre (medoid) of the",
@@ -130,18 +130,19 @@ community_modelled_metadata <- function(data_basis) {
           "temperature. Averages over between- and within-species effects; uses no",
           "species means."),
     groups = "all species (the per-trait models are fitted on all species together)",
-    extra = list(
+    extra = c(if (native_only) native_only_note(), list(
       model = "log_value ~ P_mn + T_mn + P_c + T_c + (1 | taxon) + (0 + P_c | taxon) + (0 + T_c | taxon), glmmTMB",
       climate = "WorldClim 2.1 (bio1, bio12) averaged onto the grid",
       interval = "lower, upper: 94% interval, delta method on the log scale, fixed-effect uncertainty only",
       columns = list(n_species = "GBIF species in the cell with a climate centre",
                      extrapolated = paste("TRUE where the mean centre or the cell-minus-centre",
-                                          "difference lies outside the range the model was fitted on"))))
+                                          "difference lies outside the range the model was fitted on")))))
 }
 
 #' Map of the modelled layer beside the observed presence layer (all species)
 #' on one colour scale. Extrapolated cells are shown grey.
-plot_community_modelled <- function(modelled, observed, trait, unit = NULL) {
+plot_community_modelled <- function(modelled, observed, trait, unit = NULL,
+                                    species_label = "all species") {
   m <- dplyr::filter(modelled, trait_name == trait, woodiness_group == "all")
   o <- dplyr::filter(observed, trait_name == trait, woodiness_group == "all")
   limits <- range(c(m$community_mean[!m$extrapolated], o$community_mean), na.rm = TRUE)
@@ -156,16 +157,18 @@ plot_community_modelled <- function(modelled, observed, trait, unit = NULL) {
     ncol = 2, guides = "collect"
   ) +
     patchwork::plot_annotation(
-      title = paste0(trait, ", all species, community mean", unit_label),
+      title = paste0(trait, ", ", species_label, ", community mean", unit_label),
       subtitle = "10 km equal-area grid; grey: fewer than 10 species, or (modelled) outside the range the model was fitted on",
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 12),
                              plot.subtitle = ggplot2::element_text(size = 9, colour = "#6b6a66")))
 }
 
 #' Save one modelled-vs-observed map per trait; returns the file paths.
-write_modelled_maps <- function(modelled, observed, units, dir) {
+write_modelled_maps <- function(modelled, observed, units, dir,
+                                species_label = "all species") {
   unlist(lapply(sort(unique(modelled$trait_name)), function(tr) {
-    p <- plot_community_modelled(modelled, observed, tr, units$unit[units$trait_name == tr])
+    p <- plot_community_modelled(modelled, observed, tr, units$unit[units$trait_name == tr],
+                                 species_label)
     save_figure(p, file.path(dir, "figures", paste0(tr, "_modelled")), width = 10, height = 5)
   }), use.names = FALSE)
 }

@@ -64,7 +64,8 @@ In `outputs/community/<build version>/`:
 - `<product>/community_layers_metadata.json`: definitions, construction, decisions, and the data basis (build version and commit, APC release, GBIF download, medoid build).
 - `<product>/geotiff/<trait>_<group>_<statistic>.tif`: one single-band GeoTIFF per trait × group × statistic on the grid.
 - `<product>/figures/`: quick-look maps per trait. For the observed products, community mean and variance, woody and non-woody (`<trait>_observed_local`, `<trait>_observed_presence`); for `modelled`, the modelled community mean beside the `observed_presence` one for all species, on one colour scale (`<trait>_modelled`). Grey cells have species but fewer than 10 with a value, or (modelled) are extrapolated.
-- `comparison/`: the products against each other, cell by cell, for all species (`R/community/compare_layers.R`): `community_layer_agreement.csv` (per pair and trait: cells, correlation of the log community means, median and SD of their difference, and each product's spatial SD), a scatter figure per pair (`figures/pair_presence_modelled`, `pair_local_presence`, `pair_local_modelled`), and maps of modelled minus presence per trait (`figures/difference_modelled_minus_presence`).
+- `comparison/`: the products against each other, cell by cell, for all species (`R/community/compare_layers.R`): `community_layer_agreement.csv` (per pair and trait: cells, correlation of the log community means, median and SD of their difference, and each product's spatial SD), a scatter figure per pair (`figures/pair_presence_modelled`, `pair_local_presence`, `pair_local_modelled`), and maps of modelled minus presence per trait (`figures/difference_presence_modelled`).
+- Native-only test (below): `observed_presence_native/` and `modelled_native/` in the same layout, `comparison_native/` comparing them as above, and `comparison_native_vs_all/` comparing each with its all-species version (scatter figures and maps of native minus all).
 
 ## Coverage
 
@@ -99,6 +100,16 @@ How the products compare, all species, cells with both (modelled cells not extra
 | leaf_P_per_area | 0.66 | 0.04 | 0.76 (32) |
 
 Two things drive the differences between the modelled and presence products. The modelled level is set by the species the model was fitted on, which for most traits are a small, well-studied subset (773 species for leaf area, 214 for seed mass); for leaf area and plant height they average 0.66 and 0.26 log units above all species with an observed mean. And the modelled pattern comes only from the two climate variables, so shifts in composition that climate does not predict are missing: for leaf N and P per mass, the presence product is highest across the south-east, while the model's climate slopes are weak and its surface nearly flat (spatial SD of the log community mean 0.05 for leaf N per mass, against 0.19 for presence). The modelled community mean varies less across cells than the presence one for every trait except leaf area.
+
+### Native species only
+
+To test whether introduced species drive the gap, the presence and modelled products are also built from native species only (`observed_presence_native/`, `modelled_native/`): GBIF species native in at least one state or territory per the APC (`APCalign::native_anywhere_in_australia()`, APC release 2026-07-30), which drops 2,971 introduced species and 13 names not in the APC. Introduced species are 15% of species × cell presences, a median of 6.5% of the species in a cell (90th percentile 29%). The models are still fitted on all species.
+
+Dropping them changes little. Each native-only layer correlates with its all-species version at 0.88–1.00 (log scale), with median shifts of at most 0.06 log units (presence, leaf P per mass) and none for the modelled product (`comparison_native_vs_all/`). The modelled-vs-presence gap stays: leaf area +0.78 and seed mass +0.98 log units, leaf N per mass correlation −0.24; leaf P per mass improves only from −0.27 to −0.03 (`comparison_native/`).
+
+### Woody share
+
+What the gap does track is the share of woody species in the cell. Across cells, the presence community mean follows the woody share of the species present (correlation 0.70 for plant height, 0.64 LMA, 0.60 seed mass, −0.44 leaf N per mass, −0.55 leaf P per mass), and the modelled one does not (−0.13 to 0.34), so the gap correlates with woody share at −0.80, −0.69, −0.56, 0.40 and 0.58 for those traits. The model is fitted mostly on woody species (81–99% of fitted species for the leaf traits, seed mass and wood density; 62% for plant height), but the cells' species are a median 44% woody, and the model has no term for woodiness. This bears on the open choice of how to split the modelled product by woodiness: a woodiness term would let the model carry composition, though for several leaf traits the fit has few non-woody species (for leaf N per area, about 5% of 151).
 
 ## Precedent: Andrew et al. 2025
 

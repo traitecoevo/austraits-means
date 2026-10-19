@@ -66,6 +66,23 @@ gbif_presence_cells <- function(gbif_path, settings = community_layer_settings()
     dplyr::distinct()
 }
 
+#' Native status of each GBIF species from the APC: `native` if native in any
+#' state or territory, `introduced` if only naturalised, `unknown` if not in
+#' the APC (`APCalign::native_anywhere_in_australia()`).
+gbif_native_status <- function(gbif_names, apc_version) {
+  resources <- APCalign::load_taxonomic_resources(version = apc_version, quiet = TRUE)
+  # names not in the APC come back "unknown"; the warning says only that
+  suppressWarnings(APCalign::native_anywhere_in_australia(gbif_names, resources = resources)) |>
+    dplyr::transmute(gbif_taxon_name = species, native_status = native_anywhere_in_aus)
+}
+
+#' Presence of native species only (a test of the products' sensitivity to
+#' naturalised species).
+native_presence <- function(presence, status) {
+  dplyr::semi_join(presence, dplyr::filter(status, native_status == "native"),
+                   by = "gbif_taxon_name")
+}
+
 #' One species name (as used by the species means) per GBIF name.
 #'
 #' A GBIF name that is itself a species-means name maps to itself; otherwise
@@ -331,15 +348,24 @@ community_local_metadata <- function(data_basis) {
                      n_records = "records behind those species' values")))
 }
 
-community_presence_metadata <- function(data_basis) {
+#' Metadata note for the native-only versions.
+native_only_note <- function() {
+  list(species_set = paste("native species only: GBIF species native in at least one",
+                           "Australian state or territory per the APC",
+                           "(APCalign::native_anywhere_in_australia); introduced species",
+                           "and names not in the APC are left out"))
+}
+
+community_presence_metadata <- function(data_basis, native_only = FALSE) {
   community_metadata(
-    data_basis, "observed, GBIF presence x species means",
+    data_basis,
+    paste0("observed, GBIF presence x species means", if (native_only) ", native species"),
     paste("For each cell, the species with GBIF occurrences there, each given its",
           "geometric observed mean (one value per species, wherever it was measured)."),
-    extra = list(
+    extra = c(if (native_only) native_only_note(), list(
       occurrences = "cleaned GBIF occurrences (CC0 and CC BY), names aligned to APC",
       species_means = "geometric observed means of the development build (estimate_type observed_mean, method geometric)",
       columns = list(n_species_present = "GBIF species in the cell and group",
                      n_species = "of those, species with an observed mean of the trait",
-                     coverage = "n_species / n_species_present")))
+                     coverage = "n_species / n_species_present"))))
 }
