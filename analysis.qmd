@@ -149,7 +149,7 @@ trait_summary |>
 
 ## Refit on the development build: shifts against June 2026
 
-The modelled means were refitted after the data basis changed (#12, #13): trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). The GBIF extract and the medoids are unchanged. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
+The modelled means were refitted after the data basis changed (#12, #13): trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). Since #33 the occurrences are also new: a GBIF download of October 2026, keeping open-licence records only, with names aligned to APC from the providers' names, and medoids rebuilt from it. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
 
 ```{r baseline-setup}
 tar_load(baseline_comparison)

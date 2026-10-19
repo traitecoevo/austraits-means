@@ -36,7 +36,7 @@ The two Quarto notebooks are **reporting layers** (rendered by `tar_quarto` targ
 Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait TMB fits and their exports (modelled means); the portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means; the woody lookup, combined species means and community layers (variants via `tar_map`) and the model surface; the comparisons; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
-- *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `climate_centres.qmd` — see [Producer notebooks](#producer-notebooks). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
+- *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `R/scripts/build_medoids.R` (`build_climate_medoids()`, parallel over taxa). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
 - *Tier A — computed.* Everything else: flattening the AusTraits builds, the name crosswalk (APC release pinned as `apc_version`), the unified record table, the fits, the products, the community layers, the figures and the rendered reports.
 
 BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
@@ -46,9 +46,7 @@ Supporting files: `demo.qmd` (method illustration — the justification for the 
 
 ### Producer notebooks
 
-`climate_centres.qmd` at the project root is the only code that regenerates a Tier B input, the 22k-species medoids (`data-processed/climate_centres.parquet`; O(n²), run deliberately), so it must stay in the tree. It uses paths relative to the project root and `source("R/init.R")`, so run it from the root. It is not a `tar_quarto` target. Porting its producer chunk into `R/data/build_sources.R` would bring it under the same pattern as the other builders.
-
-`Data_height_AVH.qmd` used to produce the name crosswalk. Since #13 the crosswalk is built inside the pipeline (`build_name_crosswalk()`, target `name_crosswalk`) and `data-processed/gbif_avh_name_crosswalk.parquet` is no longer read; what remains of the notebook is the retired NVIS height report, which reads the old AVH caches. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
+None remain. The species medoids, once built by `climate_centres.qmd`, come from `build_climate_medoids()` (`R/data/build_sources.R`) via `R/scripts/build_medoids.R` since #33; the notebook is kept as an exploratory record. `Data_height_AVH.qmd` is the retired NVIS height report and no longer feeds the pipeline. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
 
 ## R/ library layout
 

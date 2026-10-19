@@ -134,9 +134,11 @@ list(
              format = "file"),
 
   # Seeded heavy artefacts — produced upstream, reused as inputs (not rebuilt).
-  tar_target(gbif_cleaned_file, "data-processed/data_gbif_cleaned.parquet",
+  tar_target(gbif_cleaned_file,
+             "data-processed/data_gbif_cleaned_0027765-260928105237408.parquet",
              format = "file"),
-  tar_target(medoids_file, "data-processed/climate_centres.parquet",
+  tar_target(medoids_file,
+             "data-processed/climate_centres_0027765-260928105237408.parquet",
              format = "file"),
   tar_target(austraits_dev_file, austraits_dev_rds, format = "file"),
 

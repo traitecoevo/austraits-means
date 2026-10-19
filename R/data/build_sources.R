@@ -61,7 +61,7 @@ gbif_taxon_names <- function(gbif_path) {
 
 #' GBIF download the cleaned occurrence extract in use was made from (a key
 #' in `gbif_downloads`, R/data/gbif.R).
-gbif_download_key <- "0001494-250914085247600"
+gbif_download_key <- "0027765-260928105237408"
 
 #' Data basis of the modelled means: where each input came from and when.
 #'
@@ -132,4 +132,64 @@ build_austraits_climate <- function(
                   decimal_latitude = `latitude (deg)`) |>
     extract_climate(rasters = rasters) |>
     dplyr::filter(!is.na(annual_precipitation), !is.na(average_temperature))
+}
+
+#' Climate medoid of every taxon in a GBIF extract (#33).
+#'
+#' Ported from `climate_centres.qmd` / `process_taxon_medoid()`, without the
+#' per-taxon plots. For each taxon: distinct points, a random subsample of
+#' `max_n` points for very common taxa (the distance matrix is O(n^2)), then
+#' `locate_medoid_2d()`, which drops the points furthest from all others in
+#' standardised climate space and returns the point closest to the rest.
+#' Taxa run in parallel (furrr, multisession) in blocks balanced by size.
+#'
+#' @param gbif_path a cleaned extract (`R/scripts/build_gbif.R`).
+#' @param workers number of parallel workers.
+#' @param max_n largest number of points per taxon.
+#' @param cull_percentage share of outlying points dropped (at most 30).
+#' @param seed subsampling seed, set per taxon so results do not depend on
+#'   which worker runs it.
+#' @return one row per taxon: the medoid record, `n_points` (distinct points),
+#'   `n_used` (after subsampling and culling).
+build_climate_medoids <- function(gbif_path, workers = 10, max_n = 20000,
+                                  cull_percentage = 0.01, seed = 123) {
+  points <- arrow::open_dataset(gbif_path) |>
+    dplyr::filter(!is.na(taxon_name), !is.na(annual_precipitation),
+                  !is.na(average_temperature)) |>
+    dplyr::select(taxon_name, decimal_longitude, decimal_latitude,
+                  annual_precipitation, average_temperature,
+                  log_annual_precipitation_centered, average_temperature_centered) |>
+    dplyr::collect() |>
+    dplyr::distinct()
+
+  one_taxon <- function(d) {
+    n_points <- nrow(d)
+    if (n_points > max_n) {
+      set.seed(seed)
+      d <- dplyr::slice_sample(d, n = max_n)
+    }
+    med <- locate_medoid_2d(d, cull_percentage = cull_percentage)
+    dplyr::mutate(med$medoid, n_points = n_points, n_used = nrow(med$data_taxon))
+  }
+
+  by_taxon <- split(points, points$taxon_name)
+  rm(points)
+  # blocks of similar total work (n^2, capped at max_n), largest first
+  work <- pmin(vapply(by_taxon, nrow, integer(1)), max_n)^2
+  block <- integer(length(by_taxon))
+  load <- numeric(workers * 4)
+  for (i in order(work, decreasing = TRUE)) {
+    b <- which.min(load); block[i] <- b; load[b] <- load[b] + work[i]
+  }
+  blocks <- split(by_taxon, block)
+
+  old_plan <- future::plan(future::multisession, workers = workers)
+  on.exit(future::plan(old_plan), add = TRUE)
+  out <- furrr::future_map(blocks, function(taxa) {
+    dplyr::bind_rows(lapply(taxa, one_taxon))
+  }, .options = furrr::furrr_options(
+    seed = NULL, packages = "dplyr",
+    globals = list(one_taxon = one_taxon, locate_medoid_2d = locate_medoid_2d,
+                   max_n = max_n, cull_percentage = cull_percentage, seed = seed)))
+  dplyr::bind_rows(out) |> dplyr::arrange(taxon_name)
 }

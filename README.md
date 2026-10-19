@@ -46,8 +46,8 @@ You need R 4.6. Steps, from the repository root:
 | austraits.build development build | `data/austraits/austraits-7.0.0.9000-d535de9.rds` (the file name is set by `austraits_dev_rds` in `_targets.R`) | build the austraits.build repository at that commit and copy its export; steps in [`data-raw/austraits/README.md`](data-raw/austraits/README.md) |
 | WorldClim 2.1 at 2.5′, BIO1 and BIO12 | `data/climate/wc2.1_2.5m_bio_1.tif`, `data/climate/wc2.1_2.5m_bio_12.tif` | [worldclim.org](https://www.worldclim.org) |
 | Australia extent raster | `data/australia.tif` | any raster covering 112.9–153.7° E, 43.8–9.1° S; it is used only for its extent, to crop the climate layers |
-| Cleaned GBIF occurrences | `data-processed/data_gbif_cleaned.parquet` (the extract in use; from GBIF download [10.15468/dl.b672m4](https://doi.org/10.15468/dl.b672m4)) | `Rscript R/scripts/build_gbif.R <key> <folder>` fetches a GBIF download by key (no credentials needed), cleans it, keeps only CC0 and CC BY records, aligns names to the pinned APC release and attaches climate, writing `data-processed/data_gbif_cleaned_<key>.parquet`; downloads used are listed in `gbif_downloads` (`R/data/gbif.R`) |
-| Species medoids | `data-processed/climate_centres.parquet` | render `climate_centres.qmd` after the GBIF step (slow: O(n²) per species) |
+| Cleaned GBIF occurrences | `data-processed/data_gbif_cleaned_<key>.parquet` (the extract in use is set by `gbif_cleaned_file` in `_targets.R`: GBIF download [10.15468/dl.766erw](https://doi.org/10.15468/dl.766erw), 15 October 2026) | `Rscript R/scripts/build_gbif.R <key> <folder>` fetches a GBIF download by key (no credentials needed), cleans it, keeps only CC0 and CC BY records, aligns names to the pinned APC release (from the provider's name, GBIF's name as fallback) and attaches climate, writing `data-processed/data_gbif_cleaned_<key>.parquet`; downloads used are listed in `gbif_downloads` (`R/data/gbif.R`) |
+| Species medoids | `data-processed/climate_centres_<key>.parquet` (set by `medoids_file` in `_targets.R`) | `Rscript R/scripts/build_medoids.R <key> <workers>` after the GBIF step (about 9 minutes for 22,900 taxa on 10 workers) |
 | The portal's deployed species means (optional) | `data/portal/austraits-7.0.0-full/austraits-species-averages.parquet` | a copy of the file the AusTraits data portal built for 7.0.0 (`inst/extdata/austraits/austraits-7.0.0-full/` in the portal's own data build; see [`data-raw/portal/README.md`](data-raw/portal/README.md)); used only by the reproduction check; without it the check's targets report an error and the rest of the pipeline still builds |
 
 Only those two files in `data-processed/` are read; the others there are legacy caches.
@@ -61,7 +61,7 @@ testthat::test_dir("tests/testthat")  # tests of the portal method, and the repr
 
 With the inputs in place, `tar_make()` takes about 15 minutes from an empty targets store. It rebuilds only what changed and renders the two reports at the end. The portal reproduction check is part of the pipeline (`portal_reproduction` target, written to `outputs/checks/portal_reproduction_*.csv`); the test reads that target's result and is skipped if the target has never been built. `targets::tar_visnetwork()` draws the dependency graph; `targets::tar_outdated()` lists what a make would rebuild. The `brms` backend is opt-in (`run_brms <- TRUE` in `_targets.R`; diagnostics go to `outputs/traits/brms_diagnostics.csv`, fits are cached in `data-processed/brms_fits/`). A product's Zenodo deposit is uploaded as a draft, never published, by `R/scripts/create_zenodo_draft.R`.
 
-**Pipeline tiers.** The cleaned GBIF occurrences (~1.2 GB) and the 22k-species medoids are tracked as file inputs: `tar_make()` watches their hashes but does not recompute them; rebuild them deliberately with `R/scripts/build_gbif.R` and `climate_centres.qmd`. Everything else is computed by the pipeline, from the AusTraits builds onward: flattening, the name crosswalk, the unified record table, the models, the products, the layers, the figures and the reports.
+**Pipeline tiers.** The cleaned GBIF occurrences (~1.2 GB) and the 22k-species medoids are tracked as file inputs: `tar_make()` watches their hashes but does not recompute them; rebuild them deliberately with `R/scripts/build_gbif.R` and `R/scripts/build_medoids.R`. Everything else is computed by the pipeline, from the AusTraits builds onward: flattening, the name crosswalk, the unified record table, the models, the products, the layers, the figures and the reports.
 
 ## Layout
 
@@ -72,7 +72,7 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 ├── analysis.qmd               # report: models, the refit against June 2026, observed vs modelled
 ├── dataset_construction.qmd   # report: data basis, name matching, medoid checks
 ├── demo.qmd                   # why within-species centring
-├── climate_centres.qmd        # producer of the species medoids (run deliberately)
+├── climate_centres.qmd        # exploratory medoid notebook; replaced by R/scripts/build_medoids.R
 ├── Data_height_AVH.qmd        # retired NVIS height report (reads the old AVH caches)
 ├── trait_species_means.qmd    # legacy notebook; predates the products and uses retired functions
 ├── methods.md                 # working notes on collection-method factors (#3)

@@ -34,7 +34,7 @@ tibble::enframe(unlist(data_basis_info), "item", "value") |> knitr::kable()
 - **Value types**: `load_austraits_records()` keeps raw, mean and median records, except where `dataset_value_type_rules()` says otherwise: `AVH_2026` carries one label bound per specimen (a minimum or a maximum) and no raw values, so its bounds are used as observations.
 - **Taxa**: subspecies, varieties and forms are rolled up to species (`roll_up_to_species()`); the build's own name is kept in `taxon_name_aligned`.
 - **Climate**: WorldClim 2.1 at 2.5′, BIO1 (annual mean temperature, °C) and BIO12 (annual precipitation, mm/yr; modelled on the log scale), cropped to Australia (`load_climate_rasters()`).
-- **Occurrences and medoids** (tracked file inputs, rebuilt deliberately): the cleaned GBIF occurrences (`data-processed/data_gbif_cleaned.parquet`, built by `R/scripts/build_gbif.R`) and the 2D precipitation–temperature medoid per GBIF name (`data-processed/climate_centres.parquet`, `climate_centres.qmd`).
+- **Occurrences and medoids** (tracked file inputs, rebuilt deliberately): the cleaned GBIF occurrences (`data-processed/data_gbif_cleaned_<key>.parquet`, built by `R/scripts/build_gbif.R`, open-licence records only, names aligned to APC from the provider's name) and the 2D precipitation–temperature medoid per species (`data-processed/climate_centres_<key>.parquet`, `R/scripts/build_medoids.R`).
 - **Name crosswalk**: the build's taxon names and the GBIF names are both aligned to one pinned APC release with APCalign and matched on the accepted name (`build_name_crosswalk()`, target `name_crosswalk`); `build_medoid_lookup()` uses it to give each species its medoid.
 
 ## Name matching
