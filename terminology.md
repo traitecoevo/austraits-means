@@ -1,6 +1,6 @@
 # Terminology: species and community means
 
-This project publishes two species-level trait estimates, plus community-level summaries of them mapped across space. This file fixes what they are called and what each one means. The paper, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
+This project publishes two species-level trait estimates, plus community-level summaries of them mapped across space. This file fixes what they are called and what each one means. The documentation, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
 
 Species terms decided 14 October 2026. Community terms proposed 14 October 2026; their open choices were decided 19 October 2026 (see "Community choices" below). The choice of "mean" over "average" was confirmed on 14 October 2026: "average" had been suggested to leave room for medians and trimmed means, but both published estimates are geometric means, so "mean" is accurate, and flexibility of method is carried by the `method` column (below), not by the term.
 

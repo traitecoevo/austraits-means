@@ -66,13 +66,8 @@ wrap <- function(txt, width = 90) {
 
 body <- paste(
   "This document is an appendix to the report “Analysis of height variation",
-  "in Australia: Report for NVIS team”. It collects the individual",
-  "species-level diagnostic panels referenced in that report.",
-  "",
-  "The work forms part of a project for the Australian Government Department",
-  "of Climate Change, Energy, the Environment and Water (DCCEEW) to strengthen",
-  "the plant trait data underpinning the National Vegetation Information",
-  "System (NVIS)."
+  "in Australia”. It collects the individual species-level diagnostic panels",
+  "referenced in that report."
 )
 
 # One entry per subplot in each panel (see build_species_plot() in

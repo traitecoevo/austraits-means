@@ -20,7 +20,7 @@ Each product carries the **same version tag as the AusTraits release it derives 
 |---|---|---|
 | first draft | 3 Nov 2026 | A first version of all three products, for review: portal-method observed means reproduced and documented; geometric observed means and modelled means on the latest austraits.build development build; community layers on provisional choices; an observed-vs-modelled comparison; the decision issues opened. |
 | release candidate | 23 Nov 2026 | The revised products after review: decisions closed and applied; refreshed occurrence data and climate medoids; products packaged and published; the portal reading the published product; hooks filed in the sibling repositories. |
-| paper submission | undated | Model extensions (unconverged BRMS refits, collection method as a covariate, a joint multivariate model), a product-description methods and figure set, modelled community layers. |
+| extensions | undated | Model extensions (unconverged BRMS refits, collection method as a covariate, a joint multivariate model), a product-description methods and figure set, modelled community layers. |
 
 The milestones are review points, not product versions. Both deliver everything; the second delivers it revised.
 
@@ -48,7 +48,7 @@ Status, 14 October 2026: every first-draft issue is done except [#10](https://gi
 - [#31](https://github.com/traitecoevo/austraits-means/issues/31) community consultation on the spatial layers, scheduled.
 - Cross-repository work, tracked in those repositories without a milestone here: [austraits.portal#139](https://github.com/traitecoevo/austraits.portal/issues/139) and [austraits.portal#140](https://github.com/traitecoevo/austraits.portal/issues/140) (portal: provenance, then reading the published product), [austraits.build#867](https://github.com/traitecoevo/austraits.build/issues/867) (austraits.build: products in the release workflow), [austraits-api#16](https://github.com/traitecoevo/austraits-api/issues/16) (austraits-api: serve stored means), [austraits#184](https://github.com/traitecoevo/austraits/issues/184) (austraits R package: loader).
 
-### paper submission (undated)
+### extensions (undated)
 
 [#35](https://github.com/traitecoevo/austraits-means/issues/35) BRMS refits for unconverged traits; [#3](https://github.com/traitecoevo/austraits-means/issues/3) collection method as a covariate, with [#36](https://github.com/traitecoevo/austraits-means/issues/36) importing the factor tables and testing on taxa measured under more than one method; [#37](https://github.com/traitecoevo/austraits-means/issues/37) methods description and figure set for the products; [#38](https://github.com/traitecoevo/austraits-means/issues/38) modelled community means across space. [#40](https://github.com/traitecoevo/austraits-means/issues/40) joint multivariate model with gap-filling. Deferred without a milestone: [#39](https://github.com/traitecoevo/austraits-means/issues/39) leaf_delta13C transform.
 
@@ -77,7 +77,7 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 - **Derived products get their own Zenodo deposit**, "AusTraits species means", with its own concept DOI and one version per AusTraits release (or per development build, tagged with its version string), each linked to the release or build it derives from. Alternative considered: re-releasing AusTraits 7.0.0 with the product added. Set aside because a derived product is not a database release and the two would drift.
 - **Versioning follows the AusTraits release tag** (see Products).
 - **Trait and height records come from an austraits.build development build** (which now includes the AVH height dataset), replacing the separate AVH CSV. The GBIF refresh and medoid rebuild follow in the release candidate; the first draft uses the existing occurrence extract and medoids, with the crosswalk rebuilt from the new names.
-- **Unconverged BRMS fits stay postponed** to the paper milestone; TMB estimates serve the first two milestones.
+- **Unconverged BRMS fits stay postponed** to the extensions milestone; TMB estimates serve the first two milestones.
 - **The name crosswalk is built inside the pipeline, against APC release 2026-07-30** (`apc_version` in `_targets.R`), from every taxon name in the development build and every GBIF name ([#13](https://github.com/traitecoevo/austraits-means/issues/13)). Changing the release rebuilds everything downstream. The release candidate re-pins it when the GBIF extract is refreshed ([#33](https://github.com/traitecoevo/austraits-means/issues/33)).
 - **The field-only per-record geometric mean (`estimate_simple_means()`) is retired** ([#17](https://github.com/traitecoevo/austraits-means/issues/17)). The geometric observed mean ([#15](https://github.com/traitecoevo/austraits-means/issues/15)) supersedes it as the observed mean, and the combined product (modelled where available, otherwise observed) is built from that. Exports carry `estimate_type` and `method` and name their values `value`, `log_value`, `value_lower`, `value_upper` (`terminology.md`).
 - **Infraspecific taxa are rolled up to species** for the modelled means and the geometric observed means (`roll_up_to_species()`; [#13](https://github.com/traitecoevo/austraits-means/issues/13), [#15](https://github.com/traitecoevo/austraits-means/issues/15)). The AVH height dataset in austraits.build keeps subspecies, varieties and forms, which the earlier AVH CSV had rolled up to species, and GBIF names (and so medoids) are almost all at species rank. Rolling up gives every record a species-level climate centre and makes both species estimates join on species. The build's own name is kept in `taxon_name_aligned`. Alternative considered and set aside: keeping infraspecific taxa as their own groups, centred on their parent species' medoid. The portal-method product is not rolled up; that is one of its documented quirks.
@@ -112,7 +112,7 @@ Things a future edit could break without noticing:
 
 ## Later work
 
-On the paper milestone:
+On the extensions milestone:
 
 - Modelled community layers across space ([#38](https://github.com/traitecoevo/austraits-means/issues/38)), after the observed layers are settled.
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.

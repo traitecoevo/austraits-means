@@ -2,7 +2,7 @@
 #
 # Two interchangeable backends share one formula (build_model_formula()):
 #   - "tmb"  : glmmTMB, fast ML fit for iteration/testing.
-#   - "brms" : full posterior via Stan/cmdstanr for the deliverable.
+#   - "brms" : full posterior via Stan/cmdstanr for the final estimates.
 # Both return a standardized `trait_climate_fit` object so downstream code
 # (species_centres(), reporting) is backend-blind.
 #

@@ -16,22 +16,12 @@ editor_options:
 
 ## Overview
 
-This analysis produces **national estimates of plant species' trait means** for
-Australia, as part of the ARDC-funded AusTraits programme. Trait data are sampled
-unevenly across each species' geographic and climatic range, so a simple average
-is biased toward wherever a species happened to be measured. Instead, for each
-trait we estimate the species-level mean **at the centre of the species' climate
-distribution** (the 2D precipitation–temperature medoid), giving a consistent,
-defensible reference point across species and traits.
+This analysis produces **national estimates of plant species' trait means** for Australia, for AusTraits. Trait data are sampled unevenly across each species' geographic and climatic range, so a simple average is biased toward wherever a species happened to be measured. Instead, for each trait we estimate the species-level mean **at the centre of the species' climate distribution** (the 2D precipitation–temperature medoid), giving a consistent, defensible reference point across species and traits.
 
 We use a hierarchical within-group-centred model. Predictors are centred on the
 medoid (`x_c = obs − medoid`), so the between-species terms describe turnover
 across the continent and the within-species terms describe how a trait shifts
-across a species' range. This serves two goals: (1) delivering the species-mean
-estimates for AusTraits, and (2) underpinning a paper that reports these means
-and gives credence to the estimates (uncertainty intervals, the within/between
-decomposition, and — via the BRMS backend — full posterior inference). See
-`docs/within-species-centring.qmd` for the statistical motivation and `roadmap.md` for the roadmap and decisions log.
+across a species' range. The estimates come with uncertainty intervals, the within/between decomposition and, via the BRMS backend, full posterior inference. See `docs/within-species-centring.qmd` for the statistical motivation and `roadmap.md` for the roadmap and decisions log.
 
 This notebook is a *reporting layer*: model fitting, exports and figures are
 produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the
@@ -94,10 +84,10 @@ build_model_formula()
 
 ### Full posterior (BRMS backend, opt-in)
 
-For the deliverable we refit with the BRMS backend. TMB gives a fast maximum-
+For the final estimates we refit with the BRMS backend. TMB gives a fast maximum-
 likelihood point estimate, and for the *central* species means the two backends
 agree closely (data dominate the weakly informative priors). What changes is the
-**uncertainty**, and that is the deliverable's main product. TMB reports
+**uncertainty**, which the products report alongside every mean. TMB reports
 species means conditional on plug-in point estimates of the variance components,
 with asymptotic (delta-method) standard errors; the posterior instead gives the
 full joint distribution of every quantity we report. Concretely:

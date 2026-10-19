@@ -8,21 +8,16 @@ Builds species-level and community-level trait means for the Australian flora fr
 
 1. **Observed means**, computed directly from the records: the *portal method* (`method = portal_arithmetic`), which reproduces exactly the species means the AusTraits data portal shows for release 7.0.0, and its successor the *geometric method* (`method = geometric`), on the austraits.build development build.
 2. **Modelled means** (`method = tmb` or `brms`): the mean of each trait at the centre of a species' climate distribution (the 2D precipitation–temperature medoid of its occurrences), from a hierarchical within-group-centred ("Mundlak") model.
-3. **Community layers**: the community mean and community variance of the species means present in each spatial unit, woody and non-woody, first on provisional choices (`docs/community-layers-design.md`).
+3. **Community layers**: the community mean and community variance of the species present in each cell of a 10 km equal-area grid, for woody and non-woody species and for all species, in three products: observed from local records, observed from GBIF presence × observed means, and modelled (`docs/community-layers-design.md`).
 
-Two framings:
-1. **National species-trait estimates** for Australia, under the ARDC-funded
-   AusTraits programme — a consistent, defensible species mean per trait.
-2. **A paper** reporting these species means and giving credence to the
-   estimates (uncertainty intervals, within/between decomposition, full
-   posterior inference via the BRMS backend).
+The aim is **national species-trait estimates** for Australia, for AusTraits: a consistent, defensible species mean per trait, with uncertainty intervals, the within/between decomposition and (via the BRMS backend) full posterior inference.
 
 (An earlier height analysis was a reportable subproject; that framing is retired. Its report, `Data_height_AVH.qmd`, read the old AVH caches and was removed from the repository in October 2026; it survives in git history. Its within- vs between-species figure is redrawn for every trait by `plot_within_between()`.)
 
 The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `docs/within-species-centring.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
 The roadmap, milestones and decisions log are in **`roadmap.md`** — read it before making structural changes.
 
-**Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric from the geometric method onward; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average". Exports carry `estimate_type` and `method` and name values `value`, `log_value`, `value_lower`, `value_upper`.
+**Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric from the geometric method onward; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports and docs; never "average". Exports carry `estimate_type` and `method` and name values `value`, `log_value`, `value_lower`, `value_upper`.
 
 ## Workflow: `targets` pipeline + two reporting notebooks
 
@@ -91,7 +86,7 @@ do real work when sourced, so they must never be sourced by `init.R`.
   a `tar_target()`; `tar_make()` rebuilds only the affected targets and their
   descendants (`tar_outdated()` previews this; `tar_visnetwork()` draws the DAG).
   The targets store is `_targets/` (git-ignored); seeded inputs still live in
-  `data-processed/`, deliverables in `outputs/`.
+  `data-processed/`, products in `outputs/`.
 - **`renv`** locks dependencies (`renv.lock`); `renv::snapshot()` after adding a
   package, `renv::restore()` to reproduce the library.
 - **Parallelism: `furrr` + `setup_parallel()` → `plan(multisession)`.** Never
@@ -99,7 +94,7 @@ do real work when sourced, so they must never be sourced by `init.R`.
   reads true core count via `parallelly::availableCores(methods = "system")` to
   work around a low `mc.cores` in `.Rprofile`.
 - **Figures: save as both PNG and PDF via `save_figure(plot, path, w, h)`** (PNG
-  for embedding/preview, PDF as vector deliverable).
+  for embedding/preview, PDF as vector output).
 
 ## Dependencies (`renv`)
 
@@ -128,8 +123,7 @@ Package versions are pinned with `renv` so the pipeline is reproducible.
 
 - **Centring on the medoid (Option B):** `x_c = obs − medoid`, `x_mn = medoid`
   per climate var; consistent across traits.
-- **Per-trait models** now (TMB default; BRMS postponed to the paper
-  milestone); joint multivariate / gap-filling deferred.
+- **Per-trait models** now (TMB default; BRMS postponed to the extensions milestone); joint multivariate / gap-filling deferred.
 - **Two backends** behind one interface: `fit_trait_climate_model(backend =
   "tmb" | "brms")`. Consult the `bayesian-workflow` skill before writing
   Stan/brms code.

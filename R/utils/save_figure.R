@@ -1,4 +1,4 @@
-# Save a figure as both PNG (for embedding/preview) and PDF (vector deliverable).
+# Save a figure as both PNG (for embedding/preview) and PDF (vector output).
 
 #' Save a ggplot/grob to both <stem>.png and <stem>.pdf.
 #'
