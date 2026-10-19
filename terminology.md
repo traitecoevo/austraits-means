@@ -2,7 +2,7 @@
 
 This project publishes two species-level trait estimates, plus community-level summaries of them mapped across space. This file fixes what they are called and what each one means. The paper, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
 
-Species terms decided 14 October 2026. Community terms proposed 14 October 2026; two choices still open (see "Open choices" below). The choice of "mean" over "average" was confirmed on 14 October 2026: "average" had been suggested to leave room for medians and trimmed means, but both published estimates are geometric means, so "mean" is accurate, and flexibility of method is carried by the `method` column (below), not by the term.
+Species terms decided 14 October 2026. Community terms proposed 14 October 2026; their open choices were decided 19 October 2026 (see "Community choices" below). The choice of "mean" over "average" was confirmed on 14 October 2026: "average" had been suggested to leave room for medians and trimmed means, but both published estimates are geometric means, so "mean" is accurate, and flexibility of method is carried by the `method` column (below), not by the term.
 
 ## The terms
 
@@ -60,14 +60,16 @@ The rule that both estimates are geometric means therefore holds from the `geome
 
 ## Community means
 
-These summarise the species means of all species present at a location. They are computed for **woody** and **non-woody** plants separately, and then modelled across space.
+These summarise the trait values of the species present at a location. They are computed for all species, and for **woody** and **non-woody** plants separately.
 
 | Term | Definition |
 |---|---|
-| **community mean** | the mean, on the log scale, of the species means of the species present at a location; back-transformed, so it is a geometric mean |
-| **community variance** | the variance, on the log scale, of those species means |
+| **community mean** | the mean, on the log scale, of the trait values of the species present at a location, one value per species; back-transformed, so it is a geometric mean |
+| **community variance** | the variance, on the log scale, of those species values |
 | **woody** / **non-woody** | qualifiers on either term, for example "woody community mean" |
-| **observed** / **modelled** | as for species: observed = computed directly from the species present in a spatial unit; modelled = the prediction of the spatial model |
+| **observed** / **modelled** | observed = computed directly from the species in a spatial unit, with no model; modelled = the trait-climate model's net average for the unit over the species present, averaging over between- and within-species effects |
+
+An observed community mean takes each species' value either from its trait records collected in the unit (the *local records* product) or from its observed mean (the *GBIF presence* product). The modelled community mean uses no species values: the model's prediction for a species centred at climate m, observed at the unit's climate x, averaged over the species present, is b0 + b_within·x + (b_between − b_within)·m̄. It has no community variance. The three products are described in `docs/community-layers-design.md`.
 
 Full forms follow one order: estimate type, then growth form, then level, then statistic. For example: "modelled woody community mean", "observed non-woody community variance".
 
@@ -75,14 +77,14 @@ Rules:
 
 - **Always say "community".** It is what separates these from the species terms. "Modelled mean" on its own always refers to a species. "Modelled community mean" refers to the spatial surface.
 - **Community variance is between-species only.** It is the spread of species means and leaves out variation within species. Say this wherever the term is defined. Report it in natural-log units. If the SD is also published, call it **community SD**.
-- **Name the input species means in the metadata, not in the term.** Record whether the community statistics use the modelled means only, or the combined product (modelled where available, otherwise observed). Do not build that into the name.
+- **Name the source of the species values in the metadata, not in the term.** Record whether an observed community statistic uses the species' records in the unit or their observed means. Do not build that into the name; the product name (`observed_local`, `observed_presence`) carries it.
 - **Use "non-woody", not "herbaceous".** In AusTraits, "herbaceous" is one category of the `woodiness` trait, and non-woody is meant to cover everything that is not woody. The exact assignment of categories is an open choice below.
 - **The spatial unit is part of the definition.** "Location" means a stated unit; for these layers, a 10 × 10 km cell of an equal-area (Lambert Azimuthal Equal Area) grid of Australia (decided 19 October 2026, #20). Give it wherever the community terms are defined.
 
-## Open choices for community terms
+## Community choices
 
 1. **Weighting: decided 19 October 2026 (#18).** Presence only: every species present in a unit counts equally, as occurrence data such as AVH or GBIF allow, so the terms above stand: community mean and community variance. Abundance- or cover-weighted statistics from plot surveys would be **community-weighted mean (CWM)** and **community-weighted variance (CWV)**; do not use those names for these layers, because readers assume abundance weighting.
-2. **Woody / non-woody assignment.** Decide where intermediate AusTraits woodiness categories go (for example semi-woody, or woody only at the base), and how to handle species with conflicting or missing woodiness. Record the mapping here once decided.
+2. **Woody / non-woody assignment: decided 19 October 2026 (#19).** From the species' most likely `woodiness_detailed` value: `woody` and `woody_like_stem` (palms, cycads, grass trees) are woody; `herbaceous`, `semi_woody`, `woody_base`, `woody_like_inflorescence` and `woody_root` are non-woody. A species with no such value, or a tie between the two classes, is assigned from its growth forms (any herb, fern, tussock, geophyte, lycophyte, basal_large, graminoid or hummock form makes it non-woody; any other recorded form woody). Species still unassigned are left out of the woody and non-woody statistics and count only for all species; the coarse `woodiness` trait is not used.
 
 ## Column names in the exports
 

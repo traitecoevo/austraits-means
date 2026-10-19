@@ -1,17 +1,19 @@
-# Provisional woody / non-woody lookup for the community layers (#22).
+# Woody / non-woody lookup for the community layers: the rule decided by the
+# project lead on 19 October 2026 (#19; applied as #27):
 #
-# PROVISIONAL, pending the decision in #19 (applied in #27). The rule:
-#
-#   1. The modal `woodiness_detailed` value: woody -> woody; herbaceous ->
-#      non-woody; the intermediate categories (semi_woody, woody_base,
-#      woody_like_inflorescence, woody_like_stem, woody_root) -> non-woody,
-#      flagged `intermediate`. A tie between values of different classes is a
-#      conflict and falls through to step 2.
-#   2. Otherwise the growth-form keywords of #19's candidate rule: a taxon with
-#      any growth form containing herb, fern, tussock, geophyte, lycophyte,
-#      basal_large, graminoid or hummock (so also herbaceous climbers and any
-#      mixed form) -> non-woody; any other recorded growth form -> woody.
-#   3. Otherwise unassigned.
+#   1. The species' most likely `woodiness_detailed` value: woody and
+#      woody_like_stem (palms, cycads, grass trees) -> woody; herbaceous and
+#      the other intermediate categories (semi_woody, woody_base,
+#      woody_like_inflorescence, woody_root) -> non-woody. Intermediate
+#      categories are flagged `intermediate`. A tie between values of different
+#      classes is a conflict and falls through to step 2.
+#   2. Otherwise the growth-form keywords: a taxon with any growth form
+#      containing herb, fern, tussock, geophyte, lycophyte, basal_large,
+#      graminoid or hummock (so also herbaceous climbers and any mixed form) ->
+#      non-woody; any other recorded growth form -> woody.
+#   3. Otherwise unassigned. Unassigned taxa are dropped from the woody and
+#      non-woody layers as unclear; the coarse `woodiness` trait is not used as
+#      a fallback.
 #
 # Inputs are the categorical rows of the geometric observed means, so taxa
 # are already rolled up to species. Their `value_mode` is a species' most
@@ -26,7 +28,7 @@ woodiness_detailed_class <- c(
   semi_woody = "non_woody",
   woody_base = "non_woody",
   woody_like_inflorescence = "non_woody",
-  woody_like_stem = "non_woody",
+  woody_like_stem = "woody",
   woody_root = "non_woody"
 )
 
@@ -34,13 +36,13 @@ non_woody_growth_form_keywords <- c("herb", "fern", "tussock", "geophyte",
                                     "lycophyte", "basal_large", "graminoid",
                                     "hummock")
 
-#' Provisional woody / non-woody class per taxon.
+#' Woody / non-woody class per taxon (#19, #27).
 #'
 #' @param observed_means output of `estimate_observed_means_geometric()`.
 #' @return one row per taxon with any woodiness or growth-form record:
 #'   `woodiness_group` (woody, non_woody, unassigned), `source`
 #'   (woodiness_detailed, plant_growth_form, none), `intermediate` and
-#'   `conflict` flags, the inputs used, and `provisional = TRUE`.
+#'   `conflict` flags, and the inputs used.
 build_woody_lookup <- function(observed_means) {
   cat_rows <- dplyr::filter(observed_means, type == "categorical")
   values_of <- function(trait, column) {
@@ -101,7 +103,6 @@ build_woody_lookup <- function(observed_means) {
       # records of the taxon carry both woody and non-woody woodiness_detailed
       # values (whether or not the mode resolves it)
       conflict = vapply(all_classes, length, integer(1)) > 1,
-      provisional = TRUE,
       .after = taxon_name
     ) |>
     dplyr::arrange(taxon_name)
@@ -125,8 +126,7 @@ summarise_woody_lookup <- function(lookup) {
 #' @return the file paths.
 write_woody_lookup <- function(lookup, dir) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-  paths <- file.path(dir, c("woody_lookup_provisional.csv",
-                            "woody_lookup_provisional_summary.csv"))
+  paths <- file.path(dir, c("woody_lookup.csv", "woody_lookup_summary.csv"))
   readr::write_csv(lookup, paths[1], na = "")
   readr::write_csv(summarise_woody_lookup(lookup), paths[2])
   paths

@@ -75,6 +75,25 @@ modelled_means_dictionary <- function() {
     )
 }
 
+#' Combined species means: for each modelled trait, the modelled mean where
+#' there is one, otherwise the geometric observed mean. `estimate_type` and
+#' `method` say which each row is.
+combine_species_means <- function(fits, observed_means) {
+  modelled <- modelled_means_table(fits) |>
+    dplyr::select(taxon_name, trait_name, unit, estimate_type, method, value,
+                  value_lower, value_upper, log_value, n_records)
+  observed <- observed_means |>
+    dplyr::filter(type == "numerical", trait_name %in% unique(modelled$trait_name)) |>
+    dplyr::transmute(taxon_name, trait_name, unit, estimate_type = "observed_mean",
+                     method = "geometric", value, log_value, n_records)
+
+  dplyr::bind_rows(
+    modelled,
+    dplyr::anti_join(observed, modelled, by = c("taxon_name", "trait_name"))
+  ) |>
+    dplyr::arrange(trait_name, taxon_name)
+}
+
 #' Column dictionary for the combined species means.
 species_means_combined_dictionary <- function() {
   dplyr::bind_rows(

@@ -69,7 +69,7 @@ R/
   plot/        plot_fitted.R, plot_trait_centres.R, figure_set.R
   means/       observed_means_portal.R, observed_means_geometric.R,
                reliability.R, species_means_io.R, compare_portal.R
-  community/   woody_lookup.R, community_layers.R, model_surface.R
+  community/   woody_lookup.R, community_layers.R, community_modelled.R
   release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,

@@ -86,31 +86,20 @@ plot_climate_responses <- function(fits) {
     ggplot2::theme(legend.position = "bottom")
 }
 
-#' Community mean maps for a few traits, woody and non-woody (combined input).
+#' Community mean maps for a few traits, woody and non-woody (observed, GBIF
+#' presence x species means).
 plot_community_overview <- function(layers, traits = c("plant_height", "leaf_mass_per_area",
                                                        "leaf_area", "seed_dry_mass")) {
-  blue <- c("#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
-  oz <- ozmaps::ozmap_states
   panels <- lapply(traits, function(tr) {
-    d <- dplyr::filter(layers, trait_name == tr, woodiness_group %in% c("woody", "non_woody"),
-                       !is.na(community_mean)) |>
+    d <- dplyr::filter(layers, trait_name == tr, woodiness_group %in% c("woody", "non_woody")) |>
       dplyr::mutate(woodiness_group = factor(woodiness_group, c("woody", "non_woody"),
                                              c("Woody", "Non-woody")))
-    ggplot2::ggplot(d, ggplot2::aes(longitude, latitude, fill = community_mean)) +
-      ggplot2::geom_tile(width = 0.25, height = 0.25) +
-      ggplot2::geom_sf(data = oz, inherit.aes = FALSE, fill = NA, colour = "#6b6a66",
-                       linewidth = 0.15) +
-      ggplot2::scale_fill_gradientn(colours = blue, transform = "log10", name = NULL) +
-      ggplot2::facet_wrap(~woodiness_group, ncol = 2) +
-      ggplot2::coord_sf(xlim = c(112, 154), ylim = c(-44, -9.5), expand = FALSE) +
-      ggplot2::labs(title = tr) +
-      ggplot2::theme_void(base_size = 9) +
-      ggplot2::theme(plot.title = ggplot2::element_text(size = 9),
-                     strip.text = ggplot2::element_text(hjust = 0, size = 8))
+    map_cells(d, "community_mean", layer_colours$mean, tr, "log10") +
+      ggplot2::facet_wrap(~woodiness_group, ncol = 2)
   })
   patchwork::wrap_plots(panels, ncol = 2) +
     patchwork::plot_annotation(
-      title = "Community mean (first draft, provisional choices; combined species means)",
+      title = "Community mean, observed: GBIF presence x observed species means (10 km grid)",
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11)))
 }
 

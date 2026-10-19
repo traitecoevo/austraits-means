@@ -98,30 +98,6 @@ mapped <- tar_map(
   }, format = "file")
 )
 
-# Community layers per species-means input (#20 is open, so both are built):
-# combined (modelled where available, else observed) and modelled means
-# only (at each species' climate centre).
-community_variants <- tar_map(
-  values = list(input = c("combined", "modelled_centre")),
-  names = "input",
-
-  tar_target(community_layers,
-             compute_community_layers(gbif_presence, gbif_species_map,
-                                      woody_lookup,
-                                      select_species_means(species_means_combined,
-                                                           input))),
-  tar_target(community_layers_files,
-             write_community_layers(community_layers,
-                                    file.path(community_dir, input),
-                                    community_layers_metadata(data_basis_info,
-                                                              input = input)),
-             format = "file"),
-  tar_target(community_maps,
-             write_community_maps(community_layers, species_means_combined,
-                                  file.path(community_dir, input), input = input),
-             format = "file")
-)
-
 list(
 
   # ===== Tier B: tracked file inputs (raw + seeded heavy artefacts) =========
@@ -314,19 +290,19 @@ list(
                                                             geometric_traits)),
              format = "file"),
 
-  # ===== Community layers, first draft (provisional choices; #22, #23) =====
-  # Woody / non-woody per taxon, provisional pending #19.
+  # ===== Community layers (#27, #28) ========================================
+  # Three products on a 10 km equal-area grid, each for all species and for
+  # woody and non-woody (docs/community-layers-design.md).
+  # Woody / non-woody per taxon, by the rule of #19.
   tar_target(woody_lookup, build_woody_lookup(observed_means_geometric)),
-  tar_target(woody_lookup_files,
-             write_woody_lookup(woody_lookup,
-                                file.path("outputs/community",
-                                          austraits_dev_info$austraits_version)),
-             format = "file"),
-
-  # Combined species means (modelled where available, else observed), GBIF
-  # presence per 0.25 degree cell, and the community statistics (#23).
   tar_target(community_dir,
              file.path("outputs/community", austraits_dev_info$austraits_version)),
+  tar_target(woody_lookup_files, write_woody_lookup(woody_lookup, community_dir),
+             format = "file"),
+  tar_target(community_units, trait_units(observed_means_geometric, trait_names)),
+
+  # Combined species means (modelled where available, else observed), a
+  # species means export in its own right.
   tar_target(species_means_combined,
              combine_species_means(tmb_fits, observed_means_geometric)),
   tar_target(species_means_combined_files,
@@ -337,33 +313,70 @@ list(
                stem = "species_means_combined",
                metadata = species_means_combined_metadata(data_basis_info)),
              format = "file"),
-  tar_target(gbif_presence,
-             gbif_presence_cells(gbif_cleaned_file,
-                                 community_layer_settings()$resolution)),
+
+  # Observed, local records: each species' records in a cell are averaged,
+  # then the species. No model, no occurrence data.
+  tar_target(community_local, community_layers_local(records_all, woody_lookup)),
+  tar_target(community_local_files,
+             write_community_layers(
+               community_local, file.path(community_dir, "observed_local"),
+               community_local_metadata(data_basis_info),
+               statistics = c("community_mean", "community_variance", "n_species")),
+             format = "file"),
+  tar_target(community_local_maps,
+             write_community_maps(community_local, community_units,
+                                  file.path(community_dir, "observed_local"),
+                                  "observed, local records", "observed_local"),
+             format = "file"),
+
+  # Observed, GBIF presence: the species recorded in a cell, each given its
+  # geometric observed mean.
+  tar_target(community_species_values,
+             observed_species_values(observed_means_geometric, trait_names)),
+  tar_target(gbif_presence, gbif_presence_cells(gbif_cleaned_file)),
   tar_target(gbif_species_map,
              gbif_to_species(gbif_names, name_crosswalk, dev_taxa,
-                             union(species_means_combined$taxon_name,
+                             union(community_species_values$taxon_name,
                                    woody_lookup$taxon_name))),
-  # The layer variants, one per species-means input (#20 decides).
-  community_variants,
+  tar_target(community_presence,
+             community_layers_presence(gbif_presence, gbif_species_map,
+                                       woody_lookup, community_species_values)),
+  tar_target(community_presence_files,
+             write_community_layers(
+               community_presence, file.path(community_dir, "observed_presence"),
+               community_presence_metadata(data_basis_info),
+               statistics = c("community_mean", "community_variance", "n_species",
+                              "coverage")),
+             format = "file"),
+  tar_target(community_presence_maps,
+             write_community_maps(community_presence, community_units,
+                                  file.path(community_dir, "observed_presence"),
+                                  "observed, GBIF presence x species means",
+                                  "observed_presence"),
+             format = "file"),
 
-  # Model surface: each trait model's population-level prediction at the
-  # cell's climate (species averaged out), all species together.
+  # Modelled: each trait model's net average for the cell, from the cell's
+  # climate and the mean climate centre of the species present.
   tar_target(cell_climate_grid,
              cell_climate(load_climate_rasters(
                vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
                climate_dir = dirname(climate_bio1_tif),
                australia_tif = climate_australia_tif))),
-  tar_target(model_surface, predict_model_surface(tmb_fits, cell_climate_grid)),
-  tar_target(model_surface_files,
-             write_model_surface(model_surface,
-                                 file.path(community_dir, "model_surface"),
-                                 model_surface_metadata(data_basis_info)),
+  tar_target(cell_centres,
+             cell_species_centres(gbif_presence, medoids_file, gbif_species_map,
+                                  woody_lookup)),
+  tar_target(community_modelled,
+             community_layers_modelled(tmb_fits, cell_climate_grid, cell_centres)),
+  tar_target(community_modelled_files,
+             write_community_layers(
+               community_modelled, file.path(community_dir, "modelled"),
+               community_modelled_metadata(data_basis_info),
+               statistics = c("community_mean", "lower", "upper", "extrapolated")),
              format = "file"),
-  tar_target(model_surface_maps,
-             write_model_surface_maps(model_surface, community_layers_combined,
-                                      species_means_combined,
-                                      file.path(community_dir, "model_surface")),
+  tar_target(community_modelled_maps,
+             write_modelled_maps(community_modelled, community_presence,
+                                 community_units,
+                                 file.path(community_dir, "modelled")),
              format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================
@@ -380,8 +393,9 @@ list(
   tar_target(figure_set,
              write_figure_set(observed_means_portal, observed_means_geometric,
                               modelled_means, tmb_fits, observed_modelled,
-                              community_layers_combined, means_comparison_files,
-                              community_maps_combined),
+                              community_presence, means_comparison_files,
+                              c(community_local_maps, community_presence_maps,
+                                community_modelled_maps)),
              format = "file"),
 
   # ---- reporting layers (rendered notebooks) ------------------------------
