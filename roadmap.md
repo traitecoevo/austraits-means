@@ -2,7 +2,7 @@
 
 This is the planning document for `austraits-means`. It records what the repository delivers, the decisions taken and why, the milestones and the issues that reach them, and the invariants a future edit could break. Keep it current or retire it; do not start a second plan beside it. Issue numbers are on the [AusTraits board](https://github.com/orgs/traitecoevo/projects/9) (view "means").
 
-Last revised: 14 October 2026.
+Last revised: 20 October 2026.
 
 ## Products
 
@@ -10,7 +10,7 @@ Three data products, defined in `terminology.md`:
 
 1. **Observed means**: per species × trait, computed directly from the records. Two methods exist. The *portal method* (`method = portal_arithmetic`) reproduces exactly the species averages the AusTraits data portal computes for AusTraits 7.0.0, so that product can be archived and cited. The *geometric method* (`method = geometric`) is its successor from the next AusTraits build onward.
 2. **Modelled means**: per species × trait, the model-estimated geometric mean at the centre of the species' climate distribution (the within-species-centred model in `R/model/`), built here.
-3. **Community layers**: the community mean and community variance of the species means, for woody and non-woody plants separately, per spatial unit across Australia. First as observed statistics; later modelled across space.
+3. **Community layers**: the community mean and community variance of the species present in each 10 km cell across Australia, for woody and non-woody plants separately and for all species, in three products: observed from the trait records in the cell, observed from GBIF presence × observed means, and modelled (each trait model's net average for the cell). A spatial model fitted to the observed layers is a later extension ([#38](https://github.com/traitecoevo/austraits-means/issues/38)).
 
 Each product carries the **same version tag as the AusTraits release it derives from** (for example "species means 7.0.0"), so the two are easily related. A re-issue for the same release appends a fourth component (7.0.0.1). Products derived from a development build carry that build's version string until the corresponding release exists.
 
@@ -47,6 +47,15 @@ Status, 14 October 2026: every first-draft issue is done except [#10](https://gi
 - [#30](https://github.com/traitecoevo/austraits-means/issues/30) package and publish the products (Zenodo deposit "AusTraits species means").
 - [#31](https://github.com/traitecoevo/austraits-means/issues/31) community consultation on the spatial layers, scheduled.
 - Cross-repository work, tracked in those repositories without a milestone here: [austraits.portal#139](https://github.com/traitecoevo/austraits.portal/issues/139) and [austraits.portal#140](https://github.com/traitecoevo/austraits.portal/issues/140) (portal: provenance, then reading the published product), [austraits.build#867](https://github.com/traitecoevo/austraits.build/issues/867) (austraits.build: products in the release workflow), [austraits-api#16](https://github.com/traitecoevo/austraits-api/issues/16) (austraits-api: serve stored means), [austraits#184](https://github.com/traitecoevo/austraits/issues/184) (austraits R package: loader).
+
+Status, 20 October 2026:
+
+- Done: the decisions [#18](https://github.com/traitecoevo/austraits-means/issues/18)–[#20](https://github.com/traitecoevo/austraits-means/issues/20) (recorded below) and [#27](https://github.com/traitecoevo/austraits-means/issues/27); [#32](https://github.com/traitecoevo/austraits-means/issues/32) (GBIF download `0027765-260928105237408`, CC0 and CC BY records only) and [#33](https://github.com/traitecoevo/austraits-means/issues/33) (names aligned to APC 2026-07-30 from the providers' names, crosswalk and medoids rebuilt; closed [#1](https://github.com/traitecoevo/austraits-means/issues/1)). The data basis is the austraits.build development build at `d535de9` with APCalign 2.0.1.
+- [#28](https://github.com/traitecoevo/austraits-means/issues/28): the three community products are built, each for woody, non-woody and all species, with cell-by-cell comparisons and a native-only test (`docs/community-layers-design.md`). Open for review, chiefly of the modelled layers' woodiness term, which was chosen over separate models per group.
+- [#34](https://github.com/traitecoevo/austraits-means/issues/34): in effect done. The modelled means were refitted on the new medoids in #33 (fixed effects moved by at most 0.46 standard errors) and the community layers are built on the new presence data; the before/after report is still to write.
+- [#10](https://github.com/traitecoevo/austraits-means/issues/10) (first draft) is still open: the draft deposit exists on Zenodo but two files are still to upload (`observed_means_portal_arithmetic.csv.gz` and `.parquet`). It is never published from here.
+- [#29](https://github.com/traitecoevo/austraits-means/issues/29)–[#31](https://github.com/traitecoevo/austraits-means/issues/31) wait on the review, the go-ahead to publish (licensing is settled: CC BY 4.0, as the NC records are dropped) and the consultation.
+- Per-trait figures of within- vs between-species responses are now drawn for every trait (`outputs/traits/figures/<trait>_within_between`). Collection method as a covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)) is untested: the model's `methodology` hook (a `(1 | dataset_id)` intercept) has never been run, height has a single `dataset_id` (`AVH_2026`), and the method-factor tables are not yet imported.
 
 ### extensions (undated)
 
