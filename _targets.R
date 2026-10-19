@@ -99,6 +99,16 @@ mapped <- tar_map(
                                clean_species_filename(trait)),
                   width = 7, height = 5)
     }
+  }, format = "file"),
+
+  # Within- vs between-species lines, as in the earlier height report.
+  tar_target(tmb_wb_fig, {
+    if (is.null(tmb_fit)) character(0) else {
+      save_figure(plot_within_between(tmb_fit, unit = tmb_fit$data$unit[1]),
+                  file.path(out_dir, "figures",
+                            paste0(clean_species_filename(trait), "_within_between")),
+                  width = 13, height = 6)
+    }
   }, format = "file")
 )
 
