@@ -2,7 +2,7 @@
 
 ## What this product is
 
-The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. The product is built today from the austraits.build development build 7.0.0.9000 (commit `62aa0e79`; see `data-raw/austraits/README.md`), and carries that build's version string until the corresponding release exists.
+The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. The product is built today from the austraits.build development build 7.0.0.9000 (commit `d535de9e`; see `data-raw/austraits/README.md`), and carries that build's version string until the corresponding release exists.
 
 For a numeric trait the value is a **geometric mean**, as `terminology.md` requires of both species estimates. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
 
