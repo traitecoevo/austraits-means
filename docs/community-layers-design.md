@@ -1,6 +1,6 @@
 # Community layers: design
 
-The community layers summarise trait values of the plant species in each cell of a 10 × 10 km equal-area grid of Australia, for all species and for woody and non-woody species separately. Per trait, cell and group they give the **community mean**, exp(mean of the species' log values), a geometric mean in trait units, and for the observed products the **community variance**, the variance of the species' log values, in natural-log units (`terminology.md`). The community variance is between species only: it leaves out variation within species.
+The community layers summarise trait values of the plant species in each cell of a 10 × 10 km equal-area grid of Australia, for woody and non-woody species separately, and for all species together. Per trait, cell and group they give the **community mean**, exp(mean of the species' log values), a geometric mean in trait units, and for the observed products the **community variance**, the variance of the species' log values, in natural-log units (`terminology.md`). The community variance is between species only: it leaves out variation within species.
 
 Three products are built, which differ in where the species and their values come from:
 
@@ -8,7 +8,7 @@ Three products are built, which differ in where the species and their values com
 |---|---|---|---|
 | `observed_local` | species with a trait record collected in the cell | geometric mean of its records in that cell | none |
 | `observed_presence` | species with a GBIF occurrence in the cell | its observed mean (geometric), wherever it was measured | none |
-| `modelled` | species with a GBIF occurrence in the cell | none: the trait-climate model's net average over those species | the per-trait model |
+| `modelled` | species with a GBIF occurrence in the cell | none: the trait-climate model's net average over those species | each trait's model, with woody and non-woody coefficients |
 
 Every output carries a metadata file stating its construction and data basis.
 
@@ -43,73 +43,95 @@ Species are per species, with subspecies, varieties and forms rolled up, and GBI
 
 ### Modelled (`modelled`)
 
-`R/community/community_modelled.R`. Each trait's model (`log_value ~ P_mn + T_mn + P_c + T_c` with species random intercepts and within-species slopes; P is log annual precipitation, T mean annual temperature, `_mn` the species' climate centre (medoid) and `_c` the record's climate minus that centre) gives a record at climate x from a species centred at m the expected log value
+`R/community/community_modelled.R`. Each trait gets its own model for the layers (`fit_woodiness_model()`, targets `woody_fit_<trait>`): the trait-climate model of the modelled species means, with a separate intercept and climate slopes for woody and non-woody species and the species random effects shared,
 
-b0 + b_between · m + b_within · (x − m) + species effects.
+`log_value ~ 0 + group + group:(P_mn + T_mn + P_c + T_c) + (1 | taxon) + (0 + P_c | taxon) + (0 + T_c | taxon)`,
 
-The species effects average to zero over species, so the average over the species in a cell is
+where P is log annual precipitation, T mean annual temperature, `_mn` the species' climate centre (medoid) and `_c` the record's climate minus that centre. It is fitted on the species with more than 5 records, a medoid and a woody or non-woody class. For a group g, a record at climate x from a species centred at m has expected log value
 
-b0 + b_within · x + (b_between − b_within) · m̄,
+b0_g + b_between,g · m + b_within,g · (x − m) + species effects.
 
-where x is the cell's climate (WorldClim averaged onto the grid, `cell_climate()`) and m̄ the mean climate centre of the GBIF species recorded in the cell (`cell_species_centres()`), for each climate variable. Back-transformed, this is the model's net average trait value for the cell: it averages over between- and within-species effects, uses no species means, and needs no trait records from the species in the cell, only their climate centres. The 94% interval (`lower`, `upper`) comes from the fixed-effect uncertainty (delta method on the log scale). A cell is flagged `extrapolated` where m̄ or x − m̄ lies outside the range of the species centres or within-species deviations the model was fitted on. There is no community variance: the model's between-species variance is the same in every cell.
+The species effects average to zero over species, so the average over the group's species in a cell is
 
-The per-trait models are fitted on all species together, so this product is for `all` species only. A woody / non-woody split needs either separate models per group or woodiness in the model; that choice is open.
+b0_g + b_within,g · x + (b_between,g − b_within,g) · m̄_g,
+
+where x is the cell's climate (WorldClim averaged onto the grid, `cell_climate()`) and m̄_g the mean climate centre of the group's GBIF species recorded in the cell (`cell_species_centres()`), for each climate variable. Back-transformed, this is the model's net average trait value for the group in that cell: it averages over between- and within-species effects, uses no species means, and needs no trait records from the species in the cell, only their climate centres. The value for all species is the woody and non-woody values mixed on the log scale in proportion to their species in the cell, which is the same average taken over the species of both groups. Species without a woody or non-woody class, and GBIF species with no AusTraits name, do not enter the modelled layers. The 94% interval (`lower`, `upper`) comes from the fixed-effect uncertainty (delta method on the log scale). A cell is flagged `extrapolated` where m̄_g or x − m̄_g lies outside the range of the group's species centres or within-species deviations the model was fitted on. There is no community variance: the model's between-species variance is the same in every cell.
+
+A group is fitted only if it has at least 20 species with enough records. Non-woody falls short for leaf N per area (8 species), leaf P per area (7) and wood density (2); for these traits the model is fitted on woody species alone, and the non-woody and all-species modelled layers are empty. All nine fits converge (positive-definite Hessian). Seed mass (27 non-woody species), leaf P per mass (37) and leaf N per mass (42) have few non-woody species, so their non-woody coefficients are uncertain and many cells are extrapolated (below). Coefficients per trait and group are in `modelled/woodiness_model_fixed_effects.csv`.
+
+Why a woodiness term rather than one model for all species: the first version of this product used the pooled model of the species means, which is fitted mostly on woody species (81–99% of fitted species for most traits), and could not follow differences in the woody share of the species in a cell (below). Separate woody and non-woody models were the alternative; one model with group coefficients shares the random-effect variances, which helps the groups with few species.
 
 ## Outputs
 
 In `outputs/community/<build version>/`:
 
 - `woody_lookup.csv`, `woody_lookup_summary.csv`: the group of each taxon and how it was assigned, shared by all products.
-- `<product>/community_layers.parquet`: one row per trait × cell × group: `trait_name`, `cell_x`, `cell_y`, `x`, `y`, `longitude`, `latitude`, `woodiness_group` (`woody`, `non_woody`, `all`), the counts, and the statistics. `observed_local` adds `n_records`; `observed_presence` `n_species_present` and `coverage`; `modelled` the cell climate, the mean species centre, `lower`, `upper` and `extrapolated`.
+- `<product>/community_layers.parquet`: one row per trait × cell × group: `trait_name`, `cell_x`, `cell_y`, `x`, `y`, `longitude`, `latitude`, `woodiness_group` (`woody`, `non_woody`, `all`), the counts, and the statistics. `observed_local` adds `n_records`; `observed_presence` `n_species_present` and `coverage`; `modelled` the cell climate, the group's mean species centre, `lower`, `upper` and `extrapolated`, and `modelled/woodiness_model_fixed_effects.csv` the model coefficients.
 - `<product>/community_layers_metadata.json`: definitions, construction, decisions, and the data basis (build version and commit, APC release, GBIF download, medoid build).
 - `<product>/geotiff/<trait>_<group>_<statistic>.tif`: one single-band GeoTIFF per trait × group × statistic on the grid.
-- `<product>/figures/`: quick-look maps per trait. For the observed products, community mean and variance, woody and non-woody (`<trait>_observed_local`, `<trait>_observed_presence`); for `modelled`, the modelled community mean beside the `observed_presence` one for all species, on one colour scale (`<trait>_modelled`). Grey cells have species but fewer than 10 with a value, or (modelled) are extrapolated.
-- `comparison/`: the products against each other, cell by cell, for all species (`R/community/compare_layers.R`): `community_layer_agreement.csv` (per pair and trait: cells, correlation of the log community means, median and SD of their difference, and each product's spatial SD), a scatter figure per pair (`figures/pair_presence_modelled`, `pair_local_presence`, `pair_local_modelled`), and maps of modelled minus presence per trait (`figures/difference_presence_modelled`).
-- Native-only test (below): `observed_presence_native/` and `modelled_native/` in the same layout, `comparison_native/` comparing them as above, and `comparison_native_vs_all/` comparing each with its all-species version (scatter figures and maps of native minus all).
+- `<product>/figures/`: quick-look maps per trait. For the observed products, community mean and variance, woody and non-woody (`<trait>_observed_local`, `<trait>_observed_presence`); for `modelled`, the modelled community mean beside the `observed_presence` one, woody and non-woody, on one colour scale (`<trait>_modelled`). Grey cells have species but fewer than 10 with a value, or (modelled) are extrapolated or in a group the model could not fit.
+- `comparison/`: the products against each other, cell by cell, for woody, non-woody and all species (`R/community/compare_layers.R`): `community_layer_agreement.csv` (per pair, group and trait: cells, correlation of the log community means, median and SD of their difference, and each product's spread across cells), a scatter figure per pair and group (`figures/pair_<pair>_<group>`, pairs `presence_modelled`, `local_presence`, `local_modelled`), and maps of modelled minus presence per group (`figures/difference_presence_modelled_<group>`).
+- Native-only test (below): `observed_presence_native/` and `modelled_native/` in the same layout, `comparison_native/` comparing them as above, and `comparison_native_vs_all/` comparing each with its version that includes introduced species (scatter figures and difference maps per group).
 
 ## Coverage
 
-Development build 7.0.0.9000 and GBIF download `0027765-260928105237408`. GBIF species occur in 55,176 cells, 33,879 of them with at least 10 species. Cells with statistics per product and group; in brackets, for `observed_presence` the median coverage of the species present by an observed mean, and for `modelled` the share of cells flagged `extrapolated`:
+Development build 7.0.0.9000 and GBIF download `0027765-260928105237408`. GBIF species occur in 55,176 cells, 33,879 of them with at least 10 species.
 
-| trait | local: all | local: woody | local: non-woody | presence: all | presence: woody | presence: non-woody | modelled: all |
-|---|---|---|---|---|---|---|---|
-| plant_height | 5,781 | 3,681 | 1,940 | 33,730 (0.99) | 25,993 (1.00) | 27,341 (1.00) | 33,574 (0%) |
-| seed_dry_mass | 30 | 21 | 17 | 31,008 (0.78) | 23,377 (0.82) | 24,704 (0.77) | 33,574 (25%) |
-| leaf_area | 160 | 126 | 33 | 26,617 (0.61) | 19,355 (0.69) | 20,831 (0.61) | 33,574 (0.1%) |
-| leaf_mass_per_area | 208 | 158 | 45 | 25,100 (0.54) | 20,283 (0.69) | 16,913 (0.52) | 33,574 (0%) |
-| leaf_N_per_dry_mass | 100 | 80 | 12 | 21,871 (0.27) | 17,519 (0.47) | 11,385 (0.16) | 33,574 (0.2%) |
-| leaf_P_per_dry_mass | 67 | 56 | 16 | 16,255 (0.16) | 10,989 (0.28) | 7,782 (0.10) | 33,574 (0.8%) |
-| wood_density | 48 | 48 | 1 | 15,817 (0.19) | 15,685 (0.52) | 402 (0.05) | 33,574 (7.2%) |
-| leaf_N_per_area | 50 | 41 | 2 | 17,008 (0.16) | 14,184 (0.34) | 4,543 (0.06) | 33,574 (0.6%) |
-| leaf_P_per_area | 34 | 29 | 1 | 11,398 (0.10) | 9,754 (0.24) | 198 (0.02) | 33,574 (0.9%) |
+Observed products, cells with statistics per group; in brackets, the median coverage of the species present by an observed mean:
 
-The modelled product has a value wherever at least 10 GBIF species with a climate centre occur and the cell has WorldClim climate, whatever the trait.
+| trait | local: woody | local: non-woody | local: all | presence: woody | presence: non-woody | presence: all |
+|---|---|---|---|---|---|---|
+| plant_height | 3,681 | 1,940 | 5,781 | 25,993 (1.00) | 27,341 (1.00) | 33,730 (0.99) |
+| seed_dry_mass | 21 | 17 | 30 | 23,377 (0.82) | 24,704 (0.77) | 31,008 (0.78) |
+| leaf_area | 126 | 33 | 160 | 19,355 (0.69) | 20,831 (0.61) | 26,617 (0.61) |
+| leaf_mass_per_area | 158 | 45 | 208 | 20,283 (0.69) | 16,913 (0.52) | 25,100 (0.54) |
+| leaf_N_per_dry_mass | 80 | 12 | 100 | 17,519 (0.47) | 11,385 (0.16) | 21,871 (0.27) |
+| leaf_P_per_dry_mass | 56 | 16 | 67 | 10,989 (0.28) | 7,782 (0.10) | 16,255 (0.16) |
+| wood_density | 48 | 1 | 48 | 15,685 (0.52) | 402 (0.05) | 15,817 (0.19) |
+| leaf_N_per_area | 41 | 2 | 50 | 14,184 (0.34) | 4,543 (0.06) | 17,008 (0.16) |
+| leaf_P_per_area | 29 | 1 | 34 | 9,754 (0.24) | 198 (0.02) | 11,398 (0.10) |
 
-How the products compare, all species, cells with both (modelled cells not extrapolated): correlation of log community means, and median difference in log units (from `comparison/community_layer_agreement.csv`):
+Modelled product: a group has a value wherever at least 10 of its GBIF species with a climate centre occur and the cell has WorldClim climate, whatever the trait: 25,891 cells for woody, 27,284 for non-woody, 33,565 for all species. In brackets, the share of those cells flagged `extrapolated`; "not fitted" marks a group with too few species:
 
-| trait | modelled vs presence | modelled − presence | presence vs local (cells) |
+| trait | woody | non-woody | all |
 |---|---|---|---|
-| plant_height | 0.54 | 0.24 | 0.67 (5,707) |
-| seed_dry_mass | 0.48 | 0.99 | 0.84 (30) |
-| leaf_area | 0.78 | 0.72 | 0.83 (157) |
-| leaf_mass_per_area | 0.25 | 0.24 | 0.47 (203) |
-| leaf_N_per_dry_mass | −0.21 | −0.21 | 0.70 (94) |
-| leaf_P_per_dry_mass | −0.27 | −0.38 | 0.77 (61) |
-| wood_density | 0.86 | 0.01 | 0.72 (45) |
-| leaf_N_per_area | 0.88 | 0.10 | 0.92 (48) |
-| leaf_P_per_area | 0.66 | 0.04 | 0.76 (32) |
+| plant_height | 0% | 0% | 0% |
+| seed_dry_mass | 23% | 47% | 52% |
+| leaf_area | 0.1% | 20% | 22% |
+| leaf_mass_per_area | 0% | 17% | 19% |
+| leaf_N_per_dry_mass | 0.3% | 8.2% | 7.8% |
+| leaf_P_per_dry_mass | 0.7% | 17% | 18% |
+| wood_density | 8.4% | not fitted | not fitted |
+| leaf_N_per_area | 0.7% | not fitted | not fitted |
+| leaf_P_per_area | 0.8% | not fitted | not fitted |
 
-Two things drive the differences between the modelled and presence products. The modelled level is set by the species the model was fitted on, which for most traits are a small, well-studied subset (773 species for leaf area, 214 for seed mass); for leaf area and plant height they average 0.66 and 0.26 log units above all species with an observed mean. And the modelled pattern comes only from the two climate variables, so shifts in composition that climate does not predict are missing: for leaf N and P per mass, the presence product is highest across the south-east, while the model's climate slopes are weak and its surface nearly flat (spatial SD of the log community mean 0.05 for leaf N per mass, against 0.19 for presence). The modelled community mean varies less across cells than the presence one for every trait except leaf area.
+How the modelled and presence products compare, cells with both (modelled cells not extrapolated): correlation of log community means, with the median difference (modelled minus presence, log units) in brackets, from `comparison/community_layer_agreement.csv`. The last column is the first version of the modelled product, from the pooled model without a woodiness term:
+
+| trait | woody | non-woody | all | all, pooled model |
+|---|---|---|---|---|
+| plant_height | 0.72 (−0.18) | 0.60 (−0.03) | 0.87 (−0.08) | 0.54 (0.24) |
+| seed_dry_mass | 0.60 (−0.18) | 0.32 (1.24) | 0.53 (0.66) | 0.48 (0.99) |
+| leaf_area | 0.86 (0.87) | 0.75 (−0.41) | 0.78 (0.08) | 0.78 (0.72) |
+| leaf_mass_per_area | 0.77 (0.15) | −0.12 (−0.10) | 0.74 (−0.08) | 0.25 (0.24) |
+| leaf_N_per_dry_mass | −0.30 (−0.15) | 0.42 (−0.17) | 0.11 (−0.18) | −0.21 (−0.21) |
+| leaf_P_per_dry_mass | 0.02 (−0.15) | 0.04 (−0.34) | 0.27 (−0.25) | −0.27 (−0.38) |
+| wood_density | 0.86 (−0.01) | | | 0.86 (0.01) |
+| leaf_N_per_area | 0.92 (0.03) | | | 0.88 (0.10) |
+| leaf_P_per_area | 0.68 (0.03) | | | 0.66 (0.04) |
+
+With the woodiness term, the all-species modelled layer follows the presence layer much more closely for plant height and LMA, and loses most of its offset for leaf area and plant height: the pooled model's level was set by its mostly woody species. Within groups, agreement is good for woody plant height, leaf area, LMA, wood density and leaf N per area, and weak for leaf N and P per mass in either group, whose presence pattern climate does not predict. The model's level still differs from presence where its fitted species are a biased subset of a group: woody leaf area (+0.87) and non-woody seed mass (+1.24, from 27 species).
+
+Observed products against each other, local records vs presence (cells with both): correlation 0.69–0.96 for woody species and 0.37–0.83 for non-woody where at least 9 cells compare.
 
 ### Native species only
 
-To test whether introduced species drive the gap, the presence and modelled products are also built from native species only (`observed_presence_native/`, `modelled_native/`): GBIF species native in at least one state or territory per the APC (`APCalign::native_anywhere_in_australia()`, APC release 2026-07-30), which drops 2,971 introduced species and 13 names not in the APC. Introduced species are 15% of species × cell presences, a median of 6.5% of the species in a cell (90th percentile 29%). The models are still fitted on all species.
+Before the woodiness term was added, the gap between the pooled modelled product and the presence product was largest in the south-east. To test whether introduced species drove it, the presence and modelled products are also built from native species only (`observed_presence_native/`, `modelled_native/`): GBIF species native in at least one state or territory per the APC (`APCalign::native_anywhere_in_australia()`, APC release 2026-07-30), which drops 2,971 introduced species and 13 names not in the APC. Introduced species are 15% of species × cell presences, a median of 6.5% of the species in a cell (90th percentile 29%). The models are still fitted on all species with a woody or non-woody class.
 
-Dropping them changes little. Each native-only layer correlates with its all-species version at 0.88–1.00 (log scale), with median shifts of at most 0.06 log units (presence, leaf P per mass) and none for the modelled product (`comparison_native_vs_all/`). The modelled-vs-presence gap stays: leaf area +0.78 and seed mass +0.98 log units, leaf N per mass correlation −0.24; leaf P per mass improves only from −0.27 to −0.03 (`comparison_native/`).
+With the pooled model, dropping them changed little: each native-only layer correlated with its version including introduced species at 0.88–1.00 (log scale), with median shifts of at most 0.06 log units, and the modelled-vs-presence gap stayed. Introduced species are a small share of the species in most cells, so they move a presence-only mean over all species little, even though their own distribution differs: Wenk et al. (2026, "Contrasting climate signals between native and introduced annual and perennial floras", bioRxiv, [doi:10.64898/2026.07.31.741935](https://doi.org/10.64898/2026.07.31.741935)) find introduced annuals concentrated in wet, populated areas with low precipitation seasonality, and native annual richness tracking climate far more tightly. The current comparisons, per group with the woodiness model, are in `comparison_native/` and `comparison_native_vs_all/`.
 
 ### Woody share
 
-What the gap does track is the share of woody species in the cell. Across cells, the presence community mean follows the woody share of the species present (correlation 0.70 for plant height, 0.64 LMA, 0.60 seed mass, −0.44 leaf N per mass, −0.55 leaf P per mass), and the modelled one does not (−0.13 to 0.34), so the gap correlates with woody share at −0.80, −0.69, −0.56, 0.40 and 0.58 for those traits. The model is fitted mostly on woody species (81–99% of fitted species for the leaf traits, seed mass and wood density; 62% for plant height), but the cells' species are a median 44% woody, and the model has no term for woodiness. This bears on the open choice of how to split the modelled product by woodiness: a woodiness term would let the model carry composition, though for several leaf traits the fit has few non-woody species (for leaf N per area, about 5% of 151).
+What the pooled model's gap did track is the share of woody species in the cell. Across cells, the presence community mean of all species follows the woody share of the species present (correlation 0.70 for plant height, 0.64 LMA, 0.60 seed mass, −0.44 leaf N per mass, −0.55 leaf P per mass); the pooled modelled one did not (−0.13 to 0.34), so the gap correlated with woody share at −0.80, −0.69, −0.56, 0.40 and 0.58 for those traits. That model was fitted mostly on woody species (81–99% of fitted species for the leaf traits, seed mass and wood density; 62% for plant height), while the cells' species are a median 44% woody. This is why the modelled product now has the woodiness term (above). Life form shifting with climate and with human influence is the pattern Wenk et al. (2026) report for annual versus perennial species.
 
 ## Precedent: Andrew et al. 2025
 
@@ -133,5 +155,5 @@ Its maps, gap-filled traits and species range maps are published with the paper,
 - Presence comes from occurrence points, so it follows collecting effort: well-collected cells have more species, and much of the interior has fewer than 10.
 - In `observed_presence`, where coverage is low the statistic describes the well-studied fraction of the community, which is unlikely to be a random sample of it; and each species carries one value from wherever it was measured, not the value it would have in that cell.
 - `observed_local` covers few cells for most traits, and its species in a cell are those someone chose to measure there.
-- `modelled` depends on the model's two climate variables only, and on the species with enough records and a medoid to fit it; cells far from that climate space are flagged.
+- `modelled` depends on the model's two climate variables and the woody / non-woody split only, and on the species with enough records and a medoid to fit it; cells far from that climate space are flagged. Its non-woody layers rest on few species for seed mass (27), leaf P per mass (37) and leaf N per mass (42), with wide intervals and many cells extrapolated, and are absent for leaf N and P per area and wood density.
 - Wood density for non-woody plants is nearly empty and of doubtful meaning; the layer is kept for completeness.

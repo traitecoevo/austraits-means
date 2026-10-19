@@ -83,6 +83,10 @@ mapped <- tar_map(
              fit_trait_target(unified, trait, backend = "tmb",
                               n_min = 5, out_dir = out_dir)),
 
+  # Same model with woody and non-woody coefficients, for the modelled
+  # community layers only (#28).
+  tar_target(woody_fit, fit_woodiness_model(unified, trait, woody_lookup)),
+
   tar_target(tmb_row,
              if (is.null(tmb_fit)) NULL
              else summarise_trait_fits(stats::setNames(list(tmb_fit), trait))),
@@ -186,6 +190,7 @@ list(
 
   # List of fits — used to gate the combined product on all exports existing.
   tar_combine(tmb_fits, mapped[["tmb_fit"]], command = list(!!!.x)),
+  tar_combine(woody_fits, mapped[["woody_fit"]], command = list(!!!.x)),
 
   # Data basis of the fits (build version, APC release, GBIF extract, medoid
   # build), written next to the exports.
@@ -355,8 +360,9 @@ list(
                                   "observed_presence"),
              format = "file"),
 
-  # Modelled: each trait model's net average for the cell, from the cell's
-  # climate and the mean climate centre of the species present.
+  # Modelled: each trait's woodiness model's net average for the cell, from
+  # the cell's climate and the mean climate centre of the woody and the
+  # non-woody species present.
   tar_target(cell_climate_grid,
              cell_climate(load_climate_rasters(
                vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
@@ -366,13 +372,16 @@ list(
              cell_species_centres(gbif_presence, medoids_file, gbif_species_map,
                                   woody_lookup)),
   tar_target(community_modelled,
-             community_layers_modelled(tmb_fits, cell_climate_grid, cell_centres)),
-  tar_target(community_modelled_files,
-             write_community_layers(
-               community_modelled, file.path(community_dir, "modelled"),
-               community_modelled_metadata(data_basis_info),
-               statistics = c("community_mean", "lower", "upper", "extrapolated")),
-             format = "file"),
+             community_layers_modelled(woody_fits, cell_climate_grid, cell_centres)),
+  tar_target(community_modelled_files, {
+    dir <- file.path(community_dir, "modelled")
+    files <- write_community_layers(
+      community_modelled, dir, community_modelled_metadata(data_basis_info),
+      statistics = c("community_mean", "lower", "upper", "extrapolated"))
+    p <- file.path(dir, "woodiness_model_fixed_effects.csv")
+    readr::write_csv(woodiness_model_summary(woody_fits), p)
+    c(files, p)
+  }, format = "file"),
   tar_target(community_modelled_maps,
              write_modelled_maps(community_modelled, community_presence,
                                  community_units,
@@ -390,7 +399,7 @@ list(
 
   # Native species only, for the presence and modelled products: a test of
   # how much introduced species move them (native anywhere in Australia per
-  # the APC). The models are still fitted on all species.
+  # the APC). The models are still fitted on all species with a class.
   tar_target(gbif_native, gbif_native_status(gbif_names, apc_version)),
   tar_target(gbif_presence_native, native_presence(gbif_presence, gbif_native)),
   tar_target(community_presence_native,
@@ -414,7 +423,7 @@ list(
              cell_species_centres(gbif_presence_native, medoids_file,
                                   gbif_species_map, woody_lookup)),
   tar_target(community_modelled_native,
-             community_layers_modelled(tmb_fits, cell_climate_grid,
+             community_layers_modelled(woody_fits, cell_climate_grid,
                                        cell_centres_native)),
   tar_target(community_modelled_native_files,
              write_community_layers(
@@ -426,14 +435,14 @@ list(
              write_modelled_maps(community_modelled_native, community_presence_native,
                                  community_units,
                                  file.path(community_dir, "modelled_native"),
-                                 species_label = "native species"),
+                                 species_label = "native species only"),
              format = "file"),
   tar_target(community_comparison_native_files,
              write_layer_comparison(
                community_layer_pairs(community_local, community_presence_native,
                                      community_modelled_native),
                community_units, file.path(community_dir, "comparison_native"),
-               species_label = "native species"),
+               species_label = "native only"),
              format = "file"),
   tar_target(community_native_shift_files,
              write_layer_comparison(
