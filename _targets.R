@@ -379,6 +379,15 @@ list(
                                  file.path(community_dir, "modelled")),
              format = "file"),
 
+  # The three products against each other, cell by cell.
+  tar_target(community_pairs,
+             community_layer_pairs(community_local, community_presence,
+                                   community_modelled)),
+  tar_target(community_comparison_files,
+             write_layer_comparison(community_pairs, community_units,
+                                    file.path(community_dir, "comparison")),
+             format = "file"),
+
   # ===== Observed vs modelled means (#24) ===================================
   tar_target(observed_modelled,
              compare_observed_modelled(tmb_fits, observed_means_geometric, unified)),
@@ -395,7 +404,8 @@ list(
                               modelled_means, tmb_fits, observed_modelled,
                               community_presence, means_comparison_files,
                               c(community_local_maps, community_presence_maps,
-                                community_modelled_maps)),
+                                community_modelled_maps,
+                                community_comparison_files)),
              format = "file"),
 
   # ---- reporting layers (rendered notebooks) ------------------------------

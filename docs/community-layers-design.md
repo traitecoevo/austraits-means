@@ -64,6 +64,7 @@ In `outputs/community/<build version>/`:
 - `<product>/community_layers_metadata.json`: definitions, construction, decisions, and the data basis (build version and commit, APC release, GBIF download, medoid build).
 - `<product>/geotiff/<trait>_<group>_<statistic>.tif`: one single-band GeoTIFF per trait × group × statistic on the grid.
 - `<product>/figures/`: quick-look maps per trait. For the observed products, community mean and variance, woody and non-woody (`<trait>_observed_local`, `<trait>_observed_presence`); for `modelled`, the modelled community mean beside the `observed_presence` one for all species, on one colour scale (`<trait>_modelled`). Grey cells have species but fewer than 10 with a value, or (modelled) are extrapolated.
+- `comparison/`: the products against each other, cell by cell, for all species (`R/community/compare_layers.R`): `community_layer_agreement.csv` (per pair and trait: cells, correlation of the log community means, median and SD of their difference, and each product's spatial SD), a scatter figure per pair (`figures/pair_presence_modelled`, `pair_local_presence`, `pair_local_modelled`), and maps of modelled minus presence per trait (`figures/difference_modelled_minus_presence`).
 
 ## Coverage
 
@@ -83,7 +84,7 @@ Development build 7.0.0.9000 and GBIF download `0027765-260928105237408`. GBIF s
 
 The modelled product has a value wherever at least 10 GBIF species with a climate centre occur and the cell has WorldClim climate, whatever the trait.
 
-How the products compare, all species, cells with both (modelled cells not extrapolated): correlation of log community means, and median difference in log units (first minus second):
+How the products compare, all species, cells with both (modelled cells not extrapolated): correlation of log community means, and median difference in log units (from `comparison/community_layer_agreement.csv`):
 
 | trait | modelled vs presence | modelled − presence | presence vs local (cells) |
 |---|---|---|---|

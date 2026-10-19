@@ -245,7 +245,8 @@ map_cells <- function(d, stat, colours, title, transform = "identity",
                       xlim = c(-2100000, 2100000), ylim = c(-2200000, 1700000)) +
     ggplot2::labs(title = title, x = NULL, y = NULL) +
     ggplot2::theme_void(base_size = 10) +
-    ggplot2::theme(plot.title = ggplot2::element_text(size = 10),
+    ggplot2::theme(plot.background = ggplot2::element_rect(fill = "white", colour = NA),
+                   plot.title = ggplot2::element_text(size = 10),
                    strip.text = ggplot2::element_text(hjust = 0, size = 9),
                    legend.key.height = grid::unit(1.2, "cm"))
   if (!is.null(facet)) p <- p + ggplot2::facet_wrap(facet, ncol = 1)
