@@ -17,4 +17,4 @@ Files:
 - `trait_counts.csv`: records and species per trait in `unified` and in the fits (species with more than 5 records), and the number of species with an observed mean.
 - `species_centres.csv.gz`: per trait × species, the modelled mean on the log scale with its 94% interval, the number of records, and the centre climate.
 
-`compare_with_baseline()` (`R/process/compare_baseline.R`) reads these files; the comparison is reported in `analysis.qmd`. Do not edit them.
+`compare_with_baseline()` (`R/process/compare_baseline.R`) reads these files; the comparison is reported in `reports/analysis.qmd`. Do not edit them.

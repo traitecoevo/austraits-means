@@ -1,6 +1,6 @@
 # Within- vs between-species climate responses of one trait's model, in the
-# style of the earlier height report (x_archive/Data_height_AVH.qmd): the
-# records (grey),
+# style of the earlier height report (Data_height_AVH.qmd, retired; in git
+# history): the records (grey),
 # each species' fitted line across the climate range of its records (black),
 # the species' modelled means at their climate centre with the
 # between-species line (red), and the average within-species line (blue).

@@ -4,8 +4,8 @@
 # pipeline (`_targets.R`) the cleaned extract is tracked as a *file input*
 # rather than recomputed on every `tar_make()`. Its builders (download,
 # cleaning, name alignment, climate) are in R/data/gbif.R and run by
-# R/scripts/build_gbif.R. Medoids are built by `climate_centres.qmd`
-# (process_taxon_medoid over all taxa). The name crosswalk
+# R/scripts/build_gbif.R. Medoids are built by `build_climate_medoids()`
+# below, run by R/scripts/build_medoids.R (#33). The name crosswalk
 # (`build_name_crosswalk()`) runs inside the pipeline, with the APC release
 # pinned in `_targets.R`.
 #
@@ -136,7 +136,8 @@ build_austraits_climate <- function(
 
 #' Climate medoid of every taxon in a GBIF extract (#33).
 #'
-#' Ported from `climate_centres.qmd` / `process_taxon_medoid()`, without the
+#' Ported from the retired `climate_centres.qmd` notebook (in git history) /
+#' `process_taxon_medoid()`, without the
 #' per-taxon plots. For each taxon: distinct points, a random subsample of
 #' `max_n` points for very common taxa (the distance matrix is O(n^2)), then
 #' `locate_medoid_2d()`, which drops the points furthest from all others in

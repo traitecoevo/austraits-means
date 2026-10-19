@@ -2,18 +2,18 @@
 # targets pipeline for austraits-means
 # ============================================================================
 # Orchestration lives here; all logic stays in R/ functions (loaded via
-# R/init.R). The two Quarto notebooks are now *reporting layers* rendered at the
-# end of the pipeline (tar_quarto): they tar_load() results rather than compute.
+# R/init.R). The two Quarto reports in reports/ are *reporting layers* rendered
+# at the end of the pipeline (tar_quarto): they tar_load() results rather than
+# compute.
 #
 # Run:   targets::tar_make()
 # Graph: targets::tar_visnetwork()  /  targets::tar_outdated()
 #
 # TIERING ----------------------------------------------------------------------
 # The heavy upstream artefacts (raw GBIF cleaning ~1.2GB, the 22k-species O(n^2)
-# medoid build) are expensive and rarely rebuilt, and their producers live
-# outside the two notebooks
-# (producer notebooks climate_centres.qmd, Data_height_AVH.qmd at the root; builders in
-# R/data/build_sources.R). They are tracked here as *file inputs* — targets
+# medoid build) are expensive and rarely rebuilt, and their builders live
+# outside the pipeline (R/data/build_sources.R, run by R/scripts/build_gbif.R
+# and R/scripts/build_medoids.R). They are tracked here as *file inputs* — targets
 # watches their hashes and invalidates downstream when they change, but never
 # recomputes them as part of tar_make(). Regenerate them deliberately with the
 # builders in R/data/build_sources.R, then re-run tar_make().
@@ -484,8 +484,9 @@ list(
              format = "file"),
 
   # ---- reporting layers (rendered notebooks) ------------------------------
-  tar_quarto(report_dataset, "dataset_construction.qmd"),
-  tar_quarto(report_analysis, "analysis.qmd")
+  # rendered next to the .qmd; code runs from the project root
+  tar_quarto(report_dataset, "reports/dataset_construction.qmd"),
+  tar_quarto(report_analysis, "reports/analysis.qmd")
 
 ) |>
   # ===== opt-in BRMS backend (full posterior) ==============================

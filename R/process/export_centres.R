@@ -121,7 +121,7 @@ modelled_means_metadata <- function(data_basis) {
     centring = "climate predictors centred on each species' medoid: x_mn = medoid, x_c = record - medoid",
     species_included = "species with more than 5 field records and a climate medoid",
     interval = "94%, delta method on the log scale",
-    documentation = "terminology.md; analysis.qmd"
+    documentation = "terminology.md; reports/analysis.qmd"
   ), data_basis, repo_provenance())
 }
 

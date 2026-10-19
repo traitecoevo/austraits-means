@@ -31,7 +31,7 @@ across a species' range. This serves two goals: (1) delivering the species-mean
 estimates for AusTraits, and (2) underpinning a paper that reports these means
 and gives credence to the estimates (uncertainty intervals, the within/between
 decomposition, and — via the BRMS backend — full posterior inference). See
-`demo.qmd` for the statistical motivation and `roadmap.md` for the roadmap and decisions log.
+`docs/within-species-centring.qmd` for the statistical motivation and `roadmap.md` for the roadmap and decisions log.
 
 This notebook is a *reporting layer*: model fitting, exports and figures are
 produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the

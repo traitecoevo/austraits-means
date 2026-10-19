@@ -9,7 +9,8 @@ out_dir_species <- "outputs/height/species"
 jobs_csv        <- "outputs/height/species_panel_jobs.csv"
 combined_pdf    <- "outputs/height/species_panels_appendix.pdf"
 
-# Inclusion criterion used when generating panels (see Data_height_AVH.qmd:
+# Inclusion criterion used when generating panels (see the retired height
+# report Data_height_AVH.qmd, in git history:
 # jobs_to_run filters n_records > 50).
 min_records <- 50
 
@@ -54,7 +55,8 @@ n_species <- length(pdfs)
 message(n_species, " species panels to combine")
 
 # --- Build a title page ------------------------------------------------------
-# Drawn to match the report front matter (Data_height_AVH.qmd). This document is
+# Drawn to match the front matter of the retired report Data_height_AVH.qmd
+# (in git history). This document is
 # an appendix to that report.
 
 # Simple word-wrap to a target number of characters per line.

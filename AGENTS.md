@@ -17,9 +17,9 @@ Two framings:
    estimates (uncertainty intervals, within/between decomposition, full
    posterior inference via the BRMS backend).
 
-(An earlier height analysis for the NVIS team was a reportable subproject; that framing is retired. The report survives as `Data_height_AVH.qmd`, which reads the old AVH caches and no longer feeds the pipeline.)
+(An earlier height analysis was a reportable subproject; that framing is retired. Its report, `Data_height_AVH.qmd`, read the old AVH caches and was removed from the repository in October 2026; it survives in git history. Its within- vs between-species figure is redrawn for every trait by `plot_within_between()`.)
 
-The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `demo.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
+The method and its statistical motivation (why naive mixed models bias the within-species slope when group means correlate with predictors) are in `docs/within-species-centring.qmd`; the case for full posterior inference was in `archive/notes_why_bayesian.md` (rough working notes, now in git history only).
 The roadmap, milestones and decisions log are in **`roadmap.md`** — read it before making structural changes.
 
 **Terminology is fixed in `terminology.md`**: the two published estimates are the *observed mean* and the *modelled mean* (both geometric from the geometric method onward; collectively "species means"), and community-level summaries are the *community mean* and *community variance* (split woody / non-woody). Use those terms in code, exports, docs and the paper; never "average". Exports carry `estimate_type` and `method` and name values `value`, `log_value`, `value_lower`, `value_upper`.
@@ -28,12 +28,12 @@ The roadmap, milestones and decisions log are in **`roadmap.md`** — read it be
 
 The analysis is orchestrated by a **`targets` pipeline** (`_targets.R`); `targets::tar_make()` builds the DAG and only rebuilds what changed. All logic lives in `R/` functions — `_targets.R` and the notebooks only call them. Tests: `testthat::test_dir("tests/testthat")` from the root.
 
-The two Quarto notebooks are **reporting layers** (rendered by `tar_quarto` targets): they `tar_load()` pipeline results and narrate them, they do not compute.
+The two Quarto reports in `reports/` are **reporting layers** (rendered by `tar_quarto` targets, next to their source, with code run from the project root): they `tar_load()` pipeline results and narrate them, they do not compute. Markdown links inside them resolve relative to `reports/` (so `../outputs/...`).
 
-- `dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
-- `analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
+- `reports/dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
+- `reports/analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
 
-Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait TMB fits and their exports (modelled means); the portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means; the woody lookup, combined species means and community layers (variants via `tar_map`) and the model surface; the comparisons; the figure set; the reports.
+Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait TMB fits (species means) and woodiness fits (community layers), with their exports and figures; the portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means; the woody lookup, combined species means and the three community products (observed local, observed presence, modelled), their comparisons and the native-only test; the comparisons of species means; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
 - *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `R/scripts/build_medoids.R` (`build_climate_medoids()`, parallel over taxa). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
@@ -42,11 +42,11 @@ Sections of `_targets.R`, in order: tracked inputs; the development-build record
 BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
 `brms_fits`/`brms_diag` targets (height excluded — TMB only).
 
-Supporting files: `demo.qmd` (method illustration — the justification for the within-group-centred approach), `trait_species_means.qmd` (legacy notebook; predates the products and calls functions since retired).
+Supporting files, in `docs/`: `within-species-centring.qmd` (method illustration — the justification for the within-group-centred approach) and `collection-method-notes.md` (working notes for #3). Keep the repository root to the pipeline, the README, AGENTS.md, `roadmap.md` and `terminology.md`; new notebooks go in `reports/` (rendered by the pipeline) or `docs/`.
 
 ### Producer notebooks
 
-None remain. The species medoids, once built by `climate_centres.qmd`, come from `build_climate_medoids()` (`R/data/build_sources.R`) via `R/scripts/build_medoids.R` since #33; the notebook is kept as an exploratory record. `Data_height_AVH.qmd` is the retired NVIS height report and no longer feeds the pipeline. (The rest of the old `archive/` — scratch notes and `notes_why_bayesian.md` — was removed in `eecdbf2` and survives only in git history.)
+None remain. The species medoids, once built by `climate_centres.qmd`, come from `build_climate_medoids()` (`R/data/build_sources.R`) via `R/scripts/build_medoids.R` since #33. That notebook, the retired height report `Data_height_AVH.qmd` and the legacy `trait_species_means.qmd` (which called functions since retired) were removed from the repository in October 2026 and survive in git history, as does the rest of the old `archive/` (scratch notes and `notes_why_bayesian.md`, removed in `eecdbf2`).
 
 ## R/ library layout
 
@@ -66,10 +66,12 @@ R/
                run_trait_models.R
   process/     process_fit.R, species_centres.R, export_centres.R (modelled
                means product), compare_baseline.R, compare_means.R
-  plot/        plot_fitted.R, plot_trait_centres.R, figure_set.R
+  plot/        plot_fitted.R, plot_trait_centres.R, plot_within_between.R,
+               figure_set.R
   means/       observed_means_portal.R, observed_means_geometric.R,
                reliability.R, species_means_io.R, compare_portal.R
-  community/   woody_lookup.R, community_layers.R, community_modelled.R
+  community/   woody_lookup.R, community_layers.R, community_modelled.R,
+               compare_layers.R
   release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,

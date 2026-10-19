@@ -5,7 +5,7 @@ Species-level and community-level trait means for the Australian flora, built fr
 The repository produces three data products, with the terms fixed in [`terminology.md`](terminology.md):
 
 1. **Observed means**: per species × trait, computed directly from the records. Two methods: the *portal method*, which reproduces exactly the species means the AusTraits data portal shows for release 7.0.0 (an arithmetic mean), and its successor, the *geometric method*.
-2. **Modelled means**: per species × trait, the geometric mean at the centre of the species' climate distribution, from a hierarchical model in which each species' climate is centred on its medoid (the most central point of its GBIF occurrences in precipitation–temperature space; `demo.qmd` explains why). Fitted with TMB (`glmmTMB`, maximum likelihood); a Bayesian `brms` backend is optional.
+2. **Modelled means**: per species × trait, the geometric mean at the centre of the species' climate distribution, from a hierarchical model in which each species' climate is centred on its medoid (the most central point of its GBIF occurrences in precipitation–temperature space; `docs/within-species-centring.qmd` explains why). Fitted with TMB (`glmmTMB`, maximum likelihood); a Bayesian `brms` backend is optional.
 3. **Community layers** (first draft, on provisional choices): the community mean and community variance of the species means present in each 0.25° cell, for woody and non-woody plants, plus a model-based surface.
 
 The *combined species means* table is not a fourth product: it merges products 1 and 2 (the modelled mean where a species has one, otherwise its geometric observed mean) and is the input to the community layers.
@@ -20,11 +20,11 @@ Every species means table carries `estimate_type` (`observed_mean` or `modelled_
 |---|---|---|
 | Observed means, portal method, for AusTraits 7.0.0 | `species_means/7.0.0/observed_means_portal_arithmetic.*` | [`docs/observed-means-portal-method.md`](docs/observed-means-portal-method.md) |
 | Observed means, geometric method | `species_means/<build>/observed_means_geometric.*` | [`docs/observed-means-geometric-method.md`](docs/observed-means-geometric-method.md) |
-| Modelled means (TMB) | `species_means/<build>/modelled_means_tmb.*` | `terminology.md`, `demo.qmd`, `analysis.qmd` (rendered as `analysis.html`) |
+| Modelled means (TMB) | `species_means/<build>/modelled_means_tmb.*` | `terminology.md`, `docs/within-species-centring.qmd`, `reports/analysis.qmd` (rendered as `reports/analysis.html`) |
 | Combined species means (modelled where available, otherwise observed) | `species_means/<build>/species_means_combined.*` | `terminology.md` |
 | Community layers (10 km equal-area grid) | `community/<build>/<product>/`: `community_layers.parquet` (one row per trait × cell × group; `woodiness_group` is `woody`, `non_woody` or `all`), `geotiff/`, `figures/`, `community_layers_metadata.json`; `woody_lookup.csv` alongside. Products: `observed_local` (each species' records in the cell, then the species), `observed_presence` (GBIF species present × observed means), `modelled` (the trait model's net average for the cell, from a model with woody and non-woody coefficients) | [`docs/community-layers-design.md`](docs/community-layers-design.md) |
 
-`<build>` is the version string of the austraits.build development build the products came from: currently `7.0.0.9000`, built from austraits.build commit `d535de9`. Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; portal vs geometric observed means, which differ in data version as well as method, 7.0.0 against the development build; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the portal reproduction check and the medoid checks), and `traits/`, the pipeline's working per-trait files (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to the repository root.
+`<build>` is the version string of the austraits.build development build the products came from: currently `7.0.0.9000`, built from austraits.build commit `d535de9`. Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; portal vs geometric observed means, which differ in data version as well as method, 7.0.0 against the development build; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the portal reproduction check and the medoid checks), and `traits/`, the pipeline's working per-trait files (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to `reports/`, next to their sources (git-ignored).
 
 To read one:
 
@@ -69,15 +69,13 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 .
 ├── _targets.R                 # the pipeline (orchestration only; calls R/ functions)
 ├── renv.lock                  # pinned dependency versions
-├── analysis.qmd               # report: models, the refit against June 2026, observed vs modelled
-├── dataset_construction.qmd   # report: data basis, name matching, medoid checks
-├── demo.qmd                   # why within-species centring
-├── climate_centres.qmd        # exploratory medoid notebook; replaced by R/scripts/build_medoids.R
-├── Data_height_AVH.qmd        # retired NVIS height report (reads the old AVH caches)
-├── trait_species_means.qmd    # legacy notebook; predates the products and uses retired functions
-├── methods.md                 # working notes on collection-method factors (#3)
 ├── roadmap.md  terminology.md  AGENTS.md
-├── docs/                      # method and design documents; the June 2026 baseline
+├── reports/                   # the two reports, rendered by the pipeline next to their .qmd:
+│                              #   analysis.qmd (models, the refit against June 2026, observed vs modelled),
+│                              #   dataset_construction.qmd (data basis, name matching, medoid checks)
+├── docs/                      # method and design documents, the June 2026 baseline,
+│                              #   within-species-centring.qmd (why within-species centring),
+│                              #   collection-method-notes.md (working notes for #3)
 ├── data-raw/                  # small pinned inputs with provenance (portal core-trait list)
 ├── R/
 │   ├── init.R                 # source() this to load the whole library
@@ -86,7 +84,7 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 │   ├── model/                 # model formula, fitting (tmb | brms), per-trait runs
 │   ├── process/               # species centres, exports, comparisons
 │   ├── means/                 # observed means (portal, geometric), reliability, writers
-│   ├── community/             # woody lookup, community layers, model surface
+│   ├── community/             # woody lookup, community layers (observed, modelled), comparisons
 │   ├── release/               # Zenodo deposit
 │   ├── plot/  panels/  utils/ # figures (save_figure: PNG + PDF), helpers
 │   └── scripts/               # run-scripts (not sourced by init.R)

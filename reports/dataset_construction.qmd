@@ -72,4 +72,4 @@ summarise_medoid_vs_gbif(medoid_gbif_check)
 summarise_medoid_check(check_medoid(unified))
 ```
 
-![Medoid vs GBIF occurrence cloud](outputs/checks/medoid_gbif_check.png)
+![Medoid vs GBIF occurrence cloud](../outputs/checks/medoid_gbif_check.png)
