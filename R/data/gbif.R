@@ -2,11 +2,19 @@
 # pinned APC release and attach climate (#32).
 #
 # Ported from traitecoevo/cornsters_australian_annuals (R/download.R and
-# R/clean_gbif.R at bca9cd8), with one addition: only openly licensed records
-# (CC0 and CC BY) are kept, so products built on the occurrences can be
-# released under CC BY 4.0 (roadmap.md, decision of 19 October 2026). GBIF
-# licenses a download as its most restrictive record, so the downloads
-# themselves are CC BY-NC; the cleaned extract is not.
+# R/clean_gbif.R at bca9cd8), with two additions (roadmap.md, decisions of 19
+# October 2026):
+#   - only openly licensed records (CC0 and CC BY) are kept, so products built
+#     on the occurrences can be released under CC BY 4.0. GBIF licenses a
+#     download as its most restrictive record, so the downloads themselves are
+#     CC BY-NC; the cleaned extract is not;
+#   - names are aligned to APC from the name the data provider supplied
+#     (`verbatimScientificName`), falling back to GBIF's interpreted `species`
+#     only where the provider name does not align to a species-level name.
+#     GBIF interprets names with its own backbone, which since 2026 follows the
+#     Catalogue of Life: it places some Australian species in genera APC does
+#     not use (Corymbia maculata as Blakella maculata) and lumps some species
+#     APC keeps apart, so its names do not line up with AusTraits'.
 #
 # The cleaned extract is a Tier B input: build it deliberately with
 # R/scripts/build_gbif.R, not in tar_make().
@@ -150,7 +158,8 @@ clean_gbif_coordinates <- function(x, chunk_rows = 1e6) {
 clean_gbif <- function(gbif_csv, licences = gbif_open_licences, chunk_rows = 1e6) {
   columns <- c("gbifID", "datasetKey", "occurrenceStatus", "decimalLongitude",
                "decimalLatitude", "basisOfRecord", "coordinatePrecision",
-               "coordinateUncertaintyInMeters", "issue", "species", "taxonRank",
+               "coordinateUncertaintyInMeters", "issue", "species",
+               "verbatimScientificName", "taxonRank",
                "year", "countryCode", "institutionCode", "license")
   # only data.table::fread reads SIMPLE_CSV reliably (readr and arrow error)
   x <- data.table::fread(gbif_csv, quote = "", select = columns, showProgress = FALSE)
@@ -169,23 +178,82 @@ clean_gbif <- function(gbif_csv, licences = gbif_open_licences, chunk_rows = 1e6
   x
 }
 
-#' Align GBIF species names to the pinned APC release.
+#' Align GBIF names to the pinned APC release: the provider's name first,
+#' GBIF's species name as fallback.
 #'
-#' @param species unique GBIF `species` names.
+#' Both name sets are aligned with APCalign. For each provider name × GBIF
+#' species pair, the provider name's alignment is used if it reaches species
+#' rank or below, otherwise the GBIF name's. Infraspecific names are rolled up
+#' to their species (`taxon_name`), as on the trait side, keeping the
+#' infraspecific name in `taxon_name_infraspecific`.
+#'
+#' A fuzzy match is accepted only if it keeps the genus, allowing a
+#' one-character difference for spelling variants (Leschenaultia /
+#' Lechenaultia); fuzzy matches that change the genus are mostly wrong
+#' (Acanthus to Amaranthus, Setaria to Scleria) and count as no match.
+#'
+#' @param cleaned output of `clean_gbif()`.
 #' @param apc_version APCalign release tag (as `apc_version` in `_targets.R`).
-align_gbif_names <- function(species, apc_version) {
-  resources <- APCalign::load_taxonomic_resources(version = apc_version, quiet = TRUE)
-  APCalign::create_taxonomic_update_lookup(
-    sort(unique(stats::na.omit(species))), resources = resources,
-    # GBIF has already resolved much of the taxonomy; keep its records
-    taxonomic_splits = "most_likely_species", quiet = TRUE
-  ) |>
-    dplyr::mutate(apc_version = apc_version)
+#' @param lookup optional APCalign lookup from an earlier run (the `lookup`
+#'   attribute), reused if it covers every name, to skip the slow alignment.
+#' @return one row per provider name × GBIF species pair: `verbatim_name`,
+#'   `gbif_name`, `taxon_name`, `taxon_name_infraspecific`, `genus`,
+#'   `name_source` (provider, gbif or none), `aligned_reason`, `apc_version`;
+#'   plus the full APCalign lookup in `attr(, "lookup")`.
+align_gbif_names <- function(cleaned, apc_version, lookup = NULL) {
+  pairs <- dplyr::distinct(tibble::as_tibble(cleaned),
+                           verbatim_name = verbatimScientificName, gbif_name = species)
+  names_in <- sort(unique(stats::na.omit(c(pairs$verbatim_name, pairs$gbif_name))))
+  names_in <- names_in[names_in != ""]
+  if (is.null(lookup) || !all(names_in %in% lookup$original_name)) {
+    resources <- APCalign::load_taxonomic_resources(version = apc_version, quiet = TRUE)
+    lookup <- APCalign::create_taxonomic_update_lookup(
+      names_in, resources = resources,
+      taxonomic_splits = "most_likely_species", quiet = TRUE
+    )
+  }
+  species_level <- c("species", "subspecies", "variety", "form")
+  first_word <- function(x) sub(" .*", "", x)
+  genus_kept <- function(from, to) {
+    diag(utils::adist(first_word(from), first_word(to))) <= 1
+  }
+  hit <- lookup |>
+    dplyr::filter(taxon_rank %in% species_level, !is.na(accepted_name)) |>
+    dplyr::filter(!grepl("fuzzy", aligned_reason, ignore.case = TRUE) |
+                    genus_kept(original_name, aligned_name)) |>
+    dplyr::select(original_name, accepted_name, taxon_rank, genus, aligned_reason)
+
+  out <- pairs |>
+    dplyr::left_join(dplyr::rename_with(hit, ~ paste0(.x, "_v"), -original_name),
+                     by = c(verbatim_name = "original_name")) |>
+    dplyr::left_join(dplyr::rename_with(hit, ~ paste0(.x, "_g"), -original_name),
+                     by = c(gbif_name = "original_name")) |>
+    dplyr::mutate(
+      name_source = dplyr::case_when(!is.na(accepted_name_v) ~ "provider",
+                                     !is.na(accepted_name_g) ~ "gbif",
+                                     TRUE ~ "none"),
+      taxon_name_infraspecific = dplyr::coalesce(accepted_name_v, accepted_name_g),
+      rank = dplyr::coalesce(taxon_rank_v, taxon_rank_g),
+      genus = dplyr::coalesce(genus_v, genus_g),
+      aligned_reason = dplyr::coalesce(aligned_reason_v, aligned_reason_g),
+      # roll infraspecific names up to their species (first two words; APC
+      # infraspecific names are "Genus epithet rank name")
+      taxon_name = dplyr::if_else(
+        rank %in% c("subspecies", "variety", "form"),
+        vapply(strsplit(dplyr::coalesce(taxon_name_infraspecific, ""), " ", fixed = TRUE),
+               \(w) paste(utils::head(w, 2), collapse = " "), character(1)),
+        taxon_name_infraspecific),
+      apc_version = apc_version
+    ) |>
+    dplyr::select(verbatim_name, gbif_name, taxon_name, taxon_name_infraspecific,
+                  genus, name_source, aligned_reason, apc_version)
+  attr(out, "lookup") <- lookup
+  out
 }
 
 #' Attach climate to cleaned GBIF records.
 #'
-#' `taxon_name` is the APC accepted name from `align_gbif_names()`. Records
+#' `taxon_name` is the APC accepted species from `align_gbif_names()`. Records
 #' without climate, with non-positive precipitation, or on the known rogue
 #' point at the continental centroid (134.1, -25.7) are dropped.
 #'
@@ -200,22 +268,22 @@ build_gbif_climate <- function(cleaned, aligned, rasters = load_climate_rasters(
                 crs = terra::crs(rasters)),
     method = "simple", ID = FALSE
   )
-  names_lookup <- aligned |>
-    dplyr::select(original_name, taxon_name = accepted_name, genus) |>
-    dplyr::distinct(original_name, .keep_all = TRUE)
 
   tibble::as_tibble(cleaned) |>
     dplyr::transmute(
-      original_name = species,
+      original_name = verbatimScientificName, gbif_name = species,
       decimal_longitude = decimalLongitude, decimal_latitude = decimalLatitude,
       year, gbif_id = gbifID, dataset_key = datasetKey, license,
       basis_of_record = basisOfRecord, institution_code = institutionCode,
       coordinate_uncertainty_in_meters = coordinateUncertaintyInMeters,
-      taxon_rank = taxonRank
+      gbif_taxon_rank = taxonRank
     ) |>
     dplyr::mutate(annual_precipitation = climate$wc2.1_2.5m_bio_12,
                   average_temperature = climate$wc2.1_2.5m_bio_1) |>
-    dplyr::left_join(names_lookup, by = "original_name") |>
+    dplyr::left_join(
+      dplyr::select(aligned, verbatim_name, gbif_name, taxon_name,
+                    taxon_name_infraspecific, genus, name_source),
+      by = c(original_name = "verbatim_name", "gbif_name")) |>
     dplyr::filter(
       !is.na(annual_precipitation), !is.na(average_temperature),
       annual_precipitation > 0,
@@ -229,5 +297,5 @@ build_gbif_climate <- function(cleaned, aligned, rasters = load_climate_rasters(
       average_temperature_centered =
         (average_temperature - mean(average_temperature)) / stats::sd(average_temperature)
     ) |>
-    dplyr::relocate(original_name, taxon_name, genus)
+    dplyr::relocate(original_name, gbif_name, taxon_name, genus, name_source)
 }

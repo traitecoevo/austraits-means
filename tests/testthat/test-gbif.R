@@ -54,3 +54,36 @@ test_that("a download's citation uses its DOI and date", {
   expect_equal(gbif_citation("0027765-260928105237408"),
                "GBIF.org (15 October 2026) GBIF Occurrence Download https://doi.org/10.15468/dl.766erw")
 })
+
+test_that("names align from the provider name first, GBIF's name as fallback, rolled up to species", {
+  skip_if_not(dir.exists(tools::R_user_dir("APCalign")), "APCalign resources not cached")
+  cleaned <- tibble::tribble(
+    ~verbatimScientificName,                  ~species,
+    "Corymbia maculata",                      "Blakella maculata",   # GBIF genus APC does not use
+    "",                                       "Acacia aneura",       # no provider name
+    "Eucalyptus leucoxylon subsp. megalocarpa", "Eucalyptus leucoxylon"
+  )
+  a <- align_gbif_names(cleaned, apc_version = "2026-07-30")
+  a <- a[match(cleaned$species, a$gbif_name), ]
+  expect_equal(a$name_source, c("provider", "gbif", "provider"))
+  expect_equal(a$taxon_name, c("Corymbia maculata", "Acacia aneura", "Eucalyptus leucoxylon"))
+  expect_equal(a$taxon_name_infraspecific[3], "Eucalyptus leucoxylon subsp. megalocarpa")
+})
+
+test_that("fuzzy matches that change the genus are rejected, spelling variants kept", {
+  cleaned <- tibble::tribble(
+    ~verbatimScientificName,   ~species,
+    "Acanthus spinosus",       "Acanthus spinosus",
+    "Leschenaultia linioides", "Lechenaultia linarioides"
+  )
+  lookup <- tibble::tribble(
+    ~original_name,             ~aligned_name,              ~accepted_name,             ~taxon_rank, ~genus,         ~aligned_reason,
+    "Acanthus spinosus",        "Amaranthus spinosus",      "Amaranthus spinosus",      "species",   "Amaranthus",   "Fuzzy match of taxon name",
+    "Leschenaultia linioides",  "Lechenaultia linarioides", "Lechenaultia linarioides", "species",   "Lechenaultia", "Fuzzy match of taxon name",
+    "Lechenaultia linarioides", "Lechenaultia linarioides", "Lechenaultia linarioides", "species",   "Lechenaultia", "Exact match"
+  )
+  a <- align_gbif_names(cleaned, apc_version = "2026-07-30", lookup = lookup)
+  a <- a[match(cleaned$species, a$gbif_name), ]
+  expect_equal(a$name_source, c("none", "provider"))
+  expect_equal(a$taxon_name[2], "Lechenaultia linarioides")
+})

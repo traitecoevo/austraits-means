@@ -12,7 +12,9 @@
 #                                     APC release or APCalign version only
 #                                     reruns the alignment and climate steps)
 #   data_gbif_cleaned_<key>.parquet   the cleaned extract with climate
-#   gbif_names_aligned_<key>.parquet  the APC alignment of its species names
+#   gbif_names_aligned_<key>.parquet  provider name × GBIF name → APC species, with
+#                                     the route taken (name_source)
+#   gbif_names_apcalign_lookup_<key>.parquet  the full APCalign lookup
 #   data_gbif_cleaned_<key>.json      provenance: download, licences, APC
 #                                     release, record count after each step
 # It never overwrites data_gbif_cleaned.parquet, the extract the pipeline
@@ -34,7 +36,10 @@ apc_version <- local({
 
 t0 <- Sys.time()
 stage <- file.path("data-processed", paste0("gbif_records_cleaned_", key, ".parquet"))
-if (file.exists(stage)) {
+# reuse the cleaned stage only if it has the columns this version needs
+has_columns <- file.exists(stage) &&
+  "verbatimScientificName" %in% names(arrow::open_dataset(stage)$schema)
+if (has_columns) {
   message("Reusing ", stage)
   cleaned <- arrow::read_parquet(stage)
   steps <- unlist(jsonlite::read_json(sub("\\.parquet$", "_steps.json", stage)))
@@ -46,8 +51,19 @@ if (file.exists(stage)) {
   jsonlite::write_json(as.list(steps), sub("\\.parquet$", "_steps.json", stage),
                        auto_unbox = TRUE)
 }
-message("Aligning ", dplyr::n_distinct(cleaned$species), " names to APC ", apc_version)
-aligned <- align_gbif_names(cleaned$species, apc_version)
+message("Aligning provider and GBIF names to APC ", apc_version)
+# reuse an earlier APCalign lookup made with the same APC release and package
+lookup_file <- file.path("data-processed", paste0("gbif_names_apcalign_lookup_", key, ".parquet"))
+lookup <- NULL
+if (file.exists(lookup_file)) {
+  lk <- arrow::read_parquet(lookup_file)
+  if (file.exists(sub("\\.parquet$", ".json", lookup_file))) {
+    meta <- jsonlite::read_json(sub("\\.parquet$", ".json", lookup_file))
+    if (identical(meta$apc_version, apc_version) &&
+        identical(meta$apcalign_package, as.character(utils::packageVersion("APCalign")))) lookup <- lk
+  }
+}
+aligned <- align_gbif_names(cleaned, apc_version, lookup = lookup)
 message("Attaching climate")
 gbif <- build_gbif_climate(cleaned, aligned)
 steps["with_climate"] <- nrow(gbif)
@@ -56,6 +72,10 @@ out <- file.path("data-processed", paste0(c("data_gbif_cleaned_", "gbif_names_al
                                           key, ".parquet"))
 arrow::write_parquet(gbif, out[1])
 arrow::write_parquet(aligned, out[2])
+arrow::write_parquet(attr(aligned, "lookup"), lookup_file)
+jsonlite::write_json(list(apc_version = apc_version,
+                          apcalign_package = as.character(utils::packageVersion("APCalign"))),
+                     sub("\\.parquet$", ".json", lookup_file), auto_unbox = TRUE)
 jsonlite::write_json(list(
   gbif_download = key,
   doi = gbif_downloads$doi[gbif_downloads$key == key],
@@ -64,8 +84,11 @@ jsonlite::write_json(list(
   apc_version = apc_version,
   apcalign_package = as.character(utils::packageVersion("APCalign")),
   records = as.list(steps),
-  species_names = dplyr::n_distinct(gbif$original_name),
-  taxa_aligned = dplyr::n_distinct(stats::na.omit(gbif$taxon_name)),
+  name_alignment = "provider name (verbatimScientificName) first, GBIF species as fallback; infraspecific names rolled up to species",
+  records_by_name_source = as.list(table(gbif$name_source)),
+  provider_names = dplyr::n_distinct(gbif$original_name),
+  gbif_names = dplyr::n_distinct(gbif$gbif_name),
+  species_aligned = dplyr::n_distinct(stats::na.omit(gbif$taxon_name)),
   built = format(Sys.time(), "%Y-%m-%d"),
   minutes = round(as.numeric(difftime(Sys.time(), t0, units = "mins")), 1)
 ), sub("\\.parquet$", ".json", out[1]), auto_unbox = TRUE, pretty = TRUE)
