@@ -56,6 +56,12 @@ out_dir <- "outputs/traits"
 # data-raw/austraits/README.md.
 austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-d535de9.rds"
 
+# The geometric observed means that austraits.build's `post_export()` wrote for
+# that same build (austraits.build#899). This repository reads them rather
+# than computing its own; how to make the file: data-raw/austraits/README.md.
+austraits_dev_observed_means <-
+  "data/austraits/austraits-7.0.0.9000-d535de9-observed-means.parquet"
+
 # APC/APNI release that trait-record names and GBIF names are both aligned to
 # for the crosswalk (an APCalign release tag; #13). Changing it rebuilds the
 # crosswalk and everything downstream.
@@ -131,6 +137,8 @@ list(
              "data-processed/climate_centres_0027765-260928105237408.parquet",
              format = "file"),
   tar_target(austraits_dev_file, austraits_dev_rds, format = "file"),
+  tar_target(austraits_dev_observed_means_file, austraits_dev_observed_means,
+             format = "file"),
 
   # ===== Tier A: computed modelling pipeline ================================
   # Version string and commit of the austraits.build export, carried into the
@@ -286,24 +294,13 @@ list(
              format = "file"),
 
   # ===== Observed means, geometric method (development build; #15) =========
-  # Successor to the portal method: same recipe on the log scale
-  # (R/means/observed_means_geometric.R, docs/observed-means-geometric-method.md).
-  tar_target(geometric_traits,
-             geometric_mean_traits(read_portal_core_traits(portal_core_traits_file))),
-  tar_target(dev_records, prepare_records(austraits_dev_file, geometric_traits)),
+  # Published by austraits.build with the build, not computed here
+  # (R/means/observed_means_release.R, docs/observed-means-geometric-method.md).
+  # The community layers need the woodiness and growth-form traits too.
   tar_target(observed_means_geometric,
-             estimate_observed_means_geometric(dev_records)),
-  tar_target(observed_means_geometric_files,
-             write_species_means(
-               label_estimates(observed_means_geometric,
-                               "observed_mean", "geometric"),
-               observed_means_geometric_dictionary(),
-               dir = file.path("outputs/species_means",
-                               austraits_dev_info$austraits_version),
-               stem = "observed_means_geometric",
-               metadata = observed_means_geometric_metadata(austraits_dev_info,
-                                                            geometric_traits)),
-             format = "file"),
+             read_observed_means(austraits_dev_observed_means_file,
+                                 traits = c(trait_names, "woodiness_detailed",
+                                            "plant_growth_form"))),
 
   # ===== Community layers (#27, #28) ========================================
   # Three products on a 10 km equal-area grid, each for all species and for

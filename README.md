@@ -19,7 +19,7 @@ Every species means table carries `estimate_type` (`observed_mean` or `modelled_
 | Product | Files (under `outputs/`) | Documentation |
 |---|---|---|
 | Observed means, portal method, for AusTraits 7.0.0 | `species_means/7.0.0/observed_means_portal_arithmetic.*` | [`docs/observed-means-portal-method.md`](docs/observed-means-portal-method.md) |
-| Observed means, geometric method | `species_means/<build>/observed_means_geometric.*` | [`docs/observed-means-geometric-method.md`](docs/observed-means-geometric-method.md) |
+| Observed means, geometric method | Published with each AusTraits release by austraits.build (`austraits-<version>-observed-means.*`); read here, not written | [`docs/observed-means-geometric-method.md`](docs/observed-means-geometric-method.md) |
 | Modelled means (TMB) | `species_means/<build>/modelled_means_tmb.*` | `terminology.md`, `docs/within-species-centring.qmd`, `reports/analysis.qmd` (rendered as `reports/analysis.html`) |
 | Combined species means (modelled where available, otherwise observed) | `species_means/<build>/species_means_combined.*` | `terminology.md` |
 | Community layers (10 km equal-area grid) | `community/<build>/<product>/`: `community_layers.parquet` (one row per trait × cell × group; `woodiness_group` is `woody`, `non_woody` or `all`), `geotiff/`, `figures/`, `community_layers_metadata.json`; `woody_lookup.csv` alongside. Products: `observed_local` (each species' records in the cell, then the species), `observed_presence` (GBIF species present × observed means), `modelled` (the trait model's net average for the cell, from a model with woody and non-woody coefficients) | [`docs/community-layers-design.md`](docs/community-layers-design.md) |

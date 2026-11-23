@@ -25,7 +25,7 @@ Species terms decided 14 October 2026. Community terms proposed 14 October 2026;
 
 ## What each estimate does and does not account for
 
-**The observed mean** (geometric method: `estimate_observed_means_geometric()` in `R/means/observed_means_geometric.R`; full description in `docs/observed-means-geometric-method.md`) uses, from an AusTraits build:
+**The observed mean** (geometric method: `observed_means()` in austraits.build's `R/observed_means.R`, published with each AusTraits release; full description in `docs/observed-means-geometric-method.md`) uses, from an AusTraits build:
 
 - records with `value_type` raw, mean or median, whatever their basis of record or life stage;
 - the AVH height dataset in austraits.build (`AVH_2026`), whose specimen label bounds (one minimum or maximum per specimen) are used as observations, like raw records;

@@ -266,10 +266,9 @@ species_means_combined |>
 In `outputs/species_means/<build version>/`, each as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`, with `estimate_type` and `method` on every row (`terminology.md`):
 
 - `modelled_means_tmb`: the modelled means of every trait, with their 94% interval, the climate centre and the species' random effects (`modelled_means_files` target).
-- `observed_means_geometric`: the geometric observed means (`observed_means_geometric_files`).
 - `species_means_combined`: one value per species × trait for the modelled traits, modelled where available, otherwise observed (`species_means_combined_files`).
 
-The portal-method observed means for AusTraits 7.0.0 are in `outputs/species_means/7.0.0/` (`docs/observed-means-portal-method.md`).
+The portal-method observed means for AusTraits 7.0.0 are in `outputs/species_means/7.0.0/` (`docs/observed-means-portal-method.md`). The geometric observed means are published by austraits.build with each build (`austraits-<version>-observed-means.parquet`), and read here rather than written.
 
 Per trait, in `outputs/traits/`:
 

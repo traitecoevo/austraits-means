@@ -63,7 +63,8 @@ R/
                means product), compare_baseline.R, compare_means.R
   plot/        plot_fitted.R, plot_trait_centres.R, plot_within_between.R,
                figure_set.R
-  means/       observed_means_portal.R, observed_means_geometric.R,
+  means/       observed_means_portal.R, observed_means_release.R (reads the
+               geometric observed means austraits.build publishes),
                reliability.R, species_means_io.R, compare_portal.R
   community/   woody_lookup.R, community_layers.R, community_modelled.R,
                compare_layers.R

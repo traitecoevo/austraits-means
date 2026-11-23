@@ -38,7 +38,7 @@ non_woody_growth_form_keywords <- c("herb", "fern", "tussock", "geophyte",
 
 #' Woody / non-woody class per taxon (#19, #27).
 #'
-#' @param observed_means output of `estimate_observed_means_geometric()`.
+#' @param observed_means the published geometric observed means (`read_observed_means()`).
 #' @return one row per taxon with any woodiness or growth-form record:
 #'   `woodiness_group` (woody, non_woody, unassigned), `source`
 #'   (woodiness_detailed, plant_growth_form, none), `intermediate` and

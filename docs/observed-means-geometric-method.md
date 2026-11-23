@@ -2,19 +2,17 @@
 
 ## What this product is
 
-The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. The product is built today from the austraits.build development build 7.0.0.9000 (commit `d535de9e`; see `data-raw/austraits/README.md`), and carries that build's version string until the corresponding release exists.
+The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. **austraits.build computes and publishes them**, from the release after 7.0.0 onward, as `austraits-<version>-observed-means.parquet` (`.csv.gz`, `-dictionary.csv`) beside each release (`R/observed_means.R` there, written by its `post_export()`; [austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). The method moved there from this repository, which now only reads the file; this document describes the method, and austraits.build's code is the authority if the two disagree. The pipeline here reads the file published for the development build 7.0.0.9000 (commit `d535de9e`; see `data-raw/austraits/README.md`).
 
 For a numeric trait the value is a **geometric mean**, as `terminology.md` requires of both species estimates. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
 
-The current build gives 601,959 rows: 153,994 numeric (one per taxon × trait × unit) and 447,965 categorical (one per taxon × trait), for 30,553 taxa and 93 traits (40 numeric, 53 categorical).
-
 ## Traits
 
-The portal's 96 core traits (`data-raw/portal/trait_groups_for_portal.csv`), plus three traits the core list lacks: `leaf_N_per_area` and `leaf_P_per_area`, so that all nine modelled traits are covered, and `woodiness`, an input to the woody / non-woody lookup. Traits without records in the build drop out. The list is `geometric_mean_traits()` in `R/means/observed_means_geometric.R`. It is a starting point, not a decision about the eventual scope.
+The portal's core traits (`data-raw/portal/trait_groups_for_portal.csv`), the traits the AusTraits API summarises, and three more: `leaf_N_per_area` and `leaf_P_per_area`, so that all nine modelled traits are covered, and `woodiness`, an input to the woody / non-woody lookup. Traits without records in the build drop out. The list is `observed_means_traits()` in austraits.build's `R/observed_means.R`.
 
 ## Method
 
-The recipe is the portal method's, on the log scale. `estimate_observed_means_geometric()` implements it.
+The recipe is the portal method's, on the log scale. `observed_means()` in austraits.build's `R/observed_means.R` implements it.
 
 **Record selection** (numeric traits).
 
@@ -28,7 +26,7 @@ The recipe is the portal method's, on the log scale. `estimate_observed_means_ge
 
 **Zero and negative values.** A geometric mean needs positive values, so records with a zero or negative value are dropped before anything is computed, as for the modelled means; `arithmetic_mean` uses the same records. In the current build this drops 6,869 records: all 5,918 of `leaf_delta13C`, whose values are negative, so that trait has no geometric observed mean (it needs a transform first, as for the modelled means, #39); 895 of `petiole_length`, where zero means a sessile leaf; and a few of `leaf_stomatal_density_adaxial`, `seed_viability` and `leaf_inclination_angle`.
 
-**Taxa.** Subspecies, varieties and forms are rolled up to their species (`roll_up_to_species()`), as for the modelled means, so the two species estimates join on species. Taxon details (rank, establishment means, APC identifier) come from the species' row in the build's taxa table. Genus-level names keep their own rows. In the current build 186,692 of 1,939,853 records were rolled up.
+**Taxa.** Subspecies, varieties and forms are rolled up to their species (the name before its rank marker), as for the modelled means (`roll_up_to_species()` here), so the two species estimates join on species. Hybrid formulae (*A x B var. c*) are not rolled up and keep their own rows. Taxon details (rank, establishment means, APC identifier) come from the species' row in the build's taxa table. Genus-level names keep their own rows. In the current build 186,692 of 1,939,853 records were rolled up.
 
 **Categorical traits.** One row per taxon × trait. Each record's value is split at spaces and every value counted; `value_count` lists `value (n)` for every value and `value_mode` gives the most frequent one, with tied values joined by a space.
 
@@ -59,8 +57,8 @@ The geometric mean sits below the arithmetic mean by an amount that grows with w
 
 ## Columns
 
-The column dictionary is written with the product (`observed_means_geometric_dictionary.csv`) and defined in `observed_means_geometric_dictionary()`.
+The column dictionary is published with the product (`austraits-<version>-observed-means-dictionary.csv`) and defined in `observed_means_dictionary()` in austraits.build. It has the columns above except `source_primary_key`: a dataset's references are in the release's `sources` table under its `dataset_id`.
 
 ## Outputs and rebuilding
 
-`targets::tar_make()` builds `dev_records` → `observed_means_geometric` → `observed_means_geometric_files`, which writes `outputs/species_means/<build version>/observed_means_geometric` as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`. The metadata records the build version and commit and the trait list.
+austraits.build writes the files when it exports a build (`create_release()`, or `traits.build::build_post_export()` on a development build; `data-raw/austraits/README.md`). Here, the `observed_means_geometric` target reads them with `read_observed_means()` (`R/means/observed_means_release.R`), which checks the columns the pipeline uses and that every trait it needs is present; this repository no longer writes its own copy.
