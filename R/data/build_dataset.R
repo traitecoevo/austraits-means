@@ -69,13 +69,24 @@ build_medoid_lookup <- function(
 #' The build's own name is kept in `taxon_name_aligned`. Genus-level and other
 #' names are left as they are.
 #'
+#' The species is the name up to its rank marker (`subsp.`, `var.`, `f.`,
+#' ...), not the taxa table's `binomial`, which for a hybrid holds the first
+#' two words ("Mentha x", or the first parent of a hybrid formula). Hybrid
+#' formulae and intergrades ("A x B var. c", "A - B subsp. c") belong to
+#' neither parent and are not rolled up. Mirrors `observed_means_records()` in
+#' austraits.build's `R/observed_means.R` (austraits.build#899).
+#'
 #' @param records records with a `taxon_name` column.
-#' @param taxa tibble(taxon_name, taxon_rank, binomial): the build's taxa table.
+#' @param taxa tibble(taxon_name, taxon_rank, ...): the build's taxa table.
 roll_up_to_species <- function(records, taxa) {
+  rank_marker <- "\\s(subsp|var|f|forma|nothosubsp|nothovar)\\.\\s.*$"
+  hybrid_formula <- "\\s(x|-)\\s[A-Z]"
   species_of <- taxa |>
     dplyr::filter(taxon_rank %in% c("subspecies", "variety", "form"),
-                  !is.na(binomial), binomial != taxon_name) |>
-    dplyr::distinct(taxon_name, .species = binomial)
+                  grepl(rank_marker, taxon_name),
+                  !grepl(hybrid_formula, taxon_name)) |>
+    dplyr::distinct(taxon_name) |>
+    dplyr::mutate(.species = sub(rank_marker, "", taxon_name))
 
   records |>
     dplyr::left_join(species_of, by = "taxon_name") |>
