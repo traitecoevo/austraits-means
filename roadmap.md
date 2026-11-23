@@ -2,7 +2,7 @@
 
 This is the planning document for `austraits-means`. It records what the repository delivers, the decisions taken and why, the milestones and the issues that reach them, and the invariants a future edit could break. Keep it current or retire it; do not start a second plan beside it. Issue numbers are on the [AusTraits board](https://github.com/orgs/traitecoevo/projects/9) (view "means").
 
-Last revised: 20 October 2026.
+Last revised: 24 November 2026.
 
 ## Products
 
@@ -64,6 +64,11 @@ Status, 20 October 2026:
 ## Decisions and their reasons
 
 Dated decisions, newest first. Earlier decisions from the refactor plan are kept below them.
+
+### 24 November 2026
+
+- **The geometric observed means ship with each AusTraits release, built in austraits.build, not here** ([austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). `post_export()` in austraits.build's `R/post_export.R`, which `traits.build::build_post_export()` runs from `create_release()`, writes `austraits-<version>-observed-means.parquet`, `.csv.gz` and `-dictionary.csv` into the release. The method is this repository's geometric method, ported to austraits.build's `R/observed_means.R`; on the development build `d535de9` the port reproduces `observed_means_geometric` exactly (602,644 rows), less the `source_primary_key` column. This repository keeps the portal-method product, the modelled means and the community layers. Alternative considered: publishing the observed means only in the separate "AusTraits species means" Zenodo deposit; set aside because the simple means are a direct summary of the release and belong with it.
+- **From then on, the method has one home: austraits.build.** Until this repository reads the release file, `R/means/observed_means_geometric.R` here is a second copy; a change to the method goes to austraits.build first and is mirrored here, never the other way. When a release carries the file, `observed_means_geometric` here becomes a read of it rather than a computation (open; not started).
 
 ### 19 October 2026
 

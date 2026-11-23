@@ -1,6 +1,12 @@
 # Observed means, geometric method (`estimate_type = observed_mean`,
 # `method = geometric`; #15).
 #
+# From the release after 7.0.0 this product ships with AusTraits itself:
+# austraits.build's `R/observed_means.R` (traitecoevo/austraits.build#899) is
+# the authoritative copy of this method, written at release by its
+# `post_export()`. Change the method there first and mirror it here, never the
+# other way (roadmap.md, 24 November 2026).
+#
 # The successor to the portal method (observed_means_portal.R), used from the
 # next AusTraits build onward. It keeps the portal's two-stage recipe (one
 # mean per dataset × location, one midpoint per flora observation, then the
