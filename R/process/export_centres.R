@@ -25,6 +25,9 @@ centres_to_modelled_means <- function(centres, trait, unit, backend, data) {
       species_intercept = g_0,
       species_slope_precipitation = g_log_annual_precipitation_c,
       species_slope_temperature = g_average_temperature_c,
+      # the location model's means depend on the species' growth form
+      woodiness_group = if ("woodiness_group" %in% names(centres))
+        as.character(woodiness_group) else NA_character_,
       family, genus
     ) |>
     dplyr::left_join(modelled_reliability(data), by = "taxon_name") |>
@@ -51,18 +54,19 @@ modelled_means_dictionary <- function() {
     "trait_name", "AusTraits trait name (APD).",
     "unit", "Unit of value.",
     "estimate_type", "Always modelled_mean: the model-estimated geometric mean at the centre of the species' climate distribution (terminology.md).",
-    "method", "Fitting backend: tmb (glmmTMB, maximum likelihood) or brms (Stan, full posterior).",
-    "value", "The modelled mean: exp of the model's prediction on the log scale for the species at its climate centre (medoid), where within-species climate deviations are zero.",
-    "value_lower", "Lower bound of the 94% interval of value (TMB: exp(fit - z se), delta method).",
+    "method", "The model: rtmb, the location model (RTMB, maximum likelihood; woody and non-woody coefficients, species, location and species x location effects, species spread shrunk-linear in climate); or the earlier pooled model without location effects, tmb (glmmTMB) or brms (Stan).",
+    "value", "The modelled mean: exp of the model's prediction on the log scale for the species at its climate centre (medoid), where within-species climate deviations are zero; for rtmb, at an average location (location and species x location effects zero).",
+    "value_lower", "Lower bound of the 94% interval of value (rtmb, tmb: exp(fit - z se), delta method, with the uncertainty of the fixed parameters; for rtmb, of the species' mean at an average location, not a prediction at a new location).",
     "value_upper", "Upper bound of the 94% interval of value.",
     "log_value", "Natural log of value: the prediction on the model scale.",
     "log_value_lower", "Lower bound of the 94% interval on the log scale.",
     "log_value_upper", "Upper bound of the 94% interval on the log scale.",
     "annual_precipitation_centre", "Mean annual precipitation (mm, WorldClim BIO12) at the species' climate centre, the medoid of its GBIF occurrences.",
     "average_temperature_centre", "Mean annual temperature (degC, WorldClim BIO1) at the species' climate centre.",
-    "species_intercept", "The species' random intercept (log scale): its departure from the across-species prediction at its climate centre.",
+    "species_intercept", "The species' random intercept (log scale): its departure from the across-species prediction at its climate centre (for rtmb, the prediction for its growth form).",
     "species_slope_precipitation", "The species' random slope for within-species log precipitation (departure from the mean within-species slope).",
     "species_slope_temperature", "The species' random slope for within-species temperature (departure from the mean within-species slope).",
+    "woodiness_group", "woody or non_woody (rtmb only): the growth form whose coefficients the species' mean uses.",
     "family", "Family.",
     "genus", "Genus."
   ) |>
@@ -103,7 +107,7 @@ species_means_combined_dictionary <- function() {
     tibble::tribble(
       ~column, ~definition,
       "estimate_type", "modelled_mean where the species has one, otherwise observed_mean (terminology.md).",
-      "method", "tmb for modelled means; geometric for observed means.",
+      "method", "rtmb (the location model) for modelled means; geometric for observed means.",
       "value", "The species mean: the modelled mean where there is one, otherwise the geometric observed mean. Both are geometric means.",
       "n_records", "Records behind the value: field records in the model (modelled means) or all records used (observed means)."
     )
@@ -116,11 +120,15 @@ modelled_means_metadata <- function(data_basis) {
     product = "AusTraits species means",
     version = data_basis$austraits_version,
     estimate_type = "modelled_mean",
-    method = "tmb",
-    model = paste(deparse(build_model_formula()), collapse = " "),
+    method = "rtmb",
+    model = paste("location model (R/model/spread_rtmb.R): log_value ~ 0 + g + g:(P_mn + T_mn + P_c + T_c)",
+                  "+ species effect u_s ~ N(0, sd_u(s)^2), log sd_u(s) = a_g + b_g . (p_s, t_s) (shrunk)",
+                  "+ species slopes on P_c, T_c + location effect per g + species x location effect;",
+                  "g = woody / non-woody, cells of", location_cell_km(), "km"),
     centring = "climate predictors centred on each species' medoid: x_mn = medoid, x_c = record - medoid",
-    species_included = "species with more than 5 field records and a climate medoid",
-    interval = "94%, delta method on the log scale",
+    species_included = paste("species with more than 5 field records, a climate medoid and a woody or",
+                             "non-woody class, in a growth form with at least 20 such species"),
+    interval = "94%, delta method on the log scale, for the species' mean at an average location",
     documentation = "terminology.md; reports/analysis.qmd"
   ), data_basis, repo_provenance())
 }
@@ -130,7 +138,7 @@ species_means_combined_metadata <- function(data_basis) {
   c(list(
     product = "AusTraits species means",
     version = data_basis$austraits_version,
-    content = "one species mean per species and trait: the modelled mean (TMB) where there is one, otherwise the geometric observed mean",
+    content = "one species mean per species and trait: the modelled mean (location model, RTMB) where there is one, otherwise the geometric observed mean",
     documentation = "terminology.md; docs/observed-means-geometric-method.md"
   ), data_basis, repo_provenance())
 }
@@ -138,7 +146,7 @@ species_means_combined_metadata <- function(data_basis) {
 #' Write one trait's modelled means (`<trait>_climate_response.csv.gz`) and
 #' its column dictionary (`_meta.csv`) to `out_dir`.
 #'
-#' @return (invisibly) the data CSV path.
+#' @return (invisibly) the two paths, data CSV first.
 export_species_centres <- function(centres, trait, out_dir = "outputs/traits",
                                    unit = NA_character_, backend = "tmb", data) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -148,5 +156,15 @@ export_species_centres <- function(centres, trait, out_dir = "outputs/traits",
   readr::write_csv(
     modelled_means_dictionary() |> dplyr::filter(column %in% names(table)),
     paste0(stem, "_meta.csv"))
-  invisible(paste0(stem, ".csv.gz"))
+  invisible(paste0(stem, c(".csv.gz", "_meta.csv")))
+}
+
+#' One trait's location-model means, written as its working export (a
+#' `targets` file target): export_species_centres() for a location fit.
+#'
+#' @param m a fit_location_target() result, or NULL (no files).
+export_location_centres <- function(m, out_dir = "outputs/traits") {
+  if (is.null(m)) return(character(0))
+  export_species_centres(m$centres, m$trait, out_dir, unit = m$data$unit[1],
+                         backend = m$backend, data = m$data)
 }

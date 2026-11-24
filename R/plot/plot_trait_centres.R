@@ -12,10 +12,25 @@ plot_trait_centres <- function(centres, trait, x = c("precip", "temperature"),
   xv <- if (x == "precip") "annual_precipitation_centre" else "average_temperature_centre"
   xlab <- if (x == "precip") "Annual precipitation at centre (mm)" else "Mean annual temperature at centre (°C)"
 
-  p <- centres |>
-    ggplot2::ggplot(ggplot2::aes(.data[[xv]], estimate)) +
-    ggplot2::geom_point(alpha = 0.35, stroke = 0, colour = "#2C6E8E") +
-    ggplot2::geom_smooth(method = "lm", formula = y ~ x, colour = "#fb0019", se = FALSE) +
+  by_form <- "woodiness_group" %in% names(centres)
+  p <- if (by_form) {
+    # the location model: woody and non-woody species have their own
+    # coefficients, so each gets its own points and trend
+    centres |>
+      dplyr::mutate(woodiness_group = factor(woodiness_group, c("woody", "non_woody"),
+                                             c("woody", "non-woody"))) |>
+      ggplot2::ggplot(ggplot2::aes(.data[[xv]], estimate, colour = woodiness_group)) +
+      ggplot2::geom_point(alpha = 0.35, stroke = 0) +
+      ggplot2::geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 1) +
+      ggplot2::scale_colour_manual(values = c(woody = "#1b7837", `non-woody` = "#b2182b"),
+                                   name = NULL, drop = TRUE)
+  } else {
+    centres |>
+      ggplot2::ggplot(ggplot2::aes(.data[[xv]], estimate)) +
+      ggplot2::geom_point(alpha = 0.35, stroke = 0, colour = "#2C6E8E") +
+      ggplot2::geom_smooth(method = "lm", formula = y ~ x, colour = "#fb0019", se = FALSE)
+  }
+  p <- p +
     ggplot2::labs(x = xlab, y = paste0(trait, " at centre"), title = trait) +
     ggplot2::theme_classic()
 

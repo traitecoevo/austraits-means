@@ -6,10 +6,10 @@ Guidance for working in this repository, for agents and contributors alike (`.cl
 
 Builds species-level and community-level trait means for the Australian flora from AusTraits, with WorldClim climate and GBIF occurrences. Re-scoped 24 November 2026 (`roadmap.md`, `terminology.md`); one published product, for a short list of traits, in its own Zenodo record:
 
-1. **Modelled means** (`method = tmb` or `brms`): the mean of each trait at the centre of a species' climate distribution (the 2D precipitation–temperature medoid of its occurrences), from a hierarchical within-group-centred ("Mundlak") model.
-2. **Modelled community statistics**: for a location, from its climate, the woody and non-woody community mean and community range. Needs a model with location effects, not yet built (roadmap, Later work). Never compute a community range from the pooled species variance of the current model.
+1. **Modelled means** (`method = rtmb`, since 25 November 2026): the mean of each trait at the centre of a species' climate distribution (the 2D precipitation–temperature medoid of its occurrences) and an average location, from the **location model** (`R/model/spread_rtmb.R`, targets `location_fit_<trait>`): the within-group-centred ("Mundlak") model with woody and non-woody coefficients, location and species × location effects, and a species spread shrunk-linear in climate. The earlier pooled model (`tmb_fit_<trait>`, `method = tmb` or `brms`) stays in the pipeline as a diagnostic.
+2. **Modelled community statistics**: for a location, from its climate, the woody and non-woody community mean and community range, from the same location model. The prediction from climate alone is not built yet (roadmap, Later work). Never compute a community range from the pooled model's species variance.
 
-Built but not published: the **observed means** come from austraits.build (`austraits-<version>-observed-means.*`, read by `R/means/observed_means_release.R`); the three community layers in `docs/community-layers-design.md` are diagnostics; the 7.0.0 *portal-method* observed means (`method = portal_arithmetic`) are retired and unmaintained.
+Built but not published: the **observed means** come from austraits.build (`austraits-<version>-observed-means.*`, read by `R/means/observed_means_release.R`); the three 10 km community layers were dropped on 25 November 2026 (in git history); the 7.0.0 *portal-method* observed means (`method = portal_arithmetic`) are retired and unmaintained.
 
 The aim is **national species-trait estimates** for Australia, for AusTraits: a consistent, defensible species mean per trait, with uncertainty intervals, the within/between decomposition and (via the BRMS backend) full posterior inference.
 
@@ -29,11 +29,11 @@ The two Quarto reports in `reports/` are **reporting layers** (rendered by `tar_
 - `reports/dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
 - `reports/analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
 
-Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait TMB fits (species means) and woodiness fits (community layers), with their exports and figures; the retired portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means (read from austraits.build); the woody lookup, combined species means and the three community diagnostics (observed local, observed presence, modelled), their comparisons and the native-only test; the comparisons of species means; the figure set; the reports.
+Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait fits: the location model (the product: species means, exports, figures), and the pooled and locations-pooled models with the comparison against them (`terminology.md`, Model names); the retired portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means (read from austraits.build); the woody lookup, combined species means, and the community statistics from the location model (GBIF species per 50 km cell, `R/community/community_statistics.R`); the comparisons of species means; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
 - *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `R/scripts/build_medoids.R` (`build_climate_medoids()`, parallel over taxa). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
-- *Tier A — computed.* Everything else: flattening the AusTraits builds, the name crosswalk (APC release pinned as `apc_version`), the unified record table, the fits, the products, the community layers, the figures and the rendered reports.
+- *Tier A — computed.* Everything else: flattening the AusTraits builds, the name crosswalk (APC release pinned as `apc_version`), the unified record table, the fits, the products, the community statistics, the figures and the rendered reports.
 
 BRMS is opt-in: set `run_brms <- TRUE` in `_targets.R` to add the
 `brms_fits`/`brms_diag` targets (height excluded — TMB only).
@@ -58,17 +58,19 @@ R/
                flatten, GBIF builder, data basis), extract_climate.R,
                assign_state.R
   medoid/      locate_medoid_2d.R, check_medoid.R
-  model/       model_formula.R, fit_trait_climate_model.R (tmb | brms),
-               run_trait_models.R
+  model/       spread_rtmb.R (the location model), local_range.R (its
+               community variance and benchmark), woodiness_model.R,
+               model_formula.R, fit_trait_climate_model.R (pooled, tmb |
+               brms), run_trait_models.R
   process/     process_fit.R, species_centres.R, export_centres.R (modelled
-               means product), compare_baseline.R, compare_means.R
+               means product), compare_baseline.R, compare_means.R,
+               compare_pooled_location.R
   plot/        plot_fitted.R, plot_trait_centres.R, plot_within_between.R,
                figure_set.R
   means/       observed_means_portal.R, observed_means_release.R (reads the
                geometric observed means austraits.build publishes),
                reliability.R, species_means_io.R, compare_portal.R
-  community/   woody_lookup.R, community_layers.R, community_modelled.R,
-               compare_layers.R
+  community/   woody_lookup.R, community_statistics.R
   release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,

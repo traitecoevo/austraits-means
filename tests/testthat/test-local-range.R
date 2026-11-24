@@ -147,6 +147,39 @@ test_that("shrinking the spread terms keeps a real slope and drops the rest", {
   expect_lt(sh0$log_bf, 1)
 })
 
+test_that("species means from the RTMB fit match glmmTMB's, at an average location", {
+  skip_if_not_installed("RTMB")
+  sim <- simulate_location_data(seed = 5)
+  g <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                            location = "location"))
+  r <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = character(0), centres = TRUE))
+  cn <- r$centres
+  expect_equal(nrow(cn), dplyr::n_distinct(sim$data$taxon_name))
+  nd <- dplyr::mutate(cn, log_annual_precipitation_c = 0, average_temperature_c = 0,
+                      location = "__new__")
+  p <- stats::predict(g$fit, newdata = nd, se.fit = TRUE, allow.new.levels = TRUE)
+  expect_equal(cn$log_estimate, unname(p$fit), tolerance = 1e-4)
+  # glmmTMB's SE is for a new location: it adds the location and species x
+  # location variances, which an average location leaves out
+  v_loc <- stats::setNames(r$vc$sd[r$vc$grouping == "location"]^2, r$groups)
+  v_w <- r$vc$sd[r$vc$grouping == "taxon_name:location"]^2
+  expect_equal(unname(sqrt(cn$log_se^2 + v_loc[as.character(cn$woodiness_group)] + v_w)),
+               unname(p$se.fit), tolerance = 1e-4)
+  expect_true(all(cn$log_conf.low < cn$log_estimate & cn$log_estimate < cn$log_conf.high))
+  # the species' own effect, as glmmTMB estimates it
+  re <- glmmTMB::ranef(g$fit)$cond$taxon_name
+  own <- re[cbind(match(cn$taxon_name, rownames(re)),
+                  match(paste0("woodiness_group", cn$woodiness_group), colnames(re)))]
+  expect_equal(cn$g_0, own, tolerance = 1e-4)
+  # with the climate terms shrunk, the centres come with the fit
+  free <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0))
+  s <- suppressMessages(fit_spread_shrunk(sim$data, "sim", sim$groups, free, n_min = 0,
+                                          centres = TRUE))
+  expect_equal(nrow(s$centres), nrow(cn))
+  expect_true(all(s$centres$log_se > 0))
+})
+
 test_that("community_range back-transforms a central interval", {
   r <- community_range(log(10), 0.5^2, level = 0.90)
   expect_equal(r$community_mean, 10)

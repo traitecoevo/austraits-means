@@ -2,9 +2,10 @@
 # (`docs/baselines/<label>/`, written before the data basis changed): fixed
 # effects, record and species counts, and the species centres themselves.
 
-#' Compare TMB fits with a baseline snapshot.
+#' Compare the modelled means with a baseline snapshot.
 #'
-#' @param fits list of `trait_climate_fit` (the `tmb_fits` target).
+#' @param fits list of location-model fits (the `location_fits` target, the
+#'   product since 25 November 2026) or of pooled `trait_climate_fit`.
 #' @param unified the unified record table the fits came from.
 #' @param baseline_dir directory holding `fixed_effects.csv`,
 #'   `trait_counts.csv` and `species_centres.csv.gz`.
@@ -18,17 +19,18 @@ compare_with_baseline <- function(fits, unified,
   read_base <- function(f) readr::read_csv(file.path(baseline_dir, f),
                                            show_col_types = FALSE)
 
+  # a location-model fit has one set per growth form, each set against the
+  # baseline's pooled one
   fixed <- dplyr::full_join(
     read_base("fixed_effects.csv"),
-    purrr::imap_dfr(fits, \(f, tr) dplyr::mutate(f$fixed, trait = tr, .before = 1)),
+    purrr::map_dfr(fits, fit_fixed_table),
     by = c("trait", "term"), suffix = c("_baseline", "_new")
   ) |>
-    dplyr::transmute(
-      trait, term,
-      estimate_baseline, std.error_baseline, estimate_new, std.error_new,
-      shift = estimate_new - estimate_baseline,
-      shift_in_se = shift / std.error_baseline
-    )
+    dplyr::mutate(shift = estimate_new - estimate_baseline,
+                  shift_in_se = shift / std.error_baseline) |>
+    dplyr::select(trait, dplyr::any_of("woodiness_group"), term,
+                  estimate_baseline, std.error_baseline, estimate_new, std.error_new,
+                  shift, shift_in_se)
 
   counts_new <- unified |>
     dplyr::group_by(trait_name) |>

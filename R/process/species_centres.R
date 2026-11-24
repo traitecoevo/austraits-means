@@ -79,3 +79,26 @@ species_centres <- function(fit_obj, level = 0.94) {
     conf.high = exp(as.numeric(log_hi))
   )
 }
+
+#' Species centres of a location-model fit, in the schema of
+#' species_centres(): the modelled mean of each species at its climate centre
+#' and an average location (fit_spread_rtmb(centres = TRUE)), with the
+#' species' records count, taxonomy and medoid climate.
+#'
+#' @param m an `rtmb_spread_fit` fitted with `centres = TRUE`.
+location_species_centres <- function(m) {
+  stopifnot(!is.null(m$centres))
+  context <- m$data |>
+    dplyr::group_by(taxon_name) |>
+    dplyr::summarise(
+      .groups = "drop",
+      n = dplyr::n(),
+      dplyr::across(dplyr::any_of(c("family", "genus")), dplyr::first),
+      dplyr::across(dplyr::any_of(c("annual_precipitation_centre",
+                                    "average_temperature_centre",
+                                    "log_annual_precipitation_centre")), dplyr::first)
+    )
+  m$centres |>
+    dplyr::left_join(context, by = "taxon_name") |>
+    dplyr::relocate(dplyr::any_of(c("family", "genus", "n")), .after = taxon_name)
+}

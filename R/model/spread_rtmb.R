@@ -28,9 +28,9 @@
 # coefficients b get a prior b ~ N(0, tau_d^2), one tau per polynomial degree
 # d (linear p, t; second-order p^2, t^2, p t when used) shared by the growth
 # forms, the taus estimated from the data: a ridge penalty with its strength
-# chosen by marginal likelihood, as mgcv chooses smoothing parameters. A growth form whose species say little
-# about how spread changes with climate is pulled toward constant spread, and
-# tau_d -> 0 drops degree d.
+# chosen by marginal likelihood, as mgcv chooses smoothing parameters. A
+# growth form whose species say little about how spread changes with climate
+# is pulled toward constant spread, and tau_d -> 0 drops degree d.
 #
 # b is NOT integrated inside the same Laplace approximation as the species
 # effects u. That was tried and fails on real data (NaN objective for LMA):
@@ -64,14 +64,18 @@
 #' @param penalty_tau optional prior SD of each climate coefficient, one per
 #'   element of `spread_terms` (the same for every growth form): adds the
 #'   ridge penalty b^2 / (2 tau^2). Use fit_spread_shrunk() to choose it.
+#' @param centres also return each species' modelled mean at its climate
+#'   centre, with its `level` interval (rtmb_species_centres()).
 #' @return an `rtmb_spread_fit`: list(trait, groups, data, fixed_pred, vc,
 #'   species_variance, location_effects, spread (coefficients and their
-#'   covariance), centre_scaling, logLik, df, aic, converged, seconds). With
+#'   covariance), centre_scaling, logLik, df, aic, converged, seconds, and
+#'   with `centres = TRUE` the species centres). With
 #'   a penalty, the coefficients are the posterior mode, the covariance the
 #'   posterior one, logLik is unpenalised at that mode and aic is NA (see
 #'   fit_spread_shrunk()).
 fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 20,
-                            spread_terms = c("p", "t"), penalty_tau = NULL) {
+                            spread_terms = c("p", "t"), penalty_tau = NULL,
+                            centres = FALSE, level = 0.94) {
   penalised <- !is.null(penalty_tau)
   if (penalised) stopifnot(length(penalty_tau) == length(spread_terms), all(penalty_tau > 0))
   prep <- .woodiness_data(data, trait, groups, n_min, min_group_species)
@@ -170,10 +174,30 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
     dimnames(cov_theta) <- list(c(a_names, b_names), c(a_names, b_names))
     cov_theta <- cov_theta[theta_names, theta_names, drop = FALSE]
   }
+  sp_centres <- if (centres) {
+    # the fixed-effect design of each species at its climate centre: its
+    # growth form, its medoid, within-species deviations 0
+    nd <- dplyr::mutate(species, log_annual_precipitation_c = 0, average_temperature_c = 0)
+    X_sp <- stats::model.matrix(stats::as.formula(paste("~", prep$fixed)), nd)
+    stopifnot(identical(colnames(X_sp), colnames(X)))
+    .rtmb_species_centres(obj, opt, hess, X_sp, level) |>
+      dplyr::mutate(taxon_name = species$taxon_name, woodiness_group = species$woodiness_group,
+                    log_annual_precipitation_mn = species$log_annual_precipitation_mn,
+                    average_temperature_mn = species$average_temperature_mn,
+                    g_0 = pl$u, g_log_annual_precipitation_c = pl$sP,
+                    g_average_temperature_c = pl$sT, .before = 1)
+  }
   secs <- as.numeric(Sys.time() - t0, units = "secs")
 
   beta_hat <- pl$beta
   names(beta_hat) <- colnames(X)
+  # fixed effects with 95% intervals, as glmmTMB's tidy table
+  beta_se <- if (is.null(cov_fixed)) rep(NA_real_, length(beta_hat)) else
+    sqrt(diag(cov_fixed)[names(opt$par) == "beta"])
+  fixed_table <- tibble::tibble(term = names(beta_hat), estimate = unname(beta_hat),
+                                std.error = beta_se,
+                                conf.low = estimate - stats::qnorm(0.975) * std.error,
+                                conf.high = estimate + stats::qnorm(0.975) * std.error)
   sd_u <- exp(as.vector(Za %*% pl$a + if (K > 0) Zb %*% pl$b else 0))
   gname <- function(g) if (G > 1) paste0("woodiness_group", g) else "(Intercept)"
   vc <- dplyr::bind_rows(
@@ -190,18 +214,65 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
                             location_effect = pl$L)
   structure(list(
     trait = trait, groups = prep$groups, n_species = prep$n_species,
-    data = d, fixed_pred = as.vector(X %*% beta_hat), fixed = beta_hat, vc = vc,
+    data = d, fixed_pred = as.vector(X %*% beta_hat), fixed = beta_hat,
+    fixed_table = fixed_table, vc = vc,
     species_variance = tibble::tibble(taxon_name = species$taxon_name, species_variance = sd_u^2),
     location_effects = loc_eff,
     spread = list(terms = spread_terms, theta = theta_hat, cov = cov_theta,
                   penalty_tau = penalty_tau),
-    centre_scaling = scaling,
-    logLik = -(opt$objective - if (penalised) sum(pl$b^2 / (2 * b_tau^2)) else 0),
+    centre_scaling = scaling, centres = sp_centres,
+    logLik =-(opt$objective - if (penalised) sum(pl$b^2 / (2 * b_tau^2)) else 0),
     df = length(opt$par),
     aic = if (penalised) NA_real_ else 2 * opt$objective + 2 * length(opt$par),
     converged = opt$convergence == 0 && pd,
     message = opt$message, seconds = secs),
     class = "rtmb_spread_fit")
+}
+
+#' Each species' modelled mean at its climate centre, with a delta-method
+#' interval, as glmmTMB's predict(se.fit = TRUE) gives for the pooled model.
+#'
+#' The mean is x_s beta + u_s: the fixed part at the species' medoid (`X_sp`,
+#' one row per species, within-species deviations 0) plus its species effect;
+#' location and species x location effects are 0, an average location. Its
+#' variance, as in TMB's sdreport(), is the conditional variance of u_s given
+#' the fixed parameters theta plus the propagated uncertainty of theta:
+#'   var = (H^-1)_ss + g_s V g_s',  g_s = d(x_s beta + u-hat_s) / d theta,
+#' H the Hessian of the joint likelihood in the random effects, V the
+#' covariance of theta, and d u-hat / d theta = -H^-1 H_u,theta.
+#' sdreport() would do this for an ADREPORTed vector with a dense solve of
+#' (random effects x species), about 140k x 10k for height; here only the
+#' diagonal of H^-1 (sparse selected inverse, inside sdreport()) and one
+#' solve per fixed parameter are needed.
+#'
+#' @return tibble(log_estimate, log_se, log_conf.low, log_conf.high, estimate,
+#'   conf.low, conf.high), one row per species in the fit's species order.
+.rtmb_species_centres <- function(obj, opt, hess, X_sp, level) {
+  sdr <- RTMB::sdreport(obj, par.fixed = opt$par, hessian.fixed = hess,
+                        getJointPrecision = TRUE)
+  Q <- sdr$jointPrecision                  # full parameter order
+  r <- obj$env$random
+  nonr <- setdiff(seq_len(nrow(Q)), r)
+  stopifnot(identical(rownames(Q)[nonr], names(opt$par)))
+  V <- sdr$cov.fixed
+  # d u-hat / d theta for every random effect (n_random x n_fixed)
+  J <- -as.matrix(Matrix::solve(Q[r, r], as.matrix(Q[r, nonr])))
+  u_i <- which(rownames(Q)[r] == "u")
+  stopifnot(length(u_i) == nrow(X_sp))
+  Ju <- J[u_i, , drop = FALSE]
+  # conditional variance of u given theta: sdreport's total less the theta term
+  cond_var <- sdr$diag.cov.random[u_i] - rowSums((Ju %*% V) * Ju)
+  g <- Ju
+  b_i <- which(names(opt$par) == "beta")
+  g[, b_i] <- g[, b_i] + X_sp
+  se <- sqrt(cond_var + rowSums((g %*% V) * g))
+  pl <- obj$env$parList(opt$par)
+  est <- as.vector(X_sp %*% pl$beta) + pl$u
+  z <- stats::qnorm(1 - (1 - level) / 2)
+  tibble::tibble(log_estimate = est, log_se = se,
+                 log_conf.low = est - z * se, log_conf.high = est + z * se,
+                 estimate = exp(est), conf.low = exp(est - z * se),
+                 conf.high = exp(est + z * se))
 }
 
 #' Empirical-Bayes shrinkage of the spread climate terms of a free fit.
@@ -264,7 +335,8 @@ estimate_spread_shrinkage <- function(theta, cov, tau_bounds = c(1e-3, 10)) {
 #'   posterior covariance and P = diag(1 / tau^2) the penalty. The taus are
 #'   not counted, as in mgcv's AIC; on the scale of the free and constant
 #'   fits' AICs.
-fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_species = 20) {
+fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_species = 20,
+                              centres = FALSE, level = 0.94) {
   # a fit, or the summary run_spread_rtmb.R stores (theta and cov at the top)
   fs <- if (!is.null(free$spread)) free$spread else free
   stopifnot(!is.null(fs$theta), !is.null(fs$cov))
@@ -272,7 +344,8 @@ fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_sp
   keep <- names(sh$tau_term)[!sh$at_lower[paste0("degree ", .spread_degree(names(sh$tau_term)))]]
   m <- fit_spread_rtmb(data, trait, groups, n_min, min_group_species,
                        spread_terms = keep,
-                       penalty_tau = if (length(keep)) unname(sh$tau_term[keep]))
+                       penalty_tau = if (length(keep)) unname(sh$tau_term[keep]),
+                       centres = centres, level = level)
   b_names <- names(m$spread$theta)[!grepl("\\(Intercept\\)$", names(m$spread$theta))]
   k <- length(b_names)
   sh$edf <- if (k == 0) 0 else

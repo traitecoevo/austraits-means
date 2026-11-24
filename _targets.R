@@ -85,21 +85,36 @@ mapped <- tar_map(
   values = list(trait = trait_names),
   names = "trait",
 
+  # The earlier pooled model, kept as a diagnostic; it writes no files.
   tar_target(tmb_fit,
              fit_trait_target(unified, trait, backend = "tmb",
-                              n_min = 5, out_dir = out_dir)),
+                              n_min = 5, out_dir = NULL)),
 
-  # Same model with woody and non-woody coefficients, for the modelled
-  # community layers only (#28).
+  # The location model (R/model/spread_rtmb.R; roadmap.md, 25 November
+  # 2026): the one model for the modelled means and, when built, the
+  # community statistics. Free fit, then shrunk, with each species' modelled
+  # mean. Height takes about 25 minutes.
+  tar_target(location_fit, fit_location_target(unified_cells, trait, woody_lookup)),
+  # its species means as the trait's working export,
+  # <trait>_climate_response.csv.gz and _meta.csv
+  tar_target(trait_export, export_location_centres(location_fit, out_dir),
+             format = "file"),
+
+  # Woody and non-woody coefficients, locations pooled: for the comparison
+  # below only.
   tar_target(woody_fit, fit_woodiness_model(unified, trait, woody_lookup)),
 
-  tar_target(tmb_row,
-             if (is.null(tmb_fit)) NULL
-             else summarise_trait_fits(stats::setNames(list(tmb_fit), trait))),
+  # The pooled models' one role: what the location model fixes, step by
+  # step (pooled -> locations pooled -> location model;
+  # R/process/compare_pooled_location.R).
+  tar_target(pooled_vs_location,
+             compare_pooled_location(location_fit, tmb_fit, woody_fit)),
 
-  tar_target(tmb_fig, {
-    if (is.null(tmb_fit)) character(0) else {
-      p <- plot_trait_centres(tmb_fit$centres, trait,
+  # Per-trait figures, from the location model, woody and non-woody apart:
+  # the species' modelled means against climate ...
+  tar_target(trait_fig, {
+    if (is.null(location_fit)) character(0) else {
+      p <- plot_trait_centres(location_fit$centres, trait,
                               x = "precip", log_y = TRUE)
       save_figure(p, file.path(out_dir, "figures",
                                clean_species_filename(trait)),
@@ -107,13 +122,14 @@ mapped <- tar_map(
     }
   }, format = "file"),
 
-  # Within- vs between-species lines, as in the earlier height report.
-  tar_target(tmb_wb_fig, {
-    if (is.null(tmb_fit)) character(0) else {
-      save_figure(plot_within_between(tmb_fit, unit = tmb_fit$data$unit[1]),
+  # ... and the within- vs between-species lines, as in the earlier height
+  # report, one row per growth form.
+  tar_target(trait_wb_fig, {
+    if (is.null(location_fit)) character(0) else {
+      save_figure(plot_within_between(location_fit, unit = location_fit$data$unit[1]),
                   file.path(out_dir, "figures",
                             paste0(clean_species_filename(trait), "_within_between")),
-                  width = 13, height = 6)
+                  width = 13, height = 6 * length(location_fit$groups))
     }
   }, format = "file")
 )
@@ -180,6 +196,9 @@ list(
 
   # The linchpin: unified record-level table, medoid-centred.
   tar_target(unified, build_dataset(records_all, medoid_lookup)),
+  # The same records keyed to the location model's cells.
+  tar_target(unified_cells,
+             add_location_key(unified, "cell", cell_km = location_cell_km())),
 
   # Medoid reasonableness check (vs the GBIF occurrence cloud). Reads the large
   # GBIF parquet, so depends on gbif_cleaned_file.
@@ -193,22 +212,31 @@ list(
   }, format = "file"),
 
   # ---- per-trait fan-out (TMB) --------------------------------------------
-  # The branch targets (tmb_fit_<trait>, tmb_row_<trait>, tmb_fig_<trait>),
+  # The branch targets (tmb_fit_<trait>, location_fit_<trait>, woody_fit_<trait>,
+  # pooled_vs_location_<trait>, trait_fig_<trait>, ...),
   # defined as `mapped` above.
   mapped,
 
-  # Fixed-effects summary across traits (one row per trait).
-  tar_combine(trait_summary, mapped[["tmb_row"]],
-              command = dplyr::bind_rows(!!!.x)),
+  # Lists of fits across traits.
+  tar_combine(tmb_fits, mapped[["tmb_fit"]], command = list(!!!.x)),
+  tar_combine(location_fits, mapped[["location_fit"]], command = list(!!!.x)),
+
+  # Fixed-effects summary of the location model (one row per trait x growth
+  # form).
+  tar_target(trait_summary, summarise_location_fits(location_fits)),
   tar_target(trait_summary_file, {
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     p <- file.path(out_dir, "trait_model_summary.csv")
     readr::write_csv(trait_summary, p)
     p
   }, format = "file"),
 
-  # List of fits — used to gate the combined product on all exports existing.
-  tar_combine(tmb_fits, mapped[["tmb_fit"]], command = list(!!!.x)),
-  tar_combine(woody_fits, mapped[["woody_fit"]], command = list(!!!.x)),
+  # Pooled models against the location model, across traits.
+  tar_combine(pooled_location_comparison, mapped[["pooled_vs_location"]],
+              command = list(!!!.x)),
+  tar_target(pooled_location_comparison_files,
+             write_pooled_location_comparison(pooled_location_comparison),
+             format = "file"),
 
   # Data basis of the fits (build version, APC release, GBIF extract, medoid
   # build), written next to the exports.
@@ -216,26 +244,30 @@ list(
              data_basis(austraits_dev_info, apc_version, gbif_cleaned_file,
                         medoids_file)),
   tar_target(data_basis_file, {
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     p <- file.path(out_dir, "data_basis.json")
     jsonlite::write_json(data_basis_info, p, auto_unbox = TRUE, pretty = TRUE)
     p
   }, format = "file"),
 
-  # Shifts against the June 2026 outputs, snapshotted before the refit (#14).
+  # Shifts against the June 2026 outputs, snapshotted before the refit (#14):
+  # the product then (pooled model) against the product now (location model).
   tar_target(baseline_dir, "docs/baselines/2026-06", format = "file"),
   tar_target(baseline_comparison,
-             compare_with_baseline(tmb_fits, unified, baseline_dir)),
+             compare_with_baseline(location_fits, unified, baseline_dir)),
   tar_target(baseline_comparison_files,
              write_baseline_comparison(baseline_comparison), format = "file"),
 
   # ---- Modelled means product (all traits, product schema; #17) ----------
-  tar_target(modelled_means, modelled_means_table(tmb_fits)),
+  # From the location model since 25 November 2026; the pooled TMB fits
+  # above remain as diagnostics (fixed-effect summary, figures, baseline).
+  tar_target(modelled_means, modelled_means_table(location_fits)),
   tar_target(modelled_means_files,
              write_species_means(
                modelled_means, modelled_means_dictionary(),
                dir = file.path("outputs/species_means",
                                austraits_dev_info$austraits_version),
-               stem = "modelled_means_tmb",
+               stem = "modelled_means",
                metadata = modelled_means_metadata(data_basis_info)),
              format = "file"),
 
@@ -297,15 +329,17 @@ list(
   # ===== Observed means, geometric method (development build; #15) =========
   # Published by austraits.build with the build, not computed here
   # (R/means/observed_means_release.R, docs/observed-means-geometric-method.md).
-  # The community layers need the woodiness and growth-form traits too.
+  # The woody lookup needs the woodiness and growth-form traits too.
   tar_target(observed_means_geometric,
              read_observed_means(austraits_dev_observed_means_file,
                                  traits = c(trait_names, "woodiness_detailed",
                                             "plant_growth_form"))),
 
-  # ===== Community layers (#27, #28) ========================================
-  # Three products on a 10 km equal-area grid, each for all species and for
-  # woody and non-woody (docs/community-layers-design.md).
+  # ===== Community statistics (roadmap.md, 25 November 2026) ===============
+  # For each cell of the location model's grid (50 km) and growth form, the
+  # community mean and community range of the species GBIF records there,
+  # from the location model (R/community/community_statistics.R). Replaces
+  # the three 10 km community layers and their comparisons.
   # Woody / non-woody per taxon, by the rule of #19.
   tar_target(woody_lookup, build_woody_lookup(observed_means_geometric)),
   tar_target(community_dir,
@@ -317,7 +351,7 @@ list(
   # Combined species means (modelled where available, else observed), a
   # species means export in its own right.
   tar_target(species_means_combined,
-             combine_species_means(tmb_fits, observed_means_geometric)),
+             combine_species_means(location_fits, observed_means_geometric)),
   tar_target(species_means_combined_files,
              write_species_means(
                species_means_combined, species_means_combined_dictionary(),
@@ -327,143 +361,33 @@ list(
                metadata = species_means_combined_metadata(data_basis_info)),
              format = "file"),
 
-  # Observed, local records: each species' records in a cell are averaged,
-  # then the species. No model, no occurrence data.
-  tar_target(community_local, community_layers_local(records_all, woody_lookup)),
-  tar_target(community_local_files,
-             write_community_layers(
-               community_local, file.path(community_dir, "observed_local"),
-               community_local_metadata(data_basis_info),
-               statistics = c("community_mean", "community_variance", "n_species")),
-             format = "file"),
-  tar_target(community_local_maps,
-             write_community_maps(community_local, community_units,
-                                  file.path(community_dir, "observed_local"),
-                                  "observed, local records", "observed_local"),
-             format = "file"),
-
-  # Observed, GBIF presence: the species recorded in a cell, each given its
-  # geometric observed mean.
-  tar_target(community_species_values,
-             observed_species_values(observed_means_geometric, trait_names)),
+  # The species of each cell (GBIF), with growth form and climate centre, and
+  # the cell's climate.
   tar_target(gbif_presence, gbif_presence_cells(gbif_cleaned_file)),
   tar_target(gbif_species_map,
              gbif_to_species(gbif_names, name_crosswalk, dev_taxa,
-                             union(community_species_values$taxon_name,
-                                   woody_lookup$taxon_name))),
-  tar_target(community_presence,
-             community_layers_presence(gbif_presence, gbif_species_map,
-                                       woody_lookup, community_species_values)),
-  tar_target(community_presence_files,
-             write_community_layers(
-               community_presence, file.path(community_dir, "observed_presence"),
-               community_presence_metadata(data_basis_info),
-               statistics = c("community_mean", "community_variance", "n_species",
-                              "coverage")),
-             format = "file"),
-  tar_target(community_presence_maps,
-             write_community_maps(community_presence, community_units,
-                                  file.path(community_dir, "observed_presence"),
-                                  "observed, GBIF presence x species means",
-                                  "observed_presence"),
-             format = "file"),
-
-  # Modelled: each trait's woodiness model's net average for the cell, from
-  # the cell's climate and the mean climate centre of the woody and the
-  # non-woody species present.
+                             woody_lookup$taxon_name)),
+  tar_target(community_species,
+             cell_species(gbif_presence, medoids_file, gbif_species_map, woody_lookup)),
   tar_target(cell_climate_grid,
              cell_climate(load_climate_rasters(
                vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
                climate_dir = dirname(climate_bio1_tif),
                australia_tif = climate_australia_tif))),
-  tar_target(cell_centres,
-             cell_species_centres(gbif_presence, medoids_file, gbif_species_map,
-                                  woody_lookup)),
-  tar_target(community_modelled,
-             community_layers_modelled(woody_fits, cell_climate_grid, cell_centres)),
-  tar_target(community_modelled_files, {
-    dir <- file.path(community_dir, "modelled")
-    files <- write_community_layers(
-      community_modelled, dir, community_modelled_metadata(data_basis_info),
-      statistics = c("community_mean", "lower", "upper", "extrapolated"))
-    p <- file.path(dir, "woodiness_model_fixed_effects.csv")
-    readr::write_csv(woodiness_model_summary(woody_fits), p)
-    c(files, p)
-  }, format = "file"),
-  tar_target(community_modelled_maps,
-             write_modelled_maps(community_modelled, community_presence,
-                                 community_units,
-                                 file.path(community_dir, "modelled")),
-             format = "file"),
 
-  # The three products against each other, cell by cell.
-  tar_target(community_pairs,
-             community_layer_pairs(community_local, community_presence,
-                                   community_modelled)),
-  tar_target(community_comparison_files,
-             write_layer_comparison(community_pairs, community_units,
-                                    file.path(community_dir, "comparison")),
+  tar_target(community_stats,
+             community_statistics(location_fits, cell_climate_grid, community_species)),
+  tar_target(community_stats_files,
+             write_community_layers(community_stats, community_dir,
+                                    community_statistics_metadata(data_basis_info)),
              format = "file"),
-
-  # Native species only, for the presence and modelled products: a test of
-  # how much introduced species move them (native anywhere in Australia per
-  # the APC). The models are still fitted on all species with a class.
-  tar_target(gbif_native, gbif_native_status(gbif_names, apc_version)),
-  tar_target(gbif_presence_native, native_presence(gbif_presence, gbif_native)),
-  tar_target(community_presence_native,
-             community_layers_presence(gbif_presence_native, gbif_species_map,
-                                       woody_lookup, community_species_values)),
-  tar_target(community_presence_native_files,
-             write_community_layers(
-               community_presence_native,
-               file.path(community_dir, "observed_presence_native"),
-               community_presence_metadata(data_basis_info, native_only = TRUE),
-               statistics = c("community_mean", "community_variance", "n_species",
-                              "coverage")),
-             format = "file"),
-  tar_target(community_presence_native_maps,
-             write_community_maps(community_presence_native, community_units,
-                                  file.path(community_dir, "observed_presence_native"),
-                                  "observed, GBIF presence x species means, native species",
-                                  "observed_presence_native"),
-             format = "file"),
-  tar_target(cell_centres_native,
-             cell_species_centres(gbif_presence_native, medoids_file,
-                                  gbif_species_map, woody_lookup)),
-  tar_target(community_modelled_native,
-             community_layers_modelled(woody_fits, cell_climate_grid,
-                                       cell_centres_native)),
-  tar_target(community_modelled_native_files,
-             write_community_layers(
-               community_modelled_native, file.path(community_dir, "modelled_native"),
-               community_modelled_metadata(data_basis_info, native_only = TRUE),
-               statistics = c("community_mean", "lower", "upper", "extrapolated")),
-             format = "file"),
-  tar_target(community_modelled_native_maps,
-             write_modelled_maps(community_modelled_native, community_presence_native,
-                                 community_units,
-                                 file.path(community_dir, "modelled_native"),
-                                 species_label = "native species only"),
-             format = "file"),
-  tar_target(community_comparison_native_files,
-             write_layer_comparison(
-               community_layer_pairs(community_local, community_presence_native,
-                                     community_modelled_native),
-               community_units, file.path(community_dir, "comparison_native"),
-               species_label = "native only"),
-             format = "file"),
-  tar_target(community_native_shift_files,
-             write_layer_comparison(
-               native_layer_pairs(community_presence, community_presence_native,
-                                  community_modelled, community_modelled_native),
-               community_units, file.path(community_dir, "comparison_native_vs_all"),
-               differences = c("presence_all_native", "modelled_all_native"),
-               species_label = ""),
+  tar_target(community_stats_maps,
+             write_community_maps(community_stats, community_units, community_dir),
              format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================
   tar_target(observed_modelled,
-             compare_observed_modelled(tmb_fits, observed_means_geometric, unified)),
+             compare_observed_modelled(location_fits, observed_means_geometric, unified)),
   tar_target(portal_geometric,
              compare_portal_geometric(observed_means_portal,
                                       observed_means_geometric)),
@@ -474,11 +398,9 @@ list(
   # ===== Figure set (#25) ====================================================
   tar_target(figure_set,
              write_figure_set(observed_means_portal, observed_means_geometric,
-                              modelled_means, tmb_fits, observed_modelled,
-                              community_presence, means_comparison_files,
-                              c(community_local_maps, community_presence_maps,
-                                community_modelled_maps,
-                                community_comparison_files)),
+                              modelled_means, location_fits, observed_modelled,
+                              community_stats, means_comparison_files,
+                              c(community_stats_maps, pooled_location_comparison_files)),
              format = "file"),
 
   # ---- reporting layers (rendered notebooks) ------------------------------
@@ -496,7 +418,7 @@ list(
                                     "plant_height")),
     tar_target(brms_fits,
                run_trait_models(unified, traits = brms_traits,
-                                 backend = "brms", n_min = 5, out_dir = out_dir,
+                                 backend = "brms", n_min = 5, out_dir = NULL,
                                  fits_dir = "data-processed/brms_fits",
                                  threads = max(1, floor(
                                    parallelly::availableCores(
@@ -505,6 +427,7 @@ list(
                                  refresh = 250, silent = 1)),
     tar_target(brms_diag, summarise_trait_diagnostics(brms_fits)),
     tar_target(brms_diag_file, {
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
       p <- file.path(out_dir, "brms_diagnostics.csv")
       readr::write_csv(brms_diag, p); p
     }, format = "file")

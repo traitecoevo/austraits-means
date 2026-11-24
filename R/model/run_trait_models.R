@@ -2,8 +2,10 @@
 # species centres, and export them. Traits are independent, so the loop can run
 # in parallel with furrr (multisession) when requested.
 
-#' Fit + process + export one trait.
+#' Fit + process + export one trait (the pooled model).
 #'
+#' @param out_dir where to write the trait's species centres; NULL writes
+#'   nothing.
 #' @param fits_dir if set and backend = "brms", cache each Stan fit to
 #'   `<fits_dir>/<trait>_brms.rds` (reused unless model/data change).
 #' @return a `trait_climate_fit` (centres attached as `$centres`; for brms,
@@ -21,8 +23,12 @@ run_one_trait <- function(data, trait, backend = "tmb", n_min = 5,
   fit <- fit_trait_climate_model(sub, trait = trait, backend = backend,
                                  n_min = n_min, file = file, ...)
   fit$centres <- species_centres(fit)
-  export_species_centres(fit$centres, trait, out_dir,
-                         unit = sub$unit[1], backend = backend, data = fit$data)
+  # the pipeline passes out_dir = NULL: the working exports come from the
+  # location model (export_location_centres()), and the pooled model is a
+  # diagnostic that writes no files
+  if (!is.null(out_dir))
+    export_species_centres(fit$centres, trait, out_dir,
+                           unit = sub$unit[1], backend = backend, data = fit$data)
 
   if (backend == "brms") {
     fit$diagnostics <- brms_diagnostics(fit$fit)
@@ -110,4 +116,74 @@ summarise_trait_diagnostics <- function(fits) {
     tibble::tibble(trait = tr, n_species = nrow(fit$ranef)) |>
       dplyr::bind_cols(fit$diagnostics)
   })
+}
+
+# ---- the location model (one model for the modelled means and the community
+# statistics; roadmap.md, 25 November 2026) ---------------------------------
+
+#' Cell size (km) of the locations in the location model: the
+#' `add_location_key(type = "cell")` grain of the products.
+location_cell_km <- function() 50
+
+#' Fit the location model for one trait, as a `targets` branch: the RTMB
+#' spread model free (log species SD linear in the climate centre), then with
+#' its climate slopes shrunk (fit_spread_shrunk()), with every species'
+#' modelled mean at its climate centre. NULL, with a message, if the trait
+#' cannot be fitted.
+#'
+#' @param data `unified` with a `location` column (add_location_key()).
+#' @param groups woody lookup.
+#' @return the shrunk `rtmb_spread_fit`, with `backend = "rtmb"`, `centres`
+#'   in the schema of species_centres() (location_species_centres()) and
+#'   `free` (the free fit's AIC, coefficients and convergence).
+fit_location_target <- function(data, trait, groups, n_min = 5) {
+  message("== ", trait, " (location model, RTMB) ==")
+  tryCatch({
+    free <- fit_spread_rtmb(data, trait, groups, n_min = n_min)
+    if (is.null(free)) return(NULL)
+    m <- fit_spread_shrunk(data, trait, groups, free = free, n_min = n_min, centres = TRUE)
+    if (!m$converged) warning(trait, ": location model did not converge (", m$message, ")")
+    m$free <- list(aic = free$aic, theta = free$spread$theta, cov = free$spread$cov,
+                   converged = free$converged, seconds = free$seconds)
+    m$backend <- "rtmb"
+    m$centres <- location_species_centres(m)
+    m
+  }, error = function(e) {
+    message("  failed: ", conditionMessage(e)); NULL
+  })
+}
+
+#' Fixed effects of a location-model fit, one block per growth form, with the
+#' pooled model's term names ("(Intercept)", "<var>_mn", "<var>_c").
+#'
+#' @return tibble(trait, woodiness_group, term, estimate, std.error,
+#'   conf.low, conf.high), 95% intervals.
+location_fixed_table <- function(m) {
+  purrr::map(m$groups, function(g) {
+    ft <- m$fixed_table[match(.group_coef_names(m, g), m$fixed_table$term), ]
+    ft$term <- c("(Intercept)", woodiness_model_terms)
+    dplyr::mutate(ft, trait = m$trait, woodiness_group = g, .before = 1)
+  }) |> purrr::list_rbind()
+}
+
+#' The fixed-effect table of either model: a location-model fit's
+#' (location_fixed_table()) or a pooled fit's `$fixed` (with `trait`).
+fit_fixed_table <- function(f) {
+  if (inherits(f, "rtmb_spread_fit")) location_fixed_table(f) else
+    dplyr::mutate(f$fixed, trait = f$trait, .before = 1)
+}
+
+#' One row per trait x growth form: the location model's fixed effects and
+#' the number of species (the `trait_summary` target).
+summarise_location_fits <- function(fits) {
+  purrr::map(purrr::compact(fits), function(m) {
+    n_sp <- dplyr::distinct(m$centres, taxon_name, woodiness_group) |>
+      dplyr::mutate(woodiness_group = as.character(woodiness_group)) |>
+      dplyr::count(woodiness_group, name = "n_species")
+    location_fixed_table(m) |>
+      dplyr::select(trait, woodiness_group, term, estimate) |>
+      tidyr::pivot_wider(names_from = term, values_from = estimate) |>
+      dplyr::left_join(n_sp, by = "woodiness_group") |>
+      dplyr::relocate(n_species, .after = woodiness_group)
+  }) |> purrr::list_rbind()
 }

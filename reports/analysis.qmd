@@ -16,130 +16,83 @@ editor_options:
 
 ## Overview
 
-This analysis produces **national estimates of plant species' trait means** for Australia, for AusTraits. Trait data are sampled unevenly across each species' geographic and climatic range, so a simple average is biased toward wherever a species happened to be measured. Instead, for each trait we estimate the species-level mean **at the centre of the species' climate distribution** (the 2D precipitation–temperature medoid), giving a consistent, defensible reference point across species and traits.
+This analysis produces **national estimates of plant species' trait means** for Australia, for AusTraits, and the **community statistics** that follow from them. Trait data are sampled unevenly across each species' geographic and climatic range, so a simple average is biased toward wherever a species happened to be measured. Instead, for each trait we estimate the species-level mean **at the centre of the species' climate distribution** (the 2D precipitation–temperature medoid) **and an average location**, giving a consistent, defensible reference point across species and traits.
 
-We use a hierarchical within-group-centred model. Predictors are centred on the
-medoid (`x_c = obs − medoid`), so the between-species terms describe turnover
-across the continent and the within-species terms describe how a trait shifts
-across a species' range. The estimates come with uncertainty intervals, the within/between decomposition and, via the BRMS backend, full posterior inference. See `docs/within-species-centring.qmd` for the statistical motivation and `roadmap.md` for the roadmap and decisions log.
+Since 25 November 2026 one model gives both products: the **location model** (`R/model/spread_rtmb.R`; its development and checks are in `docs/local-range-model.qmd`, the decisions in `roadmap.md`). Predictors are centred on the medoid (`x_c = obs − medoid`), so the between-species terms describe turnover across the continent and the within-species terms how a trait shifts across a species' range (`docs/within-species-centring.qmd`). The earlier models, which pool growth forms, locations or both, are kept only as the comparison that shows what the location model fixes.
 
-This notebook is a *reporting layer*: model fitting, exports and figures are
-produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the
-results and narrate them. The dataset (`dataset_construction.qmd`) takes every
-trait record, plant height included, from an austraits.build development build. Two interchangeable
-fitting backends are available — `tmb` (fast, used here) and `brms` (full
-posterior, opt-in via `run_brms` in `_targets.R`) — behind one interface
-(`fit_trait_climate_model()`); all logic lives in `R/`.
+This notebook is a *reporting layer*: model fitting, exports and figures are produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the results and narrate them. The dataset (`dataset_construction.qmd`) takes every trait record, plant height included, from an austraits.build development build; all logic lives in `R/`.
 
 ```{r setup}
 library(tidyverse)
 library(targets)
 source("R/init.R")
 
-tar_load(trait_summary)   # fitted fixed effects per trait
-tar_load(tmb_fits)        # list of per-trait fits (with $centres)
+tar_load(trait_summary)   # fixed effects per trait x growth form
+tar_load(location_fits)   # list of per-trait location-model fits (with $centres)
 tar_load(species_means_combined)  # modelled where available, else observed
-tmb_fits <- purrr::compact(tmb_fits)
+location_fits <- purrr::compact(location_fits)
 out_dir <- "outputs/traits"
 ```
 
-## Fit per-trait models
+## The location model
 
-One model per trait (TMB), keeping species with more than `n_min` records. Each
-fit yields the species-level trait value at the climate centre, exported to
-`outputs/traits/<trait>_climate_response.csv.gz` (with a `_meta.csv` dictionary)
-by the per-trait targets.
+One model per trait, fitted to the trait records of species with more than 5 records, a medoid and a woody or non-woody class (in a growth form with at least 20 such species). Locations are `r location_cell_km()` km cells of an equal-area grid. On the log scale, a record of species *s* (growth form *g*) at location *l* is
 
-### The fitted model
-
-`build_model_formula()` assembles the model from the climate-variable stems, so
-the explicit form isn't visible in the notebook. With the two default climate
-variables it is the following within-group-centred ("Mundlak") mixed model, in
-`glmmTMB` syntax:
-
-```r
-log_value ~ log_annual_precipitation_mn + average_temperature_mn   # between-species
-          + log_annual_precipitation_c  + average_temperature_c    # within-species
-          + (1 | taxon_name)                                       # species intercept
-          + (0 + log_annual_precipitation_c | taxon_name)          # species precip slope
-          + (0 + average_temperature_c | taxon_name)               # species temp slope
+```
+log_value = b0_g + b_between,g . m_s + b_within,g . (x - m_s)    fixed: per growth form
+          + u_s + s_s . (x - m_s)                                  species effect and climate slopes
+          + L_lg + w_sl + e                                        location, species x location, residual
 ```
 
-- For each climate variable, `_mn` is the species' medoid (its climate centre)
-  and `_c = obs − medoid` is the within-species deviation.
-- The `_mn` terms capture **between-species** turnover across the continent; the
-  `_c` terms capture the **within-species** response across a species' range.
-- Random effects are an uncorrelated species intercept plus per-variable species
-  slopes — no climate interaction and no intercept–slope correlation, matching
-  the convergence-driven choices in the height analysis.
-- The species-level value at the climate centre (where `_c = 0`) is the intercept
-  plus the species random intercept.
-- The `brms` backend fits the same formula with weakly informative priors.
+- `m_s` is the species' medoid, `x` the record's climate (log annual precipitation, mean annual temperature).
+- The species effect has a spread that depends on the species' climate: `u_s ~ N(0, sd_u(s)²)`, `log sd_u(s) = a_g + c_g . (p_s, t_s)`, linear in the standardised centre, with the climate slopes `c_g` shrunk by empirical Bayes.
+- The location effect `L_lg` (per growth form) takes up how places with the same climate differ; the species × location effect `w_sl` how a species departs from its own mean at one place.
+- The **modelled mean** of a species is `b0_g + b_between,g . m_s + u_s`: its mean at its climate centre and an average location. Its 94% interval is a delta-method interval that includes the uncertainty of the fixed parameters.
 
-The exact formula used for the fit (echoed live so it can't drift from the code):
+Fit by maximum likelihood with the Laplace approximation (RTMB). With constant spread it reproduces `glmmTMB` exactly, species means and their standard errors included (`tests/testthat/test-local-range.R`).
 
-```{r print-formula}
-build_model_formula()
-```
+### Fitted fixed effects by trait and growth form
 
-### Full posterior (BRMS backend, opt-in)
-
-For the final estimates we refit with the BRMS backend. TMB gives a fast maximum-
-likelihood point estimate, and for the *central* species means the two backends
-agree closely (data dominate the weakly informative priors). What changes is the
-**uncertainty**, which the products report alongside every mean. TMB reports
-species means conditional on plug-in point estimates of the variance components,
-with asymptotic (delta-method) standard errors; the posterior instead gives the
-full joint distribution of every quantity we report. Concretely:
-
-- **Variance-component uncertainty is propagated.** TMB fixes the random-effect
-  SDs at their ML values when forming species intervals; the posterior integrates
-  over uncertainty in *how much* each species is shrunk toward the mean. This
-  matters most for species with few records, where the shrinkage is itself poorly
-  determined — exactly the species whose intervals we most need to trust.
-- **The species mean is a derived, back-transformed quantity.** Each reported
-  value is `intercept + species random intercept`, fitted on the log scale and
-  exponentiated. Its posterior is correlated across parameters and asymmetric on
-  the natural scale; a point estimate ± SE cannot represent that skew, whereas the
-  posterior carries it through exactly.
-- **Boundary/singular fits are regularised.** ML variance estimates can collapse
-  to zero (degenerate partial pooling); the weakly informative priors on the SDs
-  keep them off the boundary, giving sensible shrinkage for sparse traits.
-- **It is the basis for full inference downstream** — calibrated credible
-  intervals, the within/between decomposition *with* uncertainty, and (round 2)
-  treating missing covariates / gap-filling as parameters to be imputed rather
-  than dropped.
-
-The BRMS backend is **opt-in**: set `run_brms <- TRUE` in `_targets.R` to add the
-`brms_fits` / `brms_diag` targets. Each fit uses 4 chains with within-chain
-threading (`reduce_sum`) and is cached on disk under `data-processed/brms_fits/`
-(reused unless the model/data change). Always inspect the diagnostics: larger
-traits need more iterations (e.g. `leaf_area` did not converge at `iter = 1500`).
-One-time `cmdstanr::rebuild_cmdstan()` resolves stale precompiled-header warnings
-when threading first turns on.
-
-**Height is excluded from the BRMS backend and kept on TMB.** After unifying the
-sources it carries ~332k records across ~10,300 species, i.e. ~31,000 random-
-effect parameters — a NUTS fit there runs many hours (the per-iteration cost is
-flat across warmup, so the mass-matrix adaptation never rescues it) with real risk
-of memory pressure and divergences. The full posterior is not worth that for one
-trait; TMB's asymptotic (delta-method) intervals are the pragmatic choice for
-height. So the BRMS run fits every trait *except* height (`brms_traits` target).
-
-### Fitted fixed effects by trait
-
-Between-species (`_mn`) and within-species (`_c`) slopes for precipitation and
-temperature, plus the global intercept, for each trait.
+Between-species (`_mn`) and within-species (`_c`) slopes for precipitation and temperature, and the intercept, for each trait and growth form.
 
 ```{r summary-table}
 trait_summary |>
-  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  mutate(across(where(is.double), \(x) round(x, 3))) |>
+  knitr::kable()
+```
+
+## What the pooled models get wrong
+
+Three nested models, named by what they pool: the **pooled** model (growth forms and locations pooled; the earlier product), **locations pooled** (woody and non-woody apart, no location effects) and the **location model**. `compare_pooled_location()` measures, per trait and growth form, how far the species means move at each step, and how the community SD among species within a cell that each per-growth-form model implies compares with the SD observed among the species recorded together (1 is a match; the pooled model has one species variance for both growth forms, so it has none of its own). Also written to `outputs/comparisons/pooled_vs_location_*.csv`.
+
+```{r pooled-setup}
+tar_load(pooled_location_comparison)
+pooled_location_comparison <- purrr::compact(pooled_location_comparison)
+```
+
+Change in the species means (log scale): separating growth forms (`forms`), then separating locations (`locations`), and in total.
+
+```{r pooled-shift}
+purrr::map(pooled_location_comparison, "shift") |>
+  purrr::list_rbind() |>
+  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+Ratio of modelled to observed community SD, cells with at least 5 species:
+
+```{r pooled-benchmark}
+purrr::map(pooled_location_comparison, "benchmark") |>
+  purrr::list_rbind() |>
+  dplyr::select(trait, woodiness_group, model, ratio) |>
+  dplyr::mutate(ratio = round(ratio, 2)) |>
+  tidyr::pivot_wider(names_from = model, values_from = ratio) |>
   knitr::kable()
 ```
 
 ## Refit on the development build: shifts against June 2026
 
-The modelled means were refitted after the data basis changed (#12, #13): trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). Since #33 the occurrences are also new: a GBIF download of October 2026, keeping open-licence records only, with names aligned to APC from the providers' names, and medoids rebuilt from it. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
+The modelled means were refitted after the data basis changed (#12, #13), and since 25 November 2026 come from the location model, so the shifts below combine the change of data and of model: trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). Since #33 the occurrences are also new: a GBIF download of October 2026, keeping open-licence records only, with names aligned to APC from the providers' names, and medoids rebuilt from it. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
 
 ```{r baseline-setup}
 tar_load(baseline_comparison)
@@ -162,11 +115,11 @@ baseline_comparison$counts |> knitr::kable(format.args = list(big.mark = ","))
 
 ### Fixed effects
 
-Shift in each fixed effect (refit minus baseline), also in units of the baseline standard error.
+Shift in each fixed effect (refit minus baseline), also in units of the baseline standard error; the location model has one set per growth form, each against the baseline's single set.
 
 ```{r baseline-fixed}
 baseline_comparison$fixed |>
-  dplyr::select(trait, term, estimate_baseline, estimate_new, shift, shift_in_se) |>
+  dplyr::select(trait, dplyr::any_of("woodiness_group"), term, estimate_baseline, estimate_new, shift, shift_in_se) |>
   dplyr::mutate(dplyr::across(where(is.numeric), \(x) round(x, 3))) |>
   knitr::kable()
 ```
@@ -187,7 +140,7 @@ plot_baseline_centres(baseline_comparison$pairs)
 
 ## Observed vs modelled means
 
-The two species estimates (`terminology.md`) answer different questions: the observed mean summarises the records wherever they were collected; the modelled mean is the model's estimate at the centre of the species' climate distribution. They also use different records: the observed mean keeps every basis of record and needs no medoid; the modelled mean uses field records of species with a medoid and more than 5 records. `compare_observed_modelled()` pairs them for every species that has both; tables and figures are also written to `outputs/comparisons/`. Differences are `log(modelled) − log(observed)`, so 0.1 is about 10%.
+The two species estimates (`terminology.md`) answer different questions: the observed mean summarises the records wherever they were collected; the modelled mean is the model's estimate at the centre of the species' climate distribution and an average location. They also use different records: the observed mean keeps every basis of record and needs no medoid; the modelled mean uses field records of species with a medoid, a woody or non-woody class and more than 5 records. `compare_observed_modelled()` pairs them for every species that has both; tables and figures are also written to `outputs/comparisons/`. Differences are `log(modelled) − log(observed)`, so 0.1 is about 10%.
 
 ```{r obs-mod-setup}
 tar_load(observed_modelled)
@@ -202,15 +155,13 @@ observed_modelled$summary |>
   knitr::kable(format.args = list(big.mark = ","))
 ```
 
-The modelled mean exists for a minority of the species with an observed mean (from 2% of species for seed mass to 40% for plant height). Where both exist they agree closely on the log scale (correlation 0.90 to 0.996) with a median difference near zero; for plant height the modelled mean is a median 5% lower. The spread is widest for seed mass and leaf area, where more than a third of species differ by more than 0.2 log units (about 22%).
-
 ```{r obs-mod-fig, fig.width = 10, fig.height = 9}
 plot_observed_modelled(observed_modelled$pairs)
 ```
 
 ### Where they differ
 
-Two candidate drivers: how far a species' records sit from its climate centre (the mean offset of its records, scaled by the across-species spread of centres), and how many records the model had. The absolute difference rises with the climate offset for every trait (Spearman correlation 0.12 to 0.47) and is largest where the offset exceeds 0.5, which is the adjustment the modelled mean is designed to make; the number of records matters less, except for plant height, where species with fewer records differ more.
+Two candidate drivers: how far a species' records sit from its climate centre (the mean offset of its records, scaled by the across-species spread of centres), and how many records the model had. A difference that rises with the climate offset is the adjustment the modelled mean is designed to make.
 
 ```{r obs-mod-drivers, fig.width = 8, fig.height = 4}
 plot_difference_drivers(observed_modelled$drivers)
@@ -234,22 +185,53 @@ plot_portal_geometric(portal_geometric$summary)
 
 ## Across-species turnover
 
-For each trait, the predicted species mean at the climate centre against the
-centre's mean annual precipitation (log–log), with the across-species trend.
-(The same figures are also written PNG + PDF to `outputs/traits/figures/` by the
-`tmb_fig_*` targets.)
+For each trait, each species' modelled mean at its climate centre against the centre's mean annual precipitation (log–log), with the across-species trend, woody and non-woody apart. These are the product's means, from the location model (`docs/local-range-model.qmd`). The same figures, and the within- and between-species lines per growth form, are written PNG + PDF to `outputs/traits/figures/` by the `trait_fig_*` and `trait_wb_fig_*` targets.
 
 ```{r centre-figures, results = "asis"}
-for (tr in names(tmb_fits)) {
+tar_load(location_fits)
+location_fits <- purrr::compact(location_fits)
+for (f in location_fits) {
+  cat("\n\n### ", f$trait, "\n\n", sep = "")
+  print(plot_trait_centres(f$centres, f$trait, x = "precip", log_y = TRUE))
+  cat("\n\n")
+}
+```
+
+## Community statistics
+
+For each `r location_cell_km()` km cell and growth form, the community mean and community range of the species with GBIF records there, from the location model (`R/community/community_statistics.R`): each species' expected mean at the cell's climate and an average location, and the model's spread among species within a location. This first version takes the species from each cell's GBIF records; the product will predict them from climate alone (`roadmap.md`). Written to `outputs/community/<build version>/` as a parquet table, GeoTIFFs and one map per trait.
+
+```{r community-setup}
+tar_load(community_stats)
+tar_load(community_units)
+```
+
+Cells with statistics (at least 5 species of the growth form present), and the median community SD (natural-log units) and 90% range ratio (upper / lower) across them:
+
+```{r community-summary}
+community_stats |>
+  dplyr::filter(!is.na(community_mean)) |>
+  dplyr::group_by(trait_name, woodiness_group) |>
+  dplyr::summarise(.groups = "drop", cells = dplyr::n(),
+                   median_species = stats::median(n_species),
+                   median_community_sd = round(stats::median(community_sd), 2),
+                   median_range_ratio = round(stats::median(range_upper / range_lower), 1),
+                   pct_extrapolated = round(100 * mean(extrapolated), 1)) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+```{r community-maps, results = "asis", fig.width = 9, fig.height = 8}
+for (tr in c("plant_height", "leaf_mass_per_area")) {
   cat("\n\n### ", tr, "\n\n", sep = "")
-  print(plot_trait_centres(tmb_fits[[tr]]$centres, tr, x = "precip", log_y = TRUE))
+  print(plot_community_statistics(community_stats, tr,
+                                  community_units$unit[community_units$trait_name == tr]))
   cat("\n\n")
 }
 ```
 
 ## Species means products
 
-Each species × trait has an observed mean (geometric method) wherever it has records; the modelled mean adds the model's estimate at the climate centre for species with more than 5 field records and a medoid. The combined product (`species_means_combined` target) gives one value per species × trait for the modelled traits: the modelled mean where there is one, otherwise the observed mean, with `estimate_type` and `method` recording which.
+Each species × trait has an observed mean (geometric method) wherever it has records; the modelled mean adds the location model's estimate at the climate centre for species with more than 5 field records, a medoid and a woody or non-woody class. The combined product (`species_means_combined` target) gives one value per species × trait for the modelled traits: the modelled mean where there is one, otherwise the observed mean, with `estimate_type` and `method` recording which.
 
 ### Coverage by estimate type
 
@@ -265,13 +247,13 @@ species_means_combined |>
 
 In `outputs/species_means/<build version>/`, each as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`, with `estimate_type` and `method` on every row (`terminology.md`):
 
-- `modelled_means_tmb`: the modelled means of every trait, with their 94% interval, the climate centre and the species' random effects (`modelled_means_files` target).
+- `modelled_means`: the modelled means of every trait (location model, `method = rtmb`), with their 94% interval, the climate centre, the growth form and the species' random effects (`modelled_means_files` target).
 - `species_means_combined`: one value per species × trait for the modelled traits, modelled where available, otherwise observed (`species_means_combined_files`).
 
 The portal-method observed means for AusTraits 7.0.0 are in `outputs/species_means/7.0.0/` (`docs/observed-means-portal-method.md`). The geometric observed means are published by austraits.build with each build (`austraits-<version>-observed-means.parquet`), and read here rather than written.
 
 Per trait, in `outputs/traits/`:
 
-- `<trait>_climate_response.csv.gz`: that trait's modelled means in the same schema, with a `_meta.csv` column dictionary.
-- `trait_model_summary.csv`: fitted fixed effects for every trait (`trait_summary_file` target).
+- `<trait>_climate_response.csv.gz`: that trait's modelled means in the same schema, with a `_meta.csv` column dictionary (`trait_export_*` targets).
+- `trait_model_summary.csv`: fitted fixed effects for every trait and growth form (`trait_summary_file` target).
 - `data_basis.json`: the build, APC release, GBIF extract and medoid build behind the fits.

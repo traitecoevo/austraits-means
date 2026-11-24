@@ -7,7 +7,7 @@ The repository publishes, in a Zenodo record of its own and for a short list of 
 1. **Modelled means**: per species × trait, the geometric mean at the centre of the species' climate distribution, from a hierarchical model in which each species' climate is centred on its medoid (the most central point of its GBIF occurrences in precipitation–temperature space; `docs/within-species-centring.qmd` explains why). Fitted with TMB (`glmmTMB`, maximum likelihood); a Bayesian `brms` backend is optional.
 2. **Modelled community statistics**: for a location, predicted from its climate, the woody and non-woody community mean and community range. In development: the model they need is the next step in [`roadmap.md`](roadmap.md).
 
-The **observed means** (simple species means) are published by austraits.build with each AusTraits release, and read here. The *combined species means* table (the modelled mean where a species has one, otherwise its observed mean), the observed community layers and the 7.0.0 portal-method observed means are built but not published: they are inputs, diagnostics or retired.
+The **observed means** (simple species means) are published by austraits.build with each AusTraits release, and read here. The *combined species means* table (the modelled mean where a species has one, otherwise its observed mean), the community statistics (first version) and the 7.0.0 portal-method observed means are built but not published: they are inputs, work in progress or retired.
 
 [`roadmap.md`](roadmap.md) records the milestones, the decisions and their reasons, and the invariants; [`AGENTS.md`](AGENTS.md) the conventions for working in the code.
 
@@ -21,17 +21,17 @@ What the pipeline writes, published or not (status in [`roadmap.md`](roadmap.md)
 |---|---|---|
 | Observed means, portal method, for AusTraits 7.0.0 (retired, unpublished) | `species_means/7.0.0/observed_means_portal_arithmetic.*` | [`docs/observed-means-portal-method.md`](docs/observed-means-portal-method.md) |
 | Observed means, geometric method | Published with each AusTraits release by austraits.build (`austraits-<version>-observed-means.*`); read here, not written | [`docs/observed-means-geometric-method.md`](docs/observed-means-geometric-method.md) |
-| Modelled means (TMB) | `species_means/<build>/modelled_means_tmb.*` | `terminology.md`, `docs/within-species-centring.qmd`, `reports/analysis.qmd` (rendered as `reports/analysis.html`) |
+| Modelled means (the location model, RTMB; `method = rtmb`) | `species_means/<build>/modelled_means.*` | `terminology.md`, `docs/local-range-model.qmd`, `docs/within-species-centring.qmd`, `reports/analysis.qmd` (rendered as `reports/analysis.html`) |
 | Combined species means (modelled where available, otherwise observed; internal input) | `species_means/<build>/species_means_combined.*` | `terminology.md` |
-| Community layers, 10 km equal-area grid (unpublished diagnostics) | `community/<build>/<product>/`: `community_layers.parquet` (one row per trait × cell × group; `woodiness_group` is `woody`, `non_woody` or `all`), `geotiff/`, `figures/`, `community_layers_metadata.json`; `woody_lookup.csv` alongside. Products: `observed_local` (each species' records in the cell, then the species), `observed_presence` (GBIF species present × observed means), `modelled` (the trait model's net average for the cell, from a model with woody and non-woody coefficients) | [`docs/community-layers-design.md`](docs/community-layers-design.md) |
+| Community statistics, 50 km equal-area grid (first version, unpublished) | `community/<build>/`: `community_statistics.parquet` (one row per trait × cell × growth form: community mean, SD, 90% range, species count), `geotiff/`, `figures/<trait>_community_statistics`, `community_statistics_metadata.json`, `woody_lookup.csv` | `terminology.md`, `docs/local-range-model.qmd`, `R/community/community_statistics.R` |
 
-`<build>` is the version string of the austraits.build development build the products came from: currently `7.0.0.9000`, built from austraits.build commit `d535de9`. Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; portal vs geometric observed means, which differ in data version as well as method, 7.0.0 against the development build; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the portal reproduction check and the medoid checks), and `traits/`, the pipeline's working per-trait files (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to `reports/`, next to their sources (git-ignored).
+`<build>` is the version string of the austraits.build development build the products came from: currently `7.0.0.9000`, built from austraits.build commit `d535de9`. Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; the pooled and locations-pooled models against the location model, `pooled_vs_location_*`; portal vs geometric observed means, which differ in data version as well as method, 7.0.0 against the development build; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the portal reproduction check and the medoid checks), and `traits/`, the pipeline's working per-trait files, from the location model (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary per trait and growth form `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with, per growth form, the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to `reports/`, next to their sources (git-ignored).
 
 To read one:
 
 ```r
-means <- arrow::read_parquet("outputs/species_means/7.0.0.9000/modelled_means_tmb.parquet")
-readr::read_csv("outputs/species_means/7.0.0.9000/modelled_means_tmb_dictionary.csv")
+means <- arrow::read_parquet("outputs/species_means/7.0.0.9000/modelled_means.parquet")
+readr::read_csv("outputs/species_means/7.0.0.9000/modelled_means_dictionary.csv")
 ```
 
 ## Building
@@ -82,10 +82,10 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 │   ├── init.R                 # source() this to load the whole library
 │   ├── data/                  # records, climate, crosswalk, medoid lookup, roll-up
 │   ├── medoid/                # medoid location and checks
-│   ├── model/                 # model formula, fitting (tmb | brms), per-trait runs
+│   ├── model/                 # the location model (RTMB), pooled models, per-trait runs
 │   ├── process/               # species centres, exports, comparisons
 │   ├── means/                 # observed means (portal, geometric), reliability, writers
-│   ├── community/             # woody lookup, community layers (observed, modelled), comparisons
+│   ├── community/             # woody lookup, community statistics
 │   ├── release/               # Zenodo deposit
 │   ├── plot/  panels/  utils/ # figures (save_figure: PNG + PDF), helpers
 │   └── scripts/               # run-scripts (not sourced by init.R)

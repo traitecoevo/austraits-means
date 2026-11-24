@@ -53,9 +53,14 @@ plot_coverage <- function(coverage) {
     ggplot2::theme(legend.position = "bottom", legend.direction = "vertical")
 }
 
-#' Between- and within-species climate slopes per trait, with 95% intervals.
+#' Between- and within-species climate slopes per trait (per growth form
+#' for location-model fits), with 95% intervals.
 plot_climate_responses <- function(fits) {
-  fx <- purrr::map_dfr(purrr::compact(fits), \(f) dplyr::mutate(f$fixed, trait = f$trait)) |>
+  # for the location model, one row per trait x growth form
+  fx <- purrr::map_dfr(purrr::compact(fits), fit_fixed_table)
+  if ("woodiness_group" %in% names(fx))
+    fx$trait <- paste0(fx$trait, c(woody = " (woody)", non_woody = " (non-woody)")[fx$woodiness_group])
+  fx <- fx |>
     dplyr::filter(term != "(Intercept)") |>
     dplyr::mutate(
       variable = dplyr::if_else(grepl("precipitation", term),
@@ -86,8 +91,8 @@ plot_climate_responses <- function(fits) {
     ggplot2::theme(legend.position = "bottom")
 }
 
-#' Community mean maps for a few traits, woody and non-woody (observed, GBIF
-#' presence x species means).
+#' Community mean maps for a few traits, woody and non-woody (the community
+#' statistics from the location model).
 plot_community_overview <- function(layers, traits = c("plant_height", "leaf_mass_per_area",
                                                        "leaf_area", "seed_dry_mass")) {
   panels <- lapply(traits, function(tr) {
@@ -99,7 +104,8 @@ plot_community_overview <- function(layers, traits = c("plant_height", "leaf_mas
   })
   patchwork::wrap_plots(panels, ncol = 2) +
     patchwork::plot_annotation(
-      title = "Community mean, observed: GBIF presence x observed species means (10 km grid)",
+      title = paste0("Community mean, location model: species present from GBIF (",
+                     location_cell_km(), " km cells)"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11)))
 }
 
@@ -125,7 +131,7 @@ plot_product_overview <- function(coverage, obs_mod_pairs, fits, layers) {
     ncol = 2, heights = c(1, 1)
   ) +
     patchwork::plot_annotation(
-      title = "AusTraits species means and community layers: first draft",
+      title = "AusTraits modelled means and community statistics (location model)",
       tag_levels = "a",
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 13)))
 }
@@ -143,7 +149,7 @@ write_figure_set <- function(portal, geometric, modelled, fits, obs_mod, layers,
     save_figure(plot_coverage(coverage), file.path(dir, "coverage_by_product"),
                 width = 7, height = 5),
     save_figure(plot_climate_responses(fits), file.path(dir, "climate_responses"),
-                width = 9, height = 5),
+                width = 9, height = 7),
     save_figure(plot_community_overview(layers), file.path(dir, "community_mean_overview"),
                 width = 10, height = 9),
     save_figure(plot_product_overview(coverage, obs_mod$pairs, fits, layers),
