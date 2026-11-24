@@ -29,3 +29,11 @@ for (trait in traits) {
   if (!is.null(r)) message(sprintf("  %s: %.0f s, converged %s, AIC %.0f -> %.0f",
                                    trait, r$seconds, r$converged, r$aic[[1]], r$aic[[2]]))
 }
+
+# Diagnostic figures: records, species means and modelled range in 12 cells
+for (r in res) {
+  if (is.null(r$diagnostics)) next
+  save_figure(plot_community_range_cells(r),
+              sprintf("outputs/local_range/figures/%s_cells_%gkm", r$trait, cell_km),
+              width = 11, height = 6.5)
+}

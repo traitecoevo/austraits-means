@@ -201,7 +201,8 @@ Next, before the trait list and publication:
   - **Check 2 mostly passes.** Model-to-observed community SD ratios:
     - location model: 0.97–1.31, mostly 1.05–1.20, against 1.00–1.97 for the published model;
     - the exception is wood density at 1.47.
-  - **A 10–20% overstatement remains, and its cause is open.** Either co-occurring species really are more alike than random (the true range is smaller), or studies co-sample similar species (the observed spread is too small). These data cannot separate the two.
+  - **A 10–20% overstatement remains, and it is mostly in cells with few species.** Cells with 5–9 species give ratios of mostly 1.1–1.4; cells with 20 or more give 0.84–1.13. Height, from herbarium specimens rather than targeted studies, stays nearly flat (1.11 → 1.05). This points to studies co-sampling similar species, so the observed spread is too small in those cells, rather than to the model being too wide. Suggestive, not proof: species-rich cells also differ in other ways.
+  - **Diagnostic figures** (records, species means and both models' ranges in 12 cells per trait) are in `outputs/local_range/figures/` and the notebook.
   - **Coarse cells cost nothing.** Cell size made little difference to LMA between 10, 25 and 50 km.
   - **Daniel's concern about sites with few species.** The range is estimated from variance parameters across all the data, not from each site's own spread. A site with one or two species adds little information but does not shrink the range. Selective sampling of similar species does bias it low, and coarse cells reduce that.
 

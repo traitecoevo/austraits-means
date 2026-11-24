@@ -78,6 +78,88 @@ tidy_varcomp <- function(fit) {
   if (v == 0) .vc(vc, "taxon_name", "(Intercept)") else v
 }
 
+#' Each species' records at each location, summarised: the observed mean log
+#' value `y`, the record count `n`, the mean fixed-effect prediction `f` and
+#' the mean centred climate `d_p`, `d_t`. Only locations x growth forms with
+#' at least `min_species` species.
+species_at_locations <- function(model, min_species = 5) {
+  d <- model$data
+  stopifnot("location" %in% names(d))
+  d$fixed_pred <- stats::predict(model$fit, newdata = d, re.form = NA,
+                                 allow.new.levels = TRUE)
+  d |>
+    dplyr::group_by(location, woodiness_group, taxon_name) |>
+    dplyr::summarise(.groups = "drop", n = dplyr::n(), y = mean(log_value),
+                     f = mean(fixed_pred),
+                     d_p = mean(log_annual_precipitation_c),
+                     d_t = mean(average_temperature_c),
+                     # record climate = species centre + centred deviation
+                     log_annual_precipitation = mean(log_annual_precipitation_mn +
+                                                       log_annual_precipitation_c),
+                     average_temperature = mean(average_temperature_mn + average_temperature_c)) |>
+    dplyr::group_by(location, woodiness_group) |>
+    dplyr::filter(dplyr::n() >= min_species) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(woodiness_group = as.character(woodiness_group))
+}
+
+# Estimated location effect of each location x growth form (0 for a model
+# without one).
+.location_effects <- function(model) {
+  re <- glmmTMB::ranef(model$fit)$cond$location
+  if (is.null(re)) return(NULL)
+  re <- tibble::as_tibble(re, rownames = "location")
+  if ("(Intercept)" %in% names(re)) {
+    return(dplyr::transmute(re, location, woodiness_group = model$groups[[1]],
+                            location_effect = .data[["(Intercept)"]]))
+  }
+  re |>
+    tidyr::pivot_longer(-location, names_to = "woodiness_group",
+                        values_to = "location_effect") |>
+    dplyr::mutate(woodiness_group = sub("woodiness_group", "", woodiness_group))
+}
+
+#' Per-cell diagnostics of one model: the records, the species means and the
+#' model's community mean and range for the species recorded in each
+#' location x growth form with at least `min_species` species.
+#'
+#' The model's community mean is the mean of the species' fixed-effect
+#' predictions plus the estimated location effect (none for the published
+#' model); the range is the central `level` interval from the model's
+#' community variance (`benchmark_community_variance()`).
+#'
+#' @return list(records (location, woodiness_group, taxon_name, log_value),
+#'   species (`species_at_locations()`), cells (location, woodiness_group,
+#'   n_species, climate, community_mean_log, community_sd, range_lower_log,
+#'   range_upper_log)).
+community_diagnostics <- function(model, vc = tidy_varcomp(model), min_species = 5,
+                                  level = 0.90) {
+  sp <- species_at_locations(model, min_species)
+  bench <- benchmark_community_variance(model, vc = vc, min_species = min_species)
+  loc <- .location_effects(model)
+  z <- stats::qnorm(1 - (1 - level) / 2)
+  cells <- sp |>
+    dplyr::group_by(location, woodiness_group) |>
+    dplyr::summarise(.groups = "drop", n_species = dplyr::n(), fixed_mean = mean(f),
+                     annual_precipitation = exp(mean(log_annual_precipitation)),
+                     average_temperature = mean(average_temperature)) |>
+    dplyr::left_join(dplyr::select(bench, location, woodiness_group, model_community_variance),
+                     by = c("location", "woodiness_group"))
+  cells$location_effect <- if (is.null(loc)) 0 else
+    dplyr::coalesce(dplyr::left_join(cells, loc, by = c("location", "woodiness_group"))$location_effect, 0)
+  cells <- cells |>
+    dplyr::mutate(community_mean_log = fixed_mean + location_effect,
+                  community_sd = sqrt(model_community_variance),
+                  range_lower_log = community_mean_log - z * community_sd,
+                  range_upper_log = community_mean_log + z * community_sd)
+  keep <- dplyr::distinct(sp, location, woodiness_group)
+  records <- model$data |>
+    dplyr::mutate(woodiness_group = as.character(woodiness_group)) |>
+    dplyr::semi_join(keep, by = c("location", "woodiness_group")) |>
+    dplyr::select(location, woodiness_group, taxon_name, log_value)
+  list(records = records, species = sp, cells = cells)
+}
+
 #' Observed and model-implied community variance at each location.
 #'
 #' For each location x growth form with at least `min_species` species, the
@@ -98,23 +180,13 @@ tidy_varcomp <- function(fit) {
 #'   model_community_variance).
 benchmark_community_variance <- function(model, vc = tidy_varcomp(model),
                                          noise_vc = vc, min_species = 5) {
-  d <- model$data
-  stopifnot("location" %in% names(d))
-  d$fixed_pred <- stats::predict(model$fit, newdata = d, re.form = NA,
-                                 allow.new.levels = TRUE)
   sd_p <- .vc(vc, "taxon_name", "log_annual_precipitation_c")
   sd_t <- .vc(vc, "taxon_name", "average_temperature_c")
   sd_w <- .vc(vc, "taxon_name:location", "(Intercept)")
   sigma2 <- .vc(noise_vc, "residual", "sigma")
 
-  d |>
-    dplyr::group_by(location, woodiness_group, taxon_name) |>
-    dplyr::summarise(.groups = "drop", n = dplyr::n(), y = mean(log_value),
-                     f = mean(fixed_pred),
-                     d_p = mean(log_annual_precipitation_c),
-                     d_t = mean(average_temperature_c)) |>
+  species_at_locations(model, min_species) |>
     dplyr::group_by(location, woodiness_group) |>
-    dplyr::filter(dplyr::n() >= min_species) |>
     dplyr::summarise(.groups = "drop",
                      n_species = dplyr::n(),
                      observed_variance = stats::var(y),
@@ -195,12 +267,39 @@ run_location_prototype <- function(data, trait, groups, cell_km = 50, min_specie
                      sd_change = stats::sd(log_centre_new - log_centre_old),
                      max_abs_change = max(abs(log_centre_new - log_centre_old)),
                      correlation = stats::cor(log_centre_old, log_centre_new))
-  list(trait = trait, cell_km = cell_km, n_records = nrow(new$data),
+  diagnostics <- list(location = community_diagnostics(new, vc_new, min_species),
+                      published = community_diagnostics(old, vc_old, min_species))
+  list(trait = trait, cell_km = cell_km, unit = new$data$unit[[1]],
+       diagnostics = diagnostics, n_records = nrow(new$data),
        n_species = dplyr::n_distinct(new$data$taxon_name),
        n_locations = dplyr::n_distinct(new$data$location),
        seconds = secs, converged = isTRUE(new$fit$sdr$pdHess),
        aic = c(published = stats::AIC(old$fit), location = stats::AIC(new$fit)),
        varcomp_old = vc_old, varcomp_new = vc_new, benchmark = bench, species_shift = shift)
+}
+
+#' Model-to-observed community SD ratio by the number of species recorded in
+#' a location x growth form (location model). The sample variance does not
+#' depend on the number of species, so a ratio that falls as species rise
+#' says the few species recorded together are more alike than the location's
+#' flora (selective co-sampling), not that the model is too wide.
+#' @param res one element of the prototype result, with `diagnostics`.
+community_ratio_by_richness <- function(res, breaks = c(4, 9, 19, Inf),
+                                        labels = c("5-9", "10-19", "20+")) {
+  sigma2 <- .vc(res$varcomp_new, "residual", "sigma")
+  dg <- res$diagnostics$location
+  dg$species |>
+    dplyr::group_by(location, woodiness_group) |>
+    dplyr::summarise(.groups = "drop", n_species = dplyr::n(),
+                     observed = stats::var(y) - mean(sigma2 / n)) |>
+    dplyr::inner_join(dplyr::select(dg$cells, location, woodiness_group,
+                                    model = model_community_variance),
+                      by = c("location", "woodiness_group")) |>
+    dplyr::mutate(species_recorded = cut(n_species, breaks, labels = labels)) |>
+    dplyr::group_by(species_recorded) |>
+    dplyr::summarise(.groups = "drop", cells = dplyr::n(),
+                     ratio = sqrt(mean(model)) / sqrt(max(mean(observed), 1e-9))) |>
+    dplyr::mutate(trait = res$trait, .before = 1)
 }
 
 #' Community range from a community mean and variance on the log scale: the

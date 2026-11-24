@@ -105,6 +105,37 @@ purrr::map(res, function(x) x$species_shift |> dplyr::mutate(trait = x$trait, .b
   purrr::list_rbind() |> r2() |> knitr::kable()
 ```
 
+The same ratio (location model) by how many species of the growth form were recorded in the cell; cell counts in brackets:
+
+```{r richness}
+purrr::map(res, function(x) if (!is.null(x$diagnostics)) community_ratio_by_richness(x)) |>
+  purrr::list_rbind() |>
+  dplyr::mutate(v = sprintf("%.2f (%d)", ratio, cells)) |>
+  dplyr::select(trait, species_recorded, v) |>
+  tidyr::pivot_wider(names_from = species_recorded, values_from = v) |>
+  knitr::kable()
+```
+
+## Diagnostic cells
+
+For twelve 50 km cells per trait, spread along the rainfall gradient, preferring cells with both growth forms:
+
+- each panel shows the trait records there (faint dots) and each species' mean of its records there (solid dots, sized by records);
+- beside them are the modelled community mean and 90% range of species means for those same species, from the location model (solid) and the published model (dashed).
+
+The location model's mean includes the cell's estimated location effect. That is why it follows the cell, whereas the published model's mean follows climate only. A range from climate alone (the product) would centre on the published model's mean, with the location model's width. The ranges are of species means, so the records spread wider than the bars by design.
+
+```{r cells}
+#| fig-width: 11
+#| fig-height: 6.5
+#| results: asis
+for (x in res) {
+  if (is.null(x$diagnostics)) next
+  cat("\n\n###", x$trait, "\n\n")
+  print(plot_community_range_cells(x))
+}
+```
+
 ## Findings (run of 24 November 2026)
 
 - **The location model fits better for every trait.** All nine converge. AIC falls by 84 (leaf P per area) to 25,832 (height). Fits take seconds, except height: 19 minutes and 8.5 GB for 320k records in 3,121 cells.
@@ -118,6 +149,7 @@ purrr::map(res, function(x) x$species_shift |> dplyr::mutate(trait = x$trait, .b
   - studies measuring a few similar species together at a site, in which case the observed spread is too small and the model is closer to the truth.
 
   The coarse 50 km cells pool several studies per location, which weakens the second cause. Cell size barely matters between 10 and 50 km for LMA, the one trait compared at all three sizes.
+- **The overstatement is concentrated in cells with few species, which points to the second cause.** Cells with 5–9 species give ratios of mostly 1.1–1.4 (wood density 1.83). Cells with 20 or more give 0.84–1.13. A sample variance does not shrink with the number of species, so the few species recorded together there are more alike than the cell's flora. Height, from herbarium specimens rather than targeted studies, is nearly flat (1.11 → 1.05). The diagnostic figures show the same thing: in wood density's cells with 5–8 species the species means cluster well inside the modelled range, while in its 51-species cell they fill it. Species-rich cells also differ in other ways (wetter, for one), so this is suggestive, not proof.
 - **The modelled species means move.** The SD of the change is 0.06–0.35 log units, with correlations of 0.85–1.00 between old and new. Height barely moves (0.06–0.07). Non-woody LMA, leaf area and seed mass move most (0.30–0.35), because a species measured at one site no longer carries that site's effect.
 - **Benchmark coverage decides which traits can be checked.** Plenty of cells for both growth forms: height (1,841 non-woody / 2,341 woody), LMA (36 / 167), leaf area (22 / 119). Woody only, or fewer than 10 non-woody cells: leaf N per mass, leaf P per mass, seed mass, wood density, and leaf N and P per area. For those traits a model fits, but its non-woody community range cannot be checked against observations.
 

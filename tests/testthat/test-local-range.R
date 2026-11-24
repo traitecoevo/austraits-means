@@ -30,6 +30,26 @@ test_that("the location model recovers known variances; the pooled model oversta
   expect_true(all(b_old$model_community_sd > b_new$model_community_sd))
 })
 
+test_that("community_diagnostics gives one row per location and form, with the location effect", {
+  sim <- simulate_location_data(seed = 3)
+  new <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                              location = "location"))
+  dg <- community_diagnostics(new)
+  expect_equal(nrow(dg$cells), nrow(dplyr::distinct(dg$species, location, woodiness_group)))
+  expect_true(all(dg$cells$n_species >= 5))
+  expect_true(any(dg$cells$location_effect != 0))
+  expect_equal(dg$cells$community_mean_log, dg$cells$fixed_mean + dg$cells$location_effect)
+  expect_true(all(dg$cells$range_lower_log < dg$cells$community_mean_log))
+  # the cell means track the observed species means better with the location effect
+  obs <- dplyr::summarise(dplyr::group_by(dg$species, location, woodiness_group),
+                          y = mean(y), .groups = "drop")
+  m <- dplyr::inner_join(dg$cells, obs, by = c("location", "woodiness_group"))
+  expect_lt(mean((m$y - m$community_mean_log)^2), mean((m$y - m$fixed_mean)^2))
+  p <- plot_community_range_cells(list(trait = "sim", unit = "u", cell_km = 50,
+                                       diagnostics = list(location = dg, published = dg)))
+  expect_s3_class(p, "ggplot")
+})
+
 test_that("community_range back-transforms a central interval", {
   r <- community_range(log(10), 0.5^2, level = 0.90)
   expect_equal(r$community_mean, 10)
