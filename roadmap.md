@@ -198,10 +198,23 @@ Next, before the trait list and publication:
     - Simulation: the model recovers known variances. With independent placement it gets the local spread within about 8%; the pooled model overstates it by 1.4–1.7×.
     - Every trait converges, and AIC favours the location model for every trait.
     - The modelled species means move by 0.06–0.35 log units (SD), correlation 0.85–1.00 with the old ones.
-  - **Check 2 mostly passes.** Model-to-observed community SD ratios:
-    - location model: 0.97–1.31, mostly 1.05–1.20, against 1.00–1.97 for the pooled model;
-    - the exception is wood density at 1.47.
-  - **A 10–20% overstatement remains, and it is mostly in cells with few species.** Cells with 5–9 species give ratios of mostly 1.1–1.4; cells with 20 or more give 0.84–1.13. Height, from herbarium specimens rather than targeted studies, stays nearly flat (1.11 → 1.05). This points to studies co-sampling similar species, so the observed spread is too small in those cells, rather than to the model being too wide. Suggestive, not proof: species-rich cells also differ in other ways.
+  - **Check 2 mostly passes.** Model-to-observed community SD ratios (corrected 24 November 2026 in 3c2156f: earlier figures left out the species × location variance and were 0.03–0.06 low):
+    - location model: 1.01–1.33, mostly 1.10–1.25, against 1.00–1.97 for the pooled model;
+    - the exception is wood density at 1.57.
+  - **A 10–25% overstatement remains, and it is mostly in cells with few species.** Cells with 5–9 species give ratios of 1.16–1.95 (leaf P per area 3.19, from 9 cells); cells with 20 or more give 0.89–1.18. Height, from herbarium specimens rather than targeted studies, stays nearly flat (1.16 → 1.10). This points to studies co-sampling similar species, so the observed spread is too small in those cells, rather than to the model being too wide. Suggestive, not proof: species-rich cells also differ in other ways.
+  - **Spread as a function of climate** (Daniel asked, 24 November 2026). Two versions, both in the notebook:
+    - binned (glmmTMB): one species variance per climate quartile of species;
+    - continuous (RTMB, `R/model/spread_rtmb.R`): log species SD quadratic in the species' rainfall and temperature centres, per growth form. With constant spread it reproduces glmmTMB to 1e-7; on simulated data it recovers a known spread slope.
+
+    AIC against constant spread: strong support for leaf area (−187), height (−91), wood density (−46) and seed mass (−27). None for LMA (−2) or the leaf N and P traits (−6 to +8). Where the data are rich the continuous and binned estimates agree:
+    - woody leaf area: species SD falls from 2.35 at 10 °C to 0.60 at 27 °C, and from about 1.9 below 1,000 mm to 0.56 at 3,000 mm;
+    - woody seed mass: rises from 0.8 to 2.9 from cool to warm;
+    - height: changes little (0.6–1.1).
+
+    Two problems before it can be used:
+    1. **The quadratic overfits small groups.** Non-woody seed mass (27 species) gets a hump from 0.02 to 2.5 that the binned estimates (0.8–1.7) do not show. Non-woody leaf P per mass and dry-end wood density go to about 0. The climate terms need shrinkage, or a degree chosen per growth form.
+    2. **Mixed against observed cells.** The continuous model improves the ratio for wood density (1.57 → 1.35), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It worsens woody leaf area (1.23 → 1.44): it matches the observed decline at the warm, wet end but overshoots in cool and dry cells (about 2.2 against 1.3–1.9 observed), where most cells hold only 5–9 species.
+  - **Fit times** after the TMB 1.9.25 upgrade: height 6 min (glmmTMB), 10.5 min (RTMB); other traits seconds.
   - **Diagnostic figures** (records, species means and both models' ranges in 12 cells per trait) are in `outputs/local_range/figures/` and the notebook.
   - **Coarse cells cost nothing.** Cell size made little difference to LMA between 10, 25 and 50 km.
   - **Daniel's concern about sites with few species.** The range is estimated from variance parameters across all the data, not from each site's own spread. A site with one or two species adds little information but does not shrink the range. Selective sampling of similar species does bias it low, and coarse cells reduce that.
@@ -210,6 +223,7 @@ Next, before the trait list and publication:
   1. Predict to a location from its climate alone. This needs the mean and spread of co-occurring species' climate centres as a smooth function of climate, from GBIF co-occurrence (extend `cell_species_centres()`).
   2. Choose the trait list. Benchmark coverage of both growth forms is good for height, LMA and leaf area. The other six traits have woody cells only, or fewer than 10 non-woody cells.
   3. Decide whether a genus effect should take up the similarity of co-sampled congeners.
+  4. Spread by climate: shrink the climate terms of log species SD (or choose their degree per growth form), then decide per trait between constant and climate-dependent spread, on AIC and the cool/dry overshoot.
 
 On the extensions milestone:
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.

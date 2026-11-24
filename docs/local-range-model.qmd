@@ -212,19 +212,28 @@ for (x in res) {
 
 ## Findings (run of 24 November 2026)
 
-- **The location model fits better for every trait.** All nine converge. AIC falls by 84 (leaf P per area) to 25,832 (height). Fits take seconds, except height: 19 minutes and 8.5 GB for 320k records in 3,121 cells.
+Ratios below are corrected (3c2156f). An earlier version of this notebook left the species × location variance out of the location model's community SD, which made its ratios 0.03–0.06 too low.
+
+- **The location model fits better for every trait.** All nine converge. AIC falls by 84 (leaf P per area) to 25,832 (height). Fits take seconds, except height: 6 minutes after the TMB 1.9.25 upgrade (19 before), for 320k records in 3,121 cells.
 - **It removes most of the overstatement of the local spread.** Model-to-observed community SD ratios:
-  - location model: 0.97–1.31 for every trait except wood density (1.47), mostly 1.05–1.20;
+  - location model: 1.01–1.33 for every trait except wood density (1.57), mostly 1.10–1.25;
   - pooled model: 1.00–1.97.
-  - The gain is largest for woody LMA (1.62 → 1.19), leaf P per mass (1.90 → 1.25), non-woody seed mass (1.44 → 0.99) and non-woody height (1.35 → 1.11).
-  - Woody height was already right under the pooled model (1.00 → 1.06).
-- **A residual overstatement of about 10–20% remains**, in the direction the simulation gives when co-occurring species are more alike than random. Two causes fit it, and these data cannot tell them apart:
+  - The gain is largest for woody LMA (1.62 → 1.25), leaf P per mass (1.90 → 1.32), non-woody seed mass (1.44 → 1.01) and non-woody height (1.35 → 1.18).
+  - Woody height was already about right under the pooled model (1.00; location model 1.10).
+- **A residual overstatement of about 10–25% remains**, in the direction the simulation gives when co-occurring species are more alike than random. Two causes fit it:
   - real sorting, in which case the true local range is smaller than the model says;
   - studies measuring a few similar species together at a site, in which case the observed spread is too small and the model is closer to the truth.
+- **The overstatement is concentrated in cells with few species, which points to the second cause.** Cells with 5–9 species give ratios of 1.16–1.95 (leaf P per area 3.19, from 9 cells); cells with 20 or more give 0.89–1.18. A sample variance does not shrink with the number of species, so the few species recorded together there are more alike than the cell's flora. Height, from herbarium specimens rather than targeted studies, is nearly flat (1.16 → 1.10). The diagnostic figures show the same: in wood density's cells with 5–8 species the species means cluster well inside the modelled range, while in its 51-species cell they fill it. Species-rich cells also differ in other ways (wetter, for one), so this is suggestive, not proof. Cell size barely matters between 10 and 50 km for LMA.
+- **Spread depends on climate for some traits.** Against constant spread, the continuous model improves AIC for leaf area (−187), height (−91), wood density (−46) and seed mass (−27), but not for LMA or the leaf N and P traits. Where data are rich, the continuous and binned estimates agree:
+  - woody leaf area: species SD falls from 2.35 at 10 °C to 0.60 at 27 °C;
+  - woody seed mass: rises from 0.8 to 2.9 from cool to warm.
+- **The continuous model is not ready to use as is.**
+  - The quadratic overfits small groups. Non-woody seed mass (27 species) gets a hump to 2.5 that the binned estimates do not show, and some curves go to about 0 at the edge of the data.
+  - Against observed cells it helps wood density (1.57 → 1.35), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It overshoots woody leaf area in cool and dry cells (ratio 1.23 → 1.44), while matching its warm, wet end.
+- **The modelled species means move.** The SD of the change is 0.06–0.35 log units, with correlations of 0.85–1.00 between old and new. Height barely moves; non-woody LMA, leaf area and seed mass move most, because a species measured at one site no longer carries that site's effect.
+- **Benchmark coverage decides which traits can be checked.** Plenty of cells for both growth forms: height (1,841 non-woody / 2,341 woody), LMA (36 / 167), leaf area (22 / 119). The other six traits have woody cells only, or fewer than 10 non-woody cells.
 
-  The coarse 50 km cells pool several studies per location, which weakens the second cause. Cell size barely matters between 10 and 50 km for LMA, the one trait compared at all three sizes.
-- **The overstatement is concentrated in cells with few species, which points to the second cause.** Cells with 5–9 species give ratios of mostly 1.1–1.4 (wood density 1.83). Cells with 20 or more give 0.84–1.13. A sample variance does not shrink with the number of species, so the few species recorded together there are more alike than the cell's flora. Height, from herbarium specimens rather than targeted studies, is nearly flat (1.11 → 1.05). The diagnostic figures show the same thing: in wood density's cells with 5–8 species the species means cluster well inside the modelled range, while in its 51-species cell they fill it. Species-rich cells also differ in other ways (wetter, for one), so this is suggestive, not proof.
-- **The modelled species means move.** The SD of the change is 0.06–0.35 log units, with correlations of 0.85–1.00 between old and new. Height barely moves (0.06–0.07). Non-woody LMA, leaf area and seed mass move most (0.30–0.35), because a species measured at one site no longer carries that site's effect.
-- **Benchmark coverage decides which traits can be checked.** Plenty of cells for both growth forms: height (1,841 non-woody / 2,341 woody), LMA (36 / 167), leaf area (22 / 119). Woody only, or fewer than 10 non-woody cells: leaf N per mass, leaf P per mass, seed mass, wood density, and leaf N and P per area. For those traits a model fits, but its non-woody community range cannot be checked against observations.
+Not done yet:
 
-Not done yet: predicting to a location from its climate alone. That needs the mean and spread of the climate centres of co-occurring species as a smooth function of climate, learned from GBIF co-occurrence. The benchmark above uses the species actually recorded at each location.
+- Predicting to a location from its climate alone. That needs the mean and spread of the climate centres of co-occurring species as a smooth function of climate, learned from GBIF co-occurrence; the benchmark above uses the species actually recorded at each location.
+- Shrinking the climate terms of the continuous spread model.
