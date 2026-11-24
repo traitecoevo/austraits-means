@@ -30,7 +30,7 @@ read_observed_means <- function(path, traits) {
     stop("`", path, "` lacks columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
   if (!identical(unique(means$estimate_type), "observed_mean") ||
-      !all(means$method %in% c("geometric", "arithmetic"))) {
+      !all(means$method %in% c("geometric", "arithmetic", "mode", "majority"))) {
     stop("`", path, "` is not the observed means", call. = FALSE)
   }
   # The modelled traits are on the log scale: their observed means must be
