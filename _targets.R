@@ -111,14 +111,15 @@ mapped <- tar_map(
              compare_pooled_location(location_fit, tmb_fit, woody_fit)),
 
   # Per-trait figures, from the location model, woody and non-woody apart:
-  # the species' modelled means against climate ...
+  # the species' modelled means against climate, over the model's
+  # distribution of species means (line and 50% / 90% bands) ...
   tar_target(trait_fig, {
     if (is.null(location_fit)) character(0) else {
       p <- plot_trait_centres(location_fit$centres, trait,
-                              x = "precip", log_y = TRUE)
+                              x = "precip", log_y = TRUE, fit = location_fit)
       save_figure(p, file.path(out_dir, "figures",
                                clean_species_filename(trait)),
-                  width = 7, height = 5)
+                  width = 7, height = 5.5)
     }
   }, format = "file"),
 

@@ -185,14 +185,14 @@ plot_portal_geometric(portal_geometric$summary)
 
 ## Across-species turnover
 
-For each trait, each species' modelled mean at its climate centre against the centre's mean annual precipitation (log–log), with the across-species trend, woody and non-woody apart. These are the product's means, from the location model (`docs/local-range-model.qmd`). The same figures, and the within- and between-species lines per growth form, are written PNG + PDF to `outputs/traits/figures/` by the `trait_fig_*` and `trait_wb_fig_*` targets.
+For each trait, each species' modelled mean at its climate centre against the centre's mean annual precipitation (log–log), woody and non-woody apart, over the model's distribution of species means: its between-species line and the central 50% and 90% of species means at each climate centre, from the climate-dependent species SD. These are the product's means, from the location model (`docs/local-range-model.qmd`). The same figures, and the within- and between-species lines per growth form, are written PNG + PDF to `outputs/traits/figures/` by the `trait_fig_*` and `trait_wb_fig_*` targets.
 
 ```{r centre-figures, results = "asis"}
 tar_load(location_fits)
 location_fits <- purrr::compact(location_fits)
 for (f in location_fits) {
   cat("\n\n### ", f$trait, "\n\n", sep = "")
-  print(plot_trait_centres(f$centres, f$trait, x = "precip", log_y = TRUE))
+  print(plot_trait_centres(f$centres, f$trait, x = "precip", log_y = TRUE, fit = f))
   cat("\n\n")
 }
 ```
