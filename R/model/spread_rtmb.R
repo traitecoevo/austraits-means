@@ -26,9 +26,9 @@
 # groups (the free quadratic gave non-woody seed mass, 27 species, a hump to
 # SD 2.5) and can send the SD to ~0 at the edge of the data. The climate
 # coefficients b get a prior b ~ N(0, tau_d^2), one tau per polynomial degree
-# d (linear p, t; quadratic p^2, t^2 when used) shared by the growth forms,
-# the taus estimated from the data: a ridge penalty with its strength chosen by marginal likelihood, as
-# mgcv chooses smoothing parameters. A growth form whose species say little
+# d (linear p, t; second-order p^2, t^2, p t when used) shared by the growth
+# forms, the taus estimated from the data: a ridge penalty with its strength
+# chosen by marginal likelihood, as mgcv chooses smoothing parameters. A growth form whose species say little
 # about how spread changes with climate is pulled toward constant spread, and
 # tau_d -> 0 drops degree d.
 #
@@ -45,16 +45,21 @@
 #      posterior mode given tau, its covariance from the penalised Hessian.
 
 .spread_term_cols <- function(p, t, terms) {
-  all <- cbind(p = p, t = t, p2 = p^2, t2 = t^2)
+  all <- cbind(p = p, t = t, p2 = p^2, t2 = t^2, pt = p * t)
   all[, terms, drop = FALSE]
 }
+
+# Polynomial degree of each spread term: the squares and the interaction are
+# second order and share one tau.
+.spread_degree <- function(term) ifelse(term %in% c("p2", "t2", "pt"), 2L, 1L)
 
 #' Fit the location model with the species spread a smooth function of the
 #' species' climate centre.
 #'
 #' @param data records with a `location` column (`add_location_key()`).
 #' @param spread_terms terms of log sd_u in the standardised centres: any of
-#'   "p", "t", "p2", "t2" (precipitation, temperature, their squares).
+#'   "p", "t", "p2", "t2", "pt" (precipitation, temperature, their squares,
+#'   their product).
 #'   Linear by default; see the file header.
 #' @param penalty_tau optional prior SD of each climate coefficient, one per
 #'   element of `spread_terms` (the same for every growth form): adds the
@@ -222,7 +227,7 @@ estimate_spread_shrinkage <- function(theta, cov, tau_bounds = c(1e-3, 10)) {
   b <- theta[b_names]
   V <- cov[b_names, b_names, drop = FALSE]
   term <- sub(".*:", "", b_names)
-  degree <- ifelse(grepl("2$", term), 2L, 1L)
+  degree <- .spread_degree(term)
   degrees <- sort(unique(degree))
   k <- length(b)
   log_dmvnorm0 <- function(x, S) {
@@ -239,7 +244,7 @@ estimate_spread_shrinkage <- function(theta, cov, tau_bounds = c(1e-3, 10)) {
   names(b_post) <- b_names
   tau <- stats::setNames(exp(fit$par), paste0("degree ", degrees))
   term_levels <- unique(term)
-  tau_term <- stats::setNames(tau[match(ifelse(grepl("2$", term_levels), 2L, 1L), degrees)],
+  tau_term <- stats::setNames(tau[match(.spread_degree(term_levels), degrees)],
                               term_levels)
   list(tau = tau, tau_term = tau_term, b_post = b_post, cov_post = cov_post,
        at_lower = tau <= tau_bounds[1] * 1.01,
@@ -264,7 +269,7 @@ fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_sp
   fs <- if (!is.null(free$spread)) free$spread else free
   stopifnot(!is.null(fs$theta), !is.null(fs$cov))
   sh <- estimate_spread_shrinkage(fs$theta, fs$cov)
-  keep <- names(sh$tau_term)[!sh$at_lower[paste0("degree ", ifelse(grepl("2$", names(sh$tau_term)), 2, 1))]]
+  keep <- names(sh$tau_term)[!sh$at_lower[paste0("degree ", .spread_degree(names(sh$tau_term)))]]
   m <- fit_spread_rtmb(data, trait, groups, n_min, min_group_species,
                        spread_terms = keep,
                        penalty_tau = if (length(keep)) unname(sh$tau_term[keep]))
