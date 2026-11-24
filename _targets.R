@@ -375,14 +375,33 @@ list(
                climate_dir = dirname(climate_bio1_tif),
                australia_tif = climate_australia_tif))),
 
+  # The product: from climate alone. The co-occurring species' centres are
+  # learned as smooth surfaces of climate from the GBIF cells, so the
+  # statistics need only a location's climate (R/community/community_climate.R).
+  tar_target(centre_summaries, cell_centre_summaries(community_species, cell_climate_grid)),
+  tar_target(centre_surfaces, fit_centre_surfaces(centre_summaries)),
   tar_target(community_stats,
-             community_statistics(location_fits, cell_climate_grid, community_species)),
+             community_statistics_climate(
+               location_fits, predict_centre_surfaces(centre_surfaces, cell_climate_grid))),
   tar_target(community_stats_files,
              write_community_layers(community_stats, community_dir,
-                                    community_statistics_metadata(data_basis_info)),
+                                    community_statistics_metadata(data_basis_info),
+                                    statistics = c("community_mean", "community_sd",
+                                                   "range_lower", "range_upper")),
              format = "file"),
   tar_target(community_stats_maps,
              write_community_maps(community_stats, community_units, community_dir),
+             format = "file"),
+
+  # The check: the same statistics from each cell's own GBIF species
+  # (community_statistics()), against the climate-alone ones.
+  tar_target(community_stats_gbif,
+             community_statistics(location_fits, cell_climate_grid, community_species)),
+  tar_target(community_climate_check,
+             compare_community_climate_gbif(community_stats, community_stats_gbif)),
+  tar_target(community_climate_check_files,
+             write_community_climate_check(community_climate_check,
+                                           file.path(community_dir, "check")),
              format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================

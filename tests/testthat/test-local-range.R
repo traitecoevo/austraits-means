@@ -180,6 +180,45 @@ test_that("species means from the RTMB fit match glmmTMB's, at an average locati
   expect_true(all(s$centres$log_se > 0))
 })
 
+test_that("community statistics from the centres' distribution equal those from the species", {
+  skip_if_not_installed("RTMB")
+  gh <- .gauss_hermite_normal(7)
+  expect_equal(c(sum(gh$w), sum(gh$w * gh$z^2), sum(gh$w * gh$z^4)), c(1, 1, 3))
+
+  sim <- simulate_location_data(seed = 5)
+  sim$data <- dplyr::mutate(
+    sim$data,
+    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
+    average_temperature = average_temperature_mn + average_temperature_c)
+  m <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = character(0)))
+  # species present in 30 cells, drawn from the fitted species' centres
+  set.seed(1)
+  sp <- dplyr::distinct(sim$data, taxon_name, log_annual_precipitation_mn, average_temperature_mn) |>
+    dplyr::inner_join(sim$groups, by = "taxon_name")
+  climate <- tibble::tibble(cell_x = 1:30, cell_y = 0L,
+                            log_annual_precipitation = stats::runif(30, 6, 7.5),
+                            average_temperature = stats::runif(30, 12, 22))
+  climate$annual_precipitation <- exp(climate$log_annual_precipitation)
+  species <- purrr::map(1:30, function(i) dplyr::slice_sample(sp, n = 40) |>
+    dplyr::transmute(cell_x = i, cell_y = 0L, gbif_taxon_name = taxon_name, woodiness_group,
+                     centre_log_annual_precipitation = log_annual_precipitation_mn,
+                     centre_average_temperature = average_temperature_mn)) |>
+    purrr::list_rbind()
+  by_species <- community_statistics(list(m), climate, species)
+  # the cells' own centre distributions, as population SDs
+  centres <- cell_centre_summaries(species, climate) |>
+    dplyr::mutate(sd_p = sd_p * sqrt((n_species - 1) / n_species),
+                  sd_t = sd_t * sqrt((n_species - 1) / n_species),
+                  centres_extrapolated = FALSE)
+  by_climate <- community_statistics_climate(list(m), centres)
+  both <- dplyr::inner_join(by_species, by_climate,
+                            by = c("woodiness_group", "cell_x", "cell_y"), suffix = c("_s", "_c"))
+  expect_equal(nrow(both), 60)
+  expect_equal(both$community_mean_c, both$community_mean_s, tolerance = 1e-10)
+  expect_equal(both$community_sd_c, both$community_sd_s, tolerance = 1e-10)
+})
+
 test_that("community_range back-transforms a central interval", {
   r <- community_range(log(10), 0.5^2, level = 0.90)
   expect_equal(r$community_mean, 10)

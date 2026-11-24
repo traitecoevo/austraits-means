@@ -20,10 +20,9 @@
 # the community range the central 90% interval of a normal on the log scale
 # with that variance.
 #
-# This first version takes the species present from the cell's own GBIF
-# records. The product will predict from climate alone: the mean and spread
-# of the co-occurring species' centres as a smooth function of climate
-# (roadmap.md, Later work, next step 1).
+# community_statistics() takes the species present from each cell's own
+# GBIF records; it is the check on the product, community_statistics_climate()
+# (community_climate.R), which predicts from climate alone.
 
 #' Grid settings: the location model's cells, in an equal-area projection.
 community_layer_settings <- function() {
@@ -260,22 +259,23 @@ write_community_layers <- function(layers, dir, metadata,
 #' Metadata of the community statistics.
 community_statistics_metadata <- function(data_basis, settings = community_layer_settings()) {
   c(list(
-    product = "AusTraits community statistics (first version, unpublished)",
+    product = "AusTraits community statistics (unpublished draft)",
     description = paste(
-      "For each cell and growth form, the community mean and community range of the species",
-      "with GBIF records there, from the location model (R/model/spread_rtmb.R,",
-      "R/community/community_statistics.R): each species' expected mean at the cell's climate",
-      "and an average location; the range from the model's variance among species within a",
-      "location, with the species spread at each species' climate centre, kept within the",
-      "range of the fitted species' spreads."),
+      "For each cell and growth form, from the cell's climate alone, the community mean and",
+      "community range from the location model (R/model/spread_rtmb.R,",
+      "R/community/community_climate.R): the species' expected means at the cell's climate",
+      "and an average location, averaged over the climate centres of the species that",
+      "co-occur at that climate (a smooth surface learned from GBIF records); the range from",
+      "the model's variance among species within a location."),
     weighting = "presence only: every species counts equally (#18)",
     groups = "woody / non-woody by the rule of #19; species without a class are left out",
     spatial_unit = paste0(location_cell_km(), " x ", location_cell_km(),
                           " km cells of an equal-area grid (", settings$crs,
                           "), the location model's locations; x and y give cell centres in",
                           " metres, longitude and latitude in degrees"),
-    min_species = paste0("statistics are reported where at least ", settings$min_species,
-                         " species of the group are present; counts are always given"),
+    extrapolation = paste("`extrapolated`: the cell's climate is outside that of the trait's records",
+                          "for the growth form; `centres_extrapolated`: outside the cells the centre",
+                          "surfaces were fitted to"),
     definitions = list(
       community_mean = "exp(mean over the species of their expected log mean); a geometric mean, in trait units",
       community_sd = "SD among the species' means within the cell, natural-log units",
@@ -333,8 +333,8 @@ plot_community_statistics <- function(layers, trait, unit = NULL) {
   ) +
     patchwork::plot_annotation(
       title = paste0(trait, ": community statistics, location model"),
-      subtitle = paste0(location_cell_km(), " km cells; species present from GBIF; grey: fewer than ",
-                        community_layer_settings()$min_species, " species of the group"),
+      subtitle = paste0(location_cell_km(), " km cells; from each cell's climate alone ",
+                        "(co-occurring species' centres learned from GBIF)"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 12),
                              plot.subtitle = ggplot2::element_text(size = 9, colour = "#6b6a66")))
 }

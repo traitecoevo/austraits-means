@@ -29,7 +29,7 @@ The two Quarto reports in `reports/` are **reporting layers** (rendered by `tar_
 - `reports/dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
 - `reports/analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
 
-Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait fits: the location model (the product: species means, exports, figures), and the pooled and locations-pooled models with the comparison against them (`terminology.md`, Model names); the retired portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means (read from austraits.build); the woody lookup, combined species means, and the community statistics from the location model (GBIF species per 50 km cell, `R/community/community_statistics.R`); the comparisons of species means; the figure set; the reports.
+Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait fits: the location model (the product: species means, exports, figures), and the pooled and locations-pooled models with the comparison against them (`terminology.md`, Model names); the retired portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means (read from austraits.build); the woody lookup, combined species means, and the community statistics from the location model and each 50 km cell's climate alone (`R/community/community_climate.R`), checked against each cell's own GBIF species (`community_statistics.R`); the comparisons of species means; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
 - *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `R/scripts/build_medoids.R` (`build_climate_medoids()`, parallel over taxa). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data-raw/austraits/README.md`.
@@ -70,7 +70,8 @@ R/
   means/       observed_means_portal.R, observed_means_release.R (reads the
                geometric observed means austraits.build publishes),
                reliability.R, species_means_io.R, compare_portal.R
-  community/   woody_lookup.R, community_statistics.R
+  community/   woody_lookup.R, community_climate.R (the product),
+               community_statistics.R (grid, GBIF species per cell, the check)
   release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,

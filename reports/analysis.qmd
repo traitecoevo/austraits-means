@@ -199,24 +199,33 @@ for (f in location_fits) {
 
 ## Community statistics
 
-For each `r location_cell_km()` km cell and growth form, the community mean and community range of the species with GBIF records there, from the location model (`R/community/community_statistics.R`): each species' expected mean at the cell's climate and an average location, and the model's spread among species within a location. This first version takes the species from each cell's GBIF records; the product will predict them from climate alone (`roadmap.md`). Written to `outputs/community/<build version>/` as a parquet table, GeoTIFFs and one map per trait.
+For each `r location_cell_km()` km cell and growth form, from the cell's climate alone, the community mean and community range from the location model (`R/community/community_climate.R`): each species' expected mean at that climate and an average location, averaged over the climate centres of the species that co-occur there, and the model's spread among species within a location. The distribution of co-occurring species' centres (their mean, SDs and correlation) is a smooth surface of climate, learned from the GBIF records of each growth form in cells with at least 20 species, so the statistics can be evaluated at any climate. Written to `outputs/community/<build version>/` as a parquet table, GeoTIFFs and one map per trait.
 
 ```{r community-setup}
 tar_load(community_stats)
 tar_load(community_units)
+tar_load(community_climate_check)
 ```
 
-Cells with statistics (at least 5 species of the growth form present), and the median community SD (natural-log units) and 90% range ratio (upper / lower) across them:
+Per trait and growth form across cells: the median community SD (natural-log units) and its 5–95% range, the median 90% range ratio (upper / lower), and the share of cells whose climate lies outside the trait's records for that growth form:
 
 ```{r community-summary}
 community_stats |>
-  dplyr::filter(!is.na(community_mean)) |>
   dplyr::group_by(trait_name, woodiness_group) |>
   dplyr::summarise(.groups = "drop", cells = dplyr::n(),
-                   median_species = stats::median(n_species),
                    median_community_sd = round(stats::median(community_sd), 2),
+                   community_sd_5_95 = paste(round(stats::quantile(community_sd, c(0.05, 0.95)), 2),
+                                             collapse = " to "),
                    median_range_ratio = round(stats::median(range_upper / range_lower), 1),
-                   pct_extrapolated = round(100 * mean(extrapolated), 1)) |>
+                   pct_extrapolated = round(100 * mean(extrapolated))) |>
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+How much predicting the species present from climate loses: the climate-alone statistics against those from each cell's own GBIF species, in cells with at least 20 species of the growth form (also `outputs/community/<build version>/check/`).
+
+```{r community-check}
+community_climate_check$summary |>
+  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
   knitr::kable(format.args = list(big.mark = ","))
 ```
 
