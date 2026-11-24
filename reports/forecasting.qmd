@@ -43,33 +43,46 @@ log y_s(x) = c_s + slope_precipitation_s * (log P - log P_centre) + slope_temper
 
 Its variance is a' Σ_s a with a = (1, Δlog P, ΔT), and Σ_s the covariance of the three numbers in the table. That's the mean at the climate, at an average location (`type = "mean"`). For an actual new site, add the location and species × location variances (`type = "site"`). For a single new record, add the residual too (`type = "record"`).
 
-An example: snow gum LMA along a rainfall gradient at its centre's temperature, with its records.
+An example: LMA of *Corymbia terminalis* along a rainfall gradient at its centre's temperature, with its records summarised as one point per 50 km site (61 records at 14 sites). The model weighs locations, not records, so the points are site means: for a species with most records at one site, a plot of the records would sit wherever that site does.
 
 ```{r species-example, fig.width = 8, fig.height = 5}
-taxon <- "Eucalyptus pauciflora"
+taxon <- "Corymbia terminalis"
 trait <- "leaf_mass_per_area"
 r <- filter(responses, taxon_name == taxon, trait_name == trait)
-p_grid <- exp(seq(log(300), log(3000), length.out = 80))
+p_grid <- exp(seq(log(r$record_precipitation_min / 2), log(r$record_precipitation_max * 2),
+                  length.out = 80))
 fc <- bind_rows(
   mean = forecast_species(responses, variances, taxon, trait, p_grid, r$centre_temperature, "mean"),
   record = forecast_species(responses, variances, taxon, trait, p_grid, r$centre_temperature, "record"),
   .id = "type")
-recs <- tar_read(unified_cells) |> filter(taxon_name == taxon, trait_name == trait)
+# the species' records as one point per site (50 km location): the model
+# treats a site with many records as one location, so a heavily sampled site
+# would dominate a plot of the records; each site mean is moved to the
+# plotted temperature with the species' temperature slope
+sites <- tar_read(unified_cells) |>
+  filter(taxon_name == taxon, trait_name == trait) |>
+  group_by(location) |>
+  summarise(n = n(), log_value = mean(log_value),
+            precipitation = exp(mean(log_annual_precipitation)),
+            temperature = mean(average_temperature)) |>
+  mutate(value_at_centre_t = exp(log_value - r$slope_temperature *
+                                   (temperature - r$centre_temperature)))
 ggplot(fc, aes(annual_precipitation, estimate)) +
   geom_ribbon(data = filter(fc, type == "record"), aes(ymin = lower, ymax = upper),
-              fill = "grey85") +
+              fill = "#d9f0d3") +
   geom_ribbon(data = filter(fc, type == "mean"), aes(ymin = lower, ymax = upper),
-              fill = "#1b7837", alpha = 0.35) +
+              fill = "#5aae61", alpha = 0.6) +
   geom_line(data = filter(fc, type == "mean"), colour = "#1b7837", linewidth = 1) +
-  geom_point(data = recs, aes(exp(log_annual_precipitation), value), size = 1, alpha = 0.6) +
+  geom_point(data = sites, aes(precipitation, value_at_centre_t, size = n), alpha = 0.6) +
   geom_vline(xintercept = c(r$record_precipitation_min, r$record_precipitation_max),
              linetype = "dashed", colour = "grey50") +
-  scale_x_log10() + scale_y_log10() +
+  scale_x_log10() + scale_y_log10() + scale_size_area(max_size = 5, name = "records") +
   labs(x = "Annual precipitation (mm)", y = "LMA (g/m2)",
        title = paste0(taxon, ": forecast at ", round(r$centre_temperature, 1), " °C"),
-       subtitle = paste("Green: the species' mean, 94% interval. Grey: a single new record at a new",
-                        "site. Dashed: its records' rainfall range;\noutside it the forecast",
-                        "extrapolates. Points: its records (at their own temperatures)")) +
+       subtitle = paste("Line and dark band: the species' mean at an average location, 94% interval.",
+                        "Light band: a single new record\nat a new site, 94% interval. Dashed: its records'",
+                        "rainfall range. Points: its mean at each site (size: records), moved\nto that",
+                        "temperature with its temperature slope; sites differ by their location effects")) +
   theme_bw(base_size = 10)
 ```
 
