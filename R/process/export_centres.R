@@ -127,7 +127,7 @@ modelled_means_metadata <- function(data_basis) {
                   "g = woody / non-woody, cells of", location_cell_km(), "km"),
     centring = "climate predictors centred on each species' medoid: x_mn = medoid, x_c = record - medoid",
     species_included = paste("species with more than 5 field records, a climate medoid and a woody or",
-                             "non-woody class, in a growth form with at least 20 such species"),
+                             "non-woody class, in a growth form with at least 5 such species and records in 10 or more locations"),
     interval = "94%, delta method on the log scale, for the species' mean at an average location",
     documentation = "terminology.md; reports/analysis.qmd"
   ), data_basis, repo_provenance())

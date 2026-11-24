@@ -36,7 +36,7 @@ out_dir <- "outputs/traits"
 
 ## The location model
 
-One model per trait, fitted to the trait records of species with more than 5 records, a medoid and a woody or non-woody class (in a growth form with at least 20 such species). Locations are `r location_cell_km()` km cells of an equal-area grid. On the log scale, a record of species *s* (growth form *g*) at location *l* is
+One model per trait, fitted to the trait records of species with more than 5 records, a medoid and a woody or non-woody class (in a growth form with at least 5 such species and records in at least 10 locations; a growth form the model cannot fit is dropped). Locations are `r location_cell_km()` km cells of an equal-area grid. On the log scale, a record of species *s* (growth form *g*) at location *l* is
 
 ```
 log_value = b0_g + b_between,g . m_s + b_within,g . (x - m_s)    fixed: per growth form
@@ -63,7 +63,7 @@ trait_summary |>
 
 ## What the pooled models get wrong
 
-Three nested models, named by what they pool: the **pooled** model (growth forms and locations pooled; the earlier product), **locations pooled** (woody and non-woody apart, no location effects) and the **location model**. `compare_pooled_location()` measures, per trait and growth form, how far the species means move at each step, and how the community SD among species within a cell that each per-growth-form model implies compares with the SD observed among the species recorded together (1 is a match; the pooled model has one species variance for both growth forms, so it has none of its own). Also written to `outputs/comparisons/pooled_vs_location_*.csv`.
+Three nested models, named by what they pool (and the location model again with its sorting factor): the **pooled** model (growth forms and locations pooled; the earlier product), **locations pooled** (woody and non-woody apart, no location effects) and the **location model**. `compare_pooled_location()` measures, per trait and growth form, how far the species means move at each step, and how the community SD among species within a cell that each per-growth-form model implies compares with the SD observed among the species recorded together (1 is a match; the pooled model has one species variance for both growth forms, so it has none of its own). Also written to `outputs/comparisons/pooled_vs_location_*.csv`.
 
 ```{r pooled-setup}
 tar_load(pooled_location_comparison)
@@ -199,7 +199,7 @@ for (f in location_fits) {
 
 ## Community statistics
 
-For each `r location_cell_km()` km cell and growth form, from the cell's climate alone, the community mean and community range from the location model (`R/community/community_climate.R`): each species' expected mean at that climate and an average location, averaged over the climate centres of the species that co-occur there, and the model's spread among species within a location. The distribution of co-occurring species' centres (their mean, SDs and correlation) is a smooth surface of climate, learned from the GBIF records of each growth form in cells with at least 20 species, so the statistics can be evaluated at any climate. Written to `outputs/community/<build version>/` as a parquet table, GeoTIFFs and one map per trait.
+For each `r location_cell_km()` km cell and growth form, from the cell's climate alone, the community mean and community range from the location model (`R/community/community_climate.R`): each species' expected mean at that climate and an average location, averaged over the climate centres of the species that co-occur there, and the model's spread among species within a location, its species-spread term scaled by a sorting factor for how much more alike co-occurring species are (`R/community/community_sorting.R`). Each community mean and SD has a 94% interval for the uncertainty of the model's parameters. The distribution of co-occurring species' centres (their mean, SDs and correlation) is a smooth surface of climate, learned from the GBIF records of each growth form in cells with at least 20 species, so the statistics can be evaluated at any climate. Written to `outputs/community/<build version>/` as a parquet table, GeoTIFFs and one map per trait.
 
 ```{r community-setup}
 tar_load(community_stats)
@@ -207,13 +207,14 @@ tar_load(community_units)
 tar_load(community_climate_check)
 ```
 
-Per trait and growth form across cells: the median community SD (natural-log units) and its 5–95% range, the median 90% range ratio (upper / lower), and the share of cells whose climate lies outside the trait's records for that growth form:
+Per trait and growth form across cells: the sorting factor k, the median community SD (natural-log units) and its 5–95% range, the median width of its 94% interval, the median 90% range ratio (upper / lower), and the share of cells whose climate lies outside the trait's records for that growth form:
 
 ```{r community-summary}
 community_stats |>
   dplyr::group_by(trait_name, woodiness_group) |>
-  dplyr::summarise(.groups = "drop", cells = dplyr::n(),
+  dplyr::summarise(.groups = "drop", cells = dplyr::n(), k = round(dplyr::first(k), 2),
                    median_community_sd = round(stats::median(community_sd), 2),
+                   median_sd_interval_width = round(stats::median(community_sd_upper - community_sd_lower), 2),
                    community_sd_5_95 = paste(round(stats::quantile(community_sd, c(0.05, 0.95)), 2),
                                              collapse = " to "),
                    median_range_ratio = round(stats::median(range_upper / range_lower), 1),

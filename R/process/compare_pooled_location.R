@@ -22,8 +22,10 @@
 #'   `locations` (locations pooled to location model) and `total`, with the
 #'   correlation of the pooled and location-model means. `benchmark`: per
 #'   model and growth form, the ratio of modelled to observed community SD
-#'   (summarise_community_benchmark()).
-compare_pooled_location <- function(m, pooled, locations_pooled, min_species = 5) {
+#'   (summarise_community_benchmark()); with `sorting`, also the location
+#'   model with its species spread scaled by the sorting factor.
+compare_pooled_location <- function(m, pooled, locations_pooled, sorting = NULL,
+                                    min_species = 5) {
   if (is.null(m) || is.null(pooled) || is.null(locations_pooled)) return(NULL)
   means <- dplyr::transmute(m$centres, taxon_name,
                             woodiness_group = as.character(woodiness_group),
@@ -53,12 +55,25 @@ compare_pooled_location <- function(m, pooled, locations_pooled, min_species = 5
   benchmark <- dplyr::bind_rows(
     `location model` = summarise_community_benchmark(
       benchmark_community_variance(m, noise_vc = noise, min_species = min_species)),
+    `location model, sorting` = if (!is.null(sorting)) summarise_community_benchmark(
+      benchmark_community_variance(.with_sorting(m, sorting), noise_vc = noise,
+                                   min_species = min_species)),
     `locations pooled` = summarise_community_benchmark(
       benchmark_community_variance(locations_pooled, noise_vc = noise,
                                    min_species = min_species)),
     .id = "model") |>
     dplyr::mutate(trait = m$trait, .before = 1)
   list(trait = m$trait, shift = shift, benchmark = benchmark)
+}
+
+# A location-model fit with each species' variance scaled by its growth
+# form's sorting factor (community_sorting.R), for the benchmark.
+.with_sorting <- function(m, sorting) {
+  g <- as.character(m$centres$woodiness_group[match(m$species_variance$taxon_name,
+                                                    m$centres$taxon_name)])
+  k <- vapply(g, function(x) .sorting_k(sorting, m$trait, x), numeric(1))
+  m$species_variance$species_variance <- m$species_variance$species_variance * k
+  m
 }
 
 #' Write the comparison across traits to `dir`.

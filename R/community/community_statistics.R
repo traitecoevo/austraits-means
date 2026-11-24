@@ -155,13 +155,15 @@ cell_species <- function(presence, medoids_path, name_map, groups) {
 #' @param fits list of fit_location_target() results.
 #' @param climate output of `cell_climate()`.
 #' @param species output of `cell_species()`.
+#' @param sorting optional `estimate_sorting_factors()` result: the species
+#'   spread is scaled by its `k` (community_sorting.R).
 #' @param level mass of the community range.
 #' @return long tibble: trait_name, cell, woodiness_group, n_species, cell
 #'   climate, community_mean, community_sd (natural-log units), range_lower,
 #'   range_upper (empty with fewer than `min_species` species), and
 #'   `extrapolated` (the cell's climate outside the records' for that trait
 #'   and growth form).
-community_statistics <- function(fits, climate, species, level = 0.90,
+community_statistics <- function(fits, climate, species, sorting = NULL, level = 0.90,
                                  settings = community_layer_settings()) {
   cells <- dplyr::inner_join(species, climate, by = c("cell_x", "cell_y"))
   purrr::map(purrr::compact(fits), function(m) {
@@ -198,7 +200,7 @@ community_statistics <- function(fits, climate, species, level = 0.90,
       rec <- dplyr::filter(m$data, woodiness_group == g)
       outside <- function(v, r) v < min(r) | v > max(r)
       sm <- d |>
-        dplyr::mutate(mu = mu, var_u = exp(2 * log_sd),
+        dplyr::mutate(mu = mu, var_u = .sorting_k(sorting, m$trait, g) * exp(2 * log_sd),
                       var_slopes = sP^2 * (xP - mP)^2 + sT^2 * (xT - mT)^2) |>
         dplyr::group_by(cell_x, cell_y, annual_precipitation, log_annual_precipitation,
                         average_temperature) |>
@@ -266,7 +268,9 @@ community_statistics_metadata <- function(data_basis, settings = community_layer
       "R/community/community_climate.R): the species' expected means at the cell's climate",
       "and an average location, averaged over the climate centres of the species that",
       "co-occur at that climate (a smooth surface learned from GBIF records); the range from",
-      "the model's variance among species within a location."),
+      "the model's variance among species within a location, its species-spread term scaled by",
+      "a sorting factor for how much more alike co-occurring species are. Intervals carry the",
+      "uncertainty of the model's parameters (not of the centre surfaces or the sorting factor)."),
     weighting = "presence only: every species counts equally (#18)",
     groups = "woody / non-woody by the rule of #19; species without a class are left out",
     spatial_unit = paste0(location_cell_km(), " x ", location_cell_km(),
@@ -281,7 +285,12 @@ community_statistics_metadata <- function(data_basis, settings = community_layer
       community_sd = "SD among the species' means within the cell, natural-log units",
       range_lower = "lower end of the central 90% of the species' means, trait units",
       range_upper = "upper end of the central 90% of the species' means, trait units",
-      extrapolated = "the cell's climate lies outside that of the trait's records for the growth form")
+      extrapolated = "the cell's climate lies outside that of the trait's records for the growth form",
+      k = "sorting factor: how much more alike co-occurring species are than the model's species SD implies (R/community/community_sorting.R); scales the species-spread term",
+      community_mean_lower = "lower end of the 94% interval of community_mean, for the uncertainty of the model's parameters (200 draws)",
+      community_mean_upper = "upper end of that interval",
+      community_sd_lower = "lower end of the 94% interval of community_sd, likewise",
+      community_sd_upper = "upper end of that interval")
   ), data_basis, repo_provenance())
 }
 

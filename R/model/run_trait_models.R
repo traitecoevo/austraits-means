@@ -128,29 +128,54 @@ location_cell_km <- function() 50
 #' Fit the location model for one trait, as a `targets` branch: the RTMB
 #' spread model free (log species SD linear in the climate centre), then with
 #' its climate slopes shrunk (fit_spread_shrunk()), with every species'
-#' modelled mean at its climate centre. NULL, with a message, if the trait
-#' cannot be fitted.
+#' modelled mean at its climate centre.
+#'
+#' A growth form the model cannot fit is dropped (roadmap.md, 25 November
+#' 2026), not propped up by borrowing from the other: if either fit fails or
+#' does not converge (including a Hessian that is not positive definite), the
+#' smallest growth form is dropped and the trait refitted without it. NULL,
+#' with a message, if no growth form can be fitted.
 #'
 #' @param data `unified` with a `location` column (add_location_key()).
 #' @param groups woody lookup.
+#' @param min_group_species species a growth form needs to be tried.
 #' @return the shrunk `rtmb_spread_fit`, with `backend = "rtmb"`, `centres`
-#'   in the schema of species_centres() (location_species_centres()) and
-#'   `free` (the free fit's AIC, coefficients and convergence).
-fit_location_target <- function(data, trait, groups, n_min = 5) {
+#'   in the schema of species_centres() (location_species_centres()), `free`
+#'   (the free fit's AIC, coefficients and convergence) and `dropped_groups`
+#'   (growth forms dropped because the fit failed, with the reason).
+fit_location_target <- function(data, trait, groups, n_min = 5, min_group_species = 5) {
   message("== ", trait, " (location model, RTMB) ==")
-  tryCatch({
-    free <- fit_spread_rtmb(data, trait, groups, n_min = n_min)
-    if (is.null(free)) return(NULL)
-    m <- fit_spread_shrunk(data, trait, groups, free = free, n_min = n_min, centres = TRUE)
-    if (!m$converged) warning(trait, ": location model did not converge (", m$message, ")")
-    m$free <- list(aic = free$aic, theta = free$spread$theta, cov = free$spread$cov,
-                   converged = free$converged, seconds = free$seconds)
-    m$backend <- "rtmb"
-    m$centres <- location_species_centres(m)
-    m
-  }, error = function(e) {
-    message("  failed: ", conditionMessage(e)); NULL
-  })
+  dropped <- character(0)
+  repeat {
+    res <- tryCatch({
+      free <- fit_spread_rtmb(data, trait, groups, n_min = n_min,
+                              min_group_species = min_group_species)
+      if (is.null(free)) return(NULL)
+      if (!free$converged) stop("free fit did not converge (", free$message, ")")
+      m <- fit_spread_shrunk(data, trait, groups, free = free, n_min = n_min,
+                             min_group_species = min_group_species, centres = TRUE)
+      if (!m$converged) stop("shrunk fit did not converge (", m$message, ")")
+      m$free <- list(aic = free$aic, theta = free$spread$theta, cov = free$spread$cov,
+                     converged = free$converged, seconds = free$seconds)
+      m
+    }, error = function(e) e)
+    if (!inherits(res, "error")) break
+    prep <- .woodiness_data(data, trait, groups, n_min, min_group_species)
+    if (is.null(prep) || length(prep$groups) < 2) {
+      message("  failed: ", conditionMessage(res))
+      return(NULL)
+    }
+    n <- prep$n_species$n[match(prep$groups, prep$n_species$woodiness_group)]
+    smallest <- prep$groups[which.min(n)]
+    dropped <- c(dropped, stats::setNames(conditionMessage(res),
+                                          paste0(smallest, " (", min(n), " species)")))
+    message("  dropping ", names(dropped)[length(dropped)], ": ", conditionMessage(res))
+    min_group_species <- min(n) + 1
+  }
+  res$backend <- "rtmb"
+  res$centres <- location_species_centres(res)
+  res$dropped_groups <- dropped
+  res
 }
 
 #' Fixed effects of a location-model fit, one block per growth form, with the

@@ -211,12 +211,82 @@ test_that("community statistics from the centres' distribution equal those from 
     dplyr::mutate(sd_p = sd_p * sqrt((n_species - 1) / n_species),
                   sd_t = sd_t * sqrt((n_species - 1) / n_species),
                   centres_extrapolated = FALSE)
-  by_climate <- community_statistics_climate(list(m), centres)
+  by_climate <- community_statistics_climate(list(m), centres, n_draws = 0)
   both <- dplyr::inner_join(by_species, by_climate,
                             by = c("woodiness_group", "cell_x", "cell_y"), suffix = c("_s", "_c"))
   expect_equal(nrow(both), 60)
   expect_equal(both$community_mean_c, both$community_mean_s, tolerance = 1e-10)
   expect_equal(both$community_sd_c, both$community_sd_s, tolerance = 1e-10)
+
+  # intervals from parameter draws hold the estimate
+  ci <- community_statistics_climate(list(m), centres, n_draws = 100)
+  expect_gt(mean(ci$community_mean_lower <= ci$community_mean &
+                   ci$community_mean <= ci$community_mean_upper), 0.95)
+  expect_true(all(ci$community_sd_lower < ci$community_sd_upper))
+  # a sorting factor below 1 narrows the range, in both versions alike
+  srt <- tibble::tibble(trait = "sim", woodiness_group = c("woody", "non_woody"), k = 0.5)
+  half_c <- community_statistics_climate(list(m), centres, sorting = srt, n_draws = 0)
+  half_s <- community_statistics(list(m), climate, species, sorting = srt)
+  expect_true(all(half_c$community_sd < by_climate$community_sd))
+  expect_equal(dplyr::arrange(half_c, woodiness_group, cell_x)$community_sd,
+               dplyr::arrange(half_s, woodiness_group, cell_x)$community_sd, tolerance = 1e-10)
+})
+
+test_that("forecasts from the exported tables reproduce the model", {
+  skip_if_not_installed("RTMB")
+  sim <- simulate_location_data(seed = 5)
+  sim$data <- dplyr::mutate(
+    sim$data, unit = "u",
+    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
+    average_temperature = average_temperature_mn + average_temperature_c)
+  g <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                            location = "location"))
+  m <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = character(0), centres = TRUE))
+  m$centres <- location_species_centres(m)
+  responses <- species_response_table(list(m))
+  variances <- site_variance_table(list(m))
+  # a new site away from each species' centre, against glmmTMB's prediction
+  # for a new location (which carries the location and species x location
+  # variances, as type = "site" does)
+  sp <- responses[1:20, ]
+  f <- purrr::pmap(sp, function(taxon_name, centre_precipitation, centre_temperature, ...)
+    forecast_species(responses, variances, taxon_name, "sim",
+                     centre_precipitation * exp(0.3), centre_temperature - 2, type = "site")) |>
+    dplyr::bind_rows()
+  nd <- tibble::tibble(taxon_name = sp$taxon_name, woodiness_group = sp$woodiness_group,
+                       log_annual_precipitation_mn = log(sp$centre_precipitation),
+                       average_temperature_mn = sp$centre_temperature,
+                       log_annual_precipitation_c = 0.3, average_temperature_c = -2,
+                       location = "__new__")
+  p <- stats::predict(g$fit, newdata = nd, se.fit = TRUE, allow.new.levels = TRUE)
+  expect_equal(f$log_estimate, unname(p$fit), tolerance = 1e-4)
+  expect_equal(unname(f$log_se), unname(p$se.fit), tolerance = 1e-4)
+  expect_true(all(forecast_species(responses, variances, sp$taxon_name[1], "sim",
+                                   1e5, 50)$extrapolated))
+})
+
+test_that("forecast_community interpolates the surface exactly at its nodes", {
+  surface <- tidyr::expand_grid(log_annual_precipitation = log(c(200, 600, 1800)),
+                                average_temperature = c(10, 20, 30)) |>
+    dplyr::mutate(trait_name = "sim", woodiness_group = "woody",
+                  annual_precipitation = exp(log_annual_precipitation),
+                  community_mean = exp(log_annual_precipitation / 3 + average_temperature / 10),
+                  range_lower = community_mean / 4, range_upper = community_mean * 4,
+                  community_mean_lower = community_mean / 1.1,
+                  community_mean_upper = community_mean * 1.1,
+                  community_sd = 0.5 + average_temperature / 100,
+                  community_sd_lower = community_sd - 0.05, community_sd_upper = community_sd + 0.05,
+                  extrapolated = average_temperature > 25, inside_australia = TRUE)
+  f <- forecast_community(surface, "sim", "woody", surface$annual_precipitation,
+                          surface$average_temperature)
+  expect_equal(f$community_mean, surface$community_mean, tolerance = 1e-10)
+  expect_equal(f$community_sd, surface$community_sd, tolerance = 1e-10)
+  # between nodes: linear in log precipitation and temperature
+  mid <- forecast_community(surface, "sim", "woody", sqrt(200 * 600), 15)
+  expect_equal(log(mid$community_mean), log(sqrt(200 * 600)) / 3 + 1.5, tolerance = 1e-10)
+  expect_false(mid$extrapolated)
+  expect_true(forecast_community(surface, "sim", "woody", 100, 15)$outside_australia)
 })
 
 test_that("community_range back-transforms a central interval", {

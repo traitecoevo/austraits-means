@@ -108,7 +108,7 @@ mapped <- tar_map(
   # step (pooled -> locations pooled -> location model;
   # R/process/compare_pooled_location.R).
   tar_target(pooled_vs_location,
-             compare_pooled_location(location_fit, tmb_fit, woody_fit)),
+             compare_pooled_location(location_fit, tmb_fit, woody_fit, sorting_factors)),
 
   # Per-trait figures, from the location model, woody and non-woody apart:
   # the species' modelled means against climate, over the model's
@@ -381,9 +381,20 @@ list(
   # statistics need only a location's climate (R/community/community_climate.R).
   tar_target(centre_summaries, cell_centre_summaries(community_species, cell_climate_grid)),
   tar_target(centre_surfaces, fit_centre_surfaces(centre_summaries)),
+  # How much more alike co-occurring species are than the model's species SD
+  # implies, per trait and growth form (R/community/community_sorting.R).
+  tar_target(sorting_factors,
+             estimate_sorting_factors(location_fits, community_species, gbif_species_map)),
+  tar_target(sorting_factors_file, {
+    p <- file.path(community_dir, "sorting_factors.csv")
+    dir.create(community_dir, recursive = TRUE, showWarnings = FALSE)
+    readr::write_csv(sorting_factors, p)
+    p
+  }, format = "file"),
   tar_target(community_stats,
              community_statistics_climate(
-               location_fits, predict_centre_surfaces(centre_surfaces, cell_climate_grid))),
+               location_fits, predict_centre_surfaces(centre_surfaces, cell_climate_grid),
+               sorting = sorting_factors)),
   tar_target(community_stats_files,
              write_community_layers(community_stats, community_dir,
                                     community_statistics_metadata(data_basis_info),
@@ -397,12 +408,30 @@ list(
   # The check: the same statistics from each cell's own GBIF species
   # (community_statistics()), against the climate-alone ones.
   tar_target(community_stats_gbif,
-             community_statistics(location_fits, cell_climate_grid, community_species)),
+             community_statistics(location_fits, cell_climate_grid, community_species,
+                                  sorting = sorting_factors)),
   tar_target(community_climate_check,
              compare_community_climate_gbif(community_stats, community_stats_gbif)),
   tar_target(community_climate_check_files,
              write_community_climate_check(community_climate_check,
                                            file.path(community_dir, "check")),
+             format = "file"),
+
+  # ===== Forecasting tables (R/process/forecast.R) ==========================
+  # What forecasting needs, published as tables: per species, the three
+  # numbers that give its trait value at any climate and their covariance;
+  # per trait and growth form, the variances to add for a new site or record;
+  # and the community statistics on a regular climate grid. The demo,
+  # reports/forecasting.qmd, reads them back and checks them against the data.
+  tar_target(species_responses, species_response_table(location_fits)),
+  tar_target(site_variances, site_variance_table(location_fits)),
+  tar_target(community_surface_table,
+             community_surface(location_fits, centre_surfaces, cell_climate_grid,
+                               sorting = sorting_factors)),
+  tar_target(forecast_files,
+             write_forecast_tables(species_responses, site_variances, community_surface_table,
+                                   dir = file.path("outputs/forecast",
+                                                   austraits_dev_info$austraits_version)),
              format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================
@@ -426,7 +455,8 @@ list(
   # ---- reporting layers (rendered notebooks) ------------------------------
   # rendered next to the .qmd; code runs from the project root
   tar_quarto(report_dataset, "reports/dataset_construction.qmd"),
-  tar_quarto(report_analysis, "reports/analysis.qmd")
+  tar_quarto(report_analysis, "reports/analysis.qmd"),
+  tar_quarto(report_forecasting, "reports/forecasting.qmd")
 
 ) |>
   # ===== opt-in BRMS backend (full posterior) ==============================

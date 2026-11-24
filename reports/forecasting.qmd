@@ -1,0 +1,230 @@
+---
+title: "Forecasting trait values from the published tables"
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+This notebook shows how to forecast, with uncertainty, from three published tables alone:
+
+- **a named species' trait value at any climate**, from `species_climate_responses`;
+- **at an actual new site, or a single new record**, adding `site_variances`;
+- **the community mean and range of a growth form at any climate**, from `community_climate_surface`.
+
+Each forecast is checked against the original data. The tables come from the location model (`R/model/spread_rtmb.R`, `docs/local-range-model.qmd`). The forecasting needs nothing but the tables and two short functions in `R/process/forecast.R`, `forecast_species()` and `forecast_community()`, which a user could rewrite in any language. The checks also read the original records and fits from the pipeline.
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(targets)
+source("R/init.R")
+
+# the published tables, read from disk as a user would
+files <- tar_read(forecast_files)
+read <- function(stem) arrow::read_parquet(files[grepl(paste0(stem, "\\.parquet$"), files)])
+responses <- read("species_climate_responses")
+variances <- read("site_variances")
+surface <- read("community_climate_surface")
+c(species = nrow(responses), site_variances = nrow(variances), surface = nrow(surface))
+```
+
+## A named species
+
+In the location model, a species' expected log trait value at a site with climate x, at an average location, is
+
+```
+log y_s(x) = c_s + slope_precipitation_s * (log P - log P_centre) + slope_temperature_s * (T - T_centre)
+```
+
+Its variance is a' Σ_s a with a = (1, Δlog P, ΔT), and Σ_s the covariance of the three numbers in the table. That's the mean at the climate, at an average location (`type = "mean"`). For an actual new site, add the location and species × location variances (`type = "site"`). For a single new record, add the residual too (`type = "record"`).
+
+An example: snow gum LMA along a rainfall gradient at its centre's temperature, with its records.
+
+```{r species-example, fig.width = 8, fig.height = 5}
+taxon <- "Eucalyptus pauciflora"
+trait <- "leaf_mass_per_area"
+r <- filter(responses, taxon_name == taxon, trait_name == trait)
+p_grid <- exp(seq(log(300), log(3000), length.out = 80))
+fc <- bind_rows(
+  mean = forecast_species(responses, variances, taxon, trait, p_grid, r$centre_temperature, "mean"),
+  record = forecast_species(responses, variances, taxon, trait, p_grid, r$centre_temperature, "record"),
+  .id = "type")
+recs <- tar_read(unified_cells) |> filter(taxon_name == taxon, trait_name == trait)
+ggplot(fc, aes(annual_precipitation, estimate)) +
+  geom_ribbon(data = filter(fc, type == "record"), aes(ymin = lower, ymax = upper),
+              fill = "grey85") +
+  geom_ribbon(data = filter(fc, type == "mean"), aes(ymin = lower, ymax = upper),
+              fill = "#1b7837", alpha = 0.35) +
+  geom_line(data = filter(fc, type == "mean"), colour = "#1b7837", linewidth = 1) +
+  geom_point(data = recs, aes(exp(log_annual_precipitation), value), size = 1, alpha = 0.6) +
+  geom_vline(xintercept = c(r$record_precipitation_min, r$record_precipitation_max),
+             linetype = "dashed", colour = "grey50") +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "Annual precipitation (mm)", y = "LMA (g/m2)",
+       title = paste0(taxon, ": forecast at ", round(r$centre_temperature, 1), " °C"),
+       subtitle = paste("Green: the species' mean, 94% interval. Grey: a single new record at a new",
+                        "site. Dashed: its records' rainfall range;\noutside it the forecast",
+                        "extrapolates. Points: its records (at their own temperatures)")) +
+  theme_bw(base_size = 10)
+```
+
+### Check 1: at the climate centre, the forecast is the modelled mean
+
+```{r check-centre}
+mm <- arrow::read_parquet(file.path("outputs/species_means", tar_read(austraits_dev_info)$austraits_version,
+                                    "modelled_means.parquet"))
+at_centre <- purrr::pmap(responses, function(taxon_name, trait_name, centre_precipitation,
+                                             centre_temperature, ...)
+  forecast_species(responses, variances, taxon_name, trait_name,
+                   centre_precipitation, centre_temperature)) |>
+  bind_rows() |>
+  bind_cols(select(responses, taxon_name, trait_name))
+both <- inner_join(at_centre, mm, by = c("taxon_name", "trait_name"))
+c(species = nrow(both),
+  max_abs_diff_log = max(abs(both$log_estimate - both$log_value)),
+  max_abs_diff_lower = max(abs(log(both$lower) - both$log_value_lower)))
+```
+
+### Check 2: away from the centre, the forecast reproduces the model
+
+For every record, the forecast at the record's climate against the fitted model's own expectation for that species there at an average location: the fixed part plus the species' effect and its climate slopes, without the location effects.
+
+```{r check-model}
+fits <- purrr::compact(tar_read(location_fits))
+reproduce <- purrr::map(fits, function(m) {
+  ce <- m$centres
+  d <- m$data |> left_join(select(ce, taxon_name, g_0, g_log_annual_precipitation_c,
+                                  g_average_temperature_c), by = "taxon_name")
+  model <- m$fixed_pred + d$g_0 + d$g_log_annual_precipitation_c * d$log_annual_precipitation_c +
+    d$g_average_temperature_c * d$average_temperature_c
+  r <- left_join(select(d, taxon_name), filter(responses, trait_name == m$trait), by = "taxon_name")
+  table <- r$log_value_centre + r$slope_precipitation * d$log_annual_precipitation_c +
+    r$slope_temperature * d$average_temperature_c
+  tibble(trait = m$trait, records = nrow(d), max_abs_diff = max(abs(model - table)))
+}) |> bind_rows()
+knitr::kable(reproduce, digits = 12)
+```
+
+### Check 3: calibration against the records
+
+Each record against a forecast of a single new record at a new site, at its climate. Also each species' mean at each 50 km location against a forecast of its mean at a new site, adding the residual variance over the records there. These are the species' own records, so the species' effect is in-sample. The location and species × location effects are not used, so the intervals should hold about 94% of the values if the model's variances are right.
+
+```{r check-calibration}
+z94 <- qnorm(0.97)
+calibration <- purrr::map(fits, function(m) {
+  r <- filter(responses, trait_name == m$trait)
+  sv <- filter(variances, trait_name == m$trait)
+  d <- m$data |> mutate(woodiness_group = as.character(woodiness_group)) |>
+    left_join(r, by = c("taxon_name", "woodiness_group")) |>
+    left_join(sv, by = "woodiness_group")
+  dp <- d$log_annual_precipitation_c
+  dt <- d$average_temperature_c
+  est <- d$log_value_centre + d$slope_precipitation * dp + d$slope_temperature * dt
+  v_mean <- d$var_centre + dp^2 * d$var_slope_precipitation + dt^2 * d$var_slope_temperature +
+    2 * dp * d$cov_centre_slope_precipitation + 2 * dt * d$cov_centre_slope_temperature +
+    2 * dp * dt * d$cov_slope_precipitation_temperature
+  v_site <- v_mean + d$sd_location^2 + d$sd_species_location^2
+  rec <- abs(d$log_value - est) / sqrt(v_site + d$sd_residual^2) < z94
+  site <- d |> mutate(est = est, v_site = v_site) |>
+    group_by(taxon_name, location, woodiness_group) |>
+    summarise(.groups = "drop", n = n(), y = mean(log_value), est = mean(est),
+              v = mean(v_site) + first(sd_residual)^2 / n)
+  tibble(trait = m$trait, records = nrow(d), record_coverage = mean(rec),
+         site_means = nrow(site), site_coverage = mean(abs(site$y - site$est) / sqrt(site$v) < z94))
+}) |> bind_rows()
+knitr::kable(calibration, digits = 3, format.args = list(big.mark = ","))
+```
+
+## A growth form at a location
+
+The community statistics depend on a location only through its climate. `community_climate_surface` tabulates them on a regular grid of log annual precipitation × mean annual temperature, for each trait and growth form. `forecast_community()` interpolates on that grid. It returns:
+
+- the community mean and the community range (the central 90% of species' means) at an average location;
+- the community SD;
+- 94% intervals for the uncertainty of the model's parameters;
+- flags for climates outside the trait's records (`extrapolated`) and outside Australia's climates (`outside_australia`).
+
+```{r community-example, fig.width = 8, fig.height = 4.5}
+fcc <- bind_rows(lapply(c("woody", "non_woody"), function(g)
+  forecast_community(surface, "leaf_mass_per_area", g, p_grid, 17) |>
+    mutate(woodiness_group = g)))
+ggplot(fcc, aes(annual_precipitation, community_mean, colour = woodiness_group,
+                fill = woodiness_group)) +
+  geom_ribbon(aes(ymin = range_lower, ymax = range_upper), alpha = 0.15, colour = NA) +
+  geom_ribbon(aes(ymin = community_mean_lower, ymax = community_mean_upper), alpha = 0.4,
+              colour = NA) +
+  geom_line(linewidth = 1) +
+  scale_colour_manual(values = c(woody = "#1b7837", non_woody = "#b2182b")) +
+  scale_fill_manual(values = c(woody = "#1b7837", non_woody = "#b2182b")) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "Annual precipitation (mm)", y = "LMA (g/m2)", colour = NULL, fill = NULL,
+       title = "Community LMA at 17 °C",
+       subtitle = paste("Line: community mean, darker band its 94% interval;",
+                        "light band: the community range (central 90% of species)")) +
+  theme_bw(base_size = 10)
+```
+
+### Check 4: the surface reproduces the exact statistics
+
+The forecast at each 50 km cell's climate, interpolated from the surface, against the statistics computed exactly for that cell.
+
+```{r check-surface}
+exact <- tar_read(community_stats)
+interp <- exact |>
+  group_by(trait_name, woodiness_group) |>
+  group_modify(function(d, key) {
+    f <- forecast_community(surface, key$trait_name, key$woodiness_group,
+                            d$annual_precipitation, d$average_temperature)
+    tibble(diff_log_mean = log(f$community_mean / d$community_mean),
+           diff_sd = f$community_sd - d$community_sd)
+  }) |>
+  summarise(.groups = "drop", cells = n(),
+            median_abs_diff_log_mean = median(abs(diff_log_mean)),
+            max_abs_diff_log_mean = max(abs(diff_log_mean)),
+            median_abs_diff_sd = median(abs(diff_sd)), max_abs_diff_sd = max(abs(diff_sd)))
+knitr::kable(interp, digits = 4)
+```
+
+### Check 5: against the communities measured
+
+These are the location model's 50 km locations with at least 5 species of a growth form measured, taking each species' mean there. Two comparisons:
+
+- **the observed SD among those species against the forecast community SD**, as a ratio, where 1 is a match;
+- **how often the species' means fall inside the forecast community range.**
+
+The range is for an average location, and a real location is shifted by its location effect. So the coverage is also shown for the range widened by the location SD, which should hold about 90%.
+
+The measured species are those someone chose to measure, often similar ones measured together. They are a sample of the community, not the whole of it.
+
+```{r check-observed}
+z90 <- qnorm(0.95)
+observed <- purrr::map(fits, function(m) {
+  sv <- filter(variances, trait_name == m$trait)
+  m$data |>
+    mutate(woodiness_group = as.character(woodiness_group)) |>
+    group_by(location, woodiness_group, taxon_name) |>
+    summarise(.groups = "drop", y = mean(log_value),
+              p = mean(log_annual_precipitation), t = mean(average_temperature)) |>
+    group_by(location, woodiness_group) |>
+    filter(n() >= 5) |>
+    group_modify(function(d, key) {
+      f <- forecast_community(surface, m$trait, key$woodiness_group, exp(mean(d$p)), mean(d$t))
+      sd_l <- sv$sd_location[sv$woodiness_group == key$woodiness_group]
+      mu <- log(f$community_mean)
+      tibble(n = nrow(d), observed_sd = sd(d$y), forecast_sd = f$community_sd,
+             in_range = mean(d$y > log(f$range_lower) & d$y < log(f$range_upper)),
+             in_range_site = mean(abs(d$y - mu) < z90 * sqrt(f$community_sd^2 + sd_l^2)))
+    }) |>
+    group_by(woodiness_group) |>
+    summarise(trait = m$trait, locations = n(), median_species = median(n),
+              sd_ratio = mean(observed_sd) / mean(forecast_sd),
+              coverage_range = weighted.mean(in_range, n),
+              coverage_range_with_location = weighted.mean(in_range_site, n))
+}) |> bind_rows()
+knitr::kable(observed, digits = 2)
+```

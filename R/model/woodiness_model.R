@@ -40,7 +40,7 @@ woodiness_model_terms <- c("log_annual_precipitation_mn", "average_temperature_m
 #' @return list(trait, groups (fitted), n_species (per group, before the
 #'   minimum), formula, fit, data, fixed, spread_bins), or NULL if no group
 #'   can be fitted.
-fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_species = 20,
+fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_species = 5,
                                 location = NULL, spread_by = NULL, n_bins = 4) {
   prep <- .woodiness_data(data, trait, groups, n_min, min_group_species)
   if (is.null(prep)) return(NULL)
@@ -81,9 +81,18 @@ fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_specie
 
 # The records a woodiness model is fitted to, and its fixed-effect formula:
 # one trait, species with a woody or non-woody class and more than `n_min`
-# records, growth forms with at least `min_group_species` species. Shared by
-# fit_woodiness_model() and the RTMB spread model (R/model/spread_rtmb.R).
-.woodiness_data <- function(data, trait, groups, n_min = 5, min_group_species = 20) {
+# records, growth forms with at least `min_group_species` species and, when
+# the data carry locations, records in at least `min_group_locations` of
+# them. Shared by fit_woodiness_model() and the RTMB spread model
+# (R/model/spread_rtmb.R).
+#
+# The location minimum (25 November 2026): a growth form whose records sit at
+# a handful of sites cannot separate location effects from within-species
+# climate slopes, and its species means swing far from the data (non-woody
+# leaf N per area, 8 species at 4 cells, put Ptilotus at 4.2 against 0.75
+# observed). Below 10 cells it is not fitted; the next smallest has 16.
+.woodiness_data <- function(data, trait, groups, n_min = 5, min_group_species = 5,
+                            min_group_locations = 10) {
   sub <- data |>
     dplyr::filter(trait_name == trait) |>
     dplyr::inner_join(groups |>
@@ -93,8 +102,12 @@ fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_specie
   keep <- sub |> dplyr::count(taxon_name) |> dplyr::filter(n > n_min) |> dplyr::pull(taxon_name)
   sub <- dplyr::filter(sub, taxon_name %in% keep)
   n_species <- dplyr::count(dplyr::distinct(sub, taxon_name, woodiness_group), woodiness_group)
-  fitted <- intersect(c("woody", "non_woody"),
-                      n_species$woodiness_group[n_species$n >= min_group_species])
+  ok <- n_species$woodiness_group[n_species$n >= min_group_species]
+  if ("location" %in% names(sub)) {
+    n_loc <- dplyr::count(dplyr::distinct(sub, location, woodiness_group), woodiness_group)
+    ok <- intersect(ok, n_loc$woodiness_group[n_loc$n >= min_group_locations])
+  }
+  fitted <- intersect(c("woody", "non_woody"), ok)
   if (length(fitted) == 0) return(NULL)
   sub <- dplyr::filter(sub, woodiness_group %in% fitted) |>
     dplyr::mutate(woodiness_group = factor(woodiness_group, fitted))

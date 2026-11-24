@@ -68,12 +68,13 @@
 #'   centre, with its `level` interval (rtmb_species_centres()).
 #' @return an `rtmb_spread_fit`: list(trait, groups, data, fixed_pred, vc,
 #'   species_variance, location_effects, spread (coefficients and their
-#'   covariance), centre_scaling, logLik, df, aic, converged, seconds, and
-#'   with `centres = TRUE` the species centres). With
+#'   covariance), centre_scaling, par_fixed and cov_fixed (every fixed
+#'   parameter and their covariance), logLik, df, aic, converged, seconds,
+#'   and with `centres = TRUE` the species centres). With
 #'   a penalty, the coefficients are the posterior mode, the covariance the
 #'   posterior one, logLik is unpenalised at that mode and aic is NA (see
 #'   fit_spread_shrunk()).
-fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 20,
+fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 5,
                             spread_terms = c("p", "t"), penalty_tau = NULL,
                             centres = FALSE, level = 0.94) {
   penalised <- !is.null(penalty_tau)
@@ -164,8 +165,11 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
   # covariance of the fixed parameters from the Hessian of the Laplace
   # objective (sdreport would also compute every random effect's SD)
   hess <- stats::optimHess(opt$par, obj$fn, obj$gr)
-  cov_fixed <- tryCatch(solve(hess), error = function(e) NULL)
-  pd <- !is.null(cov_fixed) && all(is.finite(diag(cov_fixed))) && all(diag(cov_fixed) > 0)
+  cov_all <- tryCatch(solve(hess), error = function(e) NULL)
+  pd <- !is.null(cov_all) && all(is.finite(diag(cov_all))) && all(diag(cov_all) > 0)
+  if (!is.null(cov_all)) dimnames(cov_all) <- list(names(opt$par), names(opt$par))
+  # variance parameters at the boundary treated as known
+  cov_fixed <- .boundary_conditional_cov(hess, cov_all, opt$par)
   cov_theta <- NULL
   if (!is.null(cov_fixed)) {
     fixed_names <- names(opt$par)
@@ -178,9 +182,16 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
     # the fixed-effect design of each species at its climate centre: its
     # growth form, its medoid, within-species deviations 0
     nd <- dplyr::mutate(species, log_annual_precipitation_c = 0, average_temperature_c = 0)
-    X_sp <- stats::model.matrix(stats::as.formula(paste("~", prep$fixed)), nd)
+    mm <- function(nd) stats::model.matrix(stats::as.formula(paste("~", prep$fixed)), nd)
+    X_sp <- mm(nd)
     stopifnot(identical(colnames(X_sp), colnames(X)))
-    .rtmb_species_centres(obj, opt, hess, X_sp, level) |>
+    # the growth form's within-species slopes, as design rows: the change in
+    # the fixed part per unit of each centred climate variable
+    nd0 <- dplyr::mutate(nd, log_annual_precipitation_mn = 0, average_temperature_mn = 0)
+    Xp_sp <- mm(dplyr::mutate(nd0, log_annual_precipitation_c = 1)) - mm(nd0)
+    Xt_sp <- mm(dplyr::mutate(nd0, average_temperature_c = 1)) - mm(nd0)
+    .rtmb_species_centres(obj, opt, hess, X_sp, level, V = cov_fixed,
+                          Xp_sp = Xp_sp, Xt_sp = Xt_sp) |>
       dplyr::mutate(taxon_name = species$taxon_name, woodiness_group = species$woodiness_group,
                     log_annual_precipitation_mn = species$log_annual_precipitation_mn,
                     average_temperature_mn = species$average_temperature_mn,
@@ -221,6 +232,11 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
     spread = list(terms = spread_terms, theta = theta_hat, cov = cov_theta,
                   penalty_tau = penalty_tau),
     centre_scaling = scaling, centres = sp_centres,
+    # every fixed parameter at the optimum and their covariance (inverse
+    # Hessian of the Laplace objective, variance parameters at the boundary
+    # treated as known; with a penalty, the posterior one), for propagating
+    # parameter uncertainty (community_statistics_climate())
+    par_fixed = opt$par, cov_fixed = cov_fixed,
     logLik =-(opt$objective - if (penalised) sum(pl$b^2 / (2 * b_tau^2)) else 0),
     df = length(opt$par),
     aic = if (penalised) NA_real_ else 2 * opt$objective + 2 * length(opt$par),
@@ -229,8 +245,31 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
     class = "rtmb_spread_fit")
 }
 
-#' Each species' modelled mean at its climate centre, with a delta-method
-#' interval, as glmmTMB's predict(se.fit = TRUE) gives for the pooled model.
+# Covariance of the fixed parameters with every variance parameter estimated
+# at the boundary treated as known: the inverse of the Hessian over the other
+# parameters, with zero rows and columns for the boundary ones. A log SD whose
+# variance has collapsed to 0 (a small growth form's location SD, say) has a
+# flat likelihood and an enormous standard error on the log scale; the full
+# inverse Hessian is then nearly singular and distorts the other parameters'
+# covariance too. Boundary: a `log_sd_*` parameter with a standard error above
+# `max_se` in the full inverse.
+.boundary_conditional_cov <- function(hess, cov_full, par, max_se = 3) {
+  if (is.null(cov_full)) return(NULL)
+  b <- grepl("^log_sd", names(par)) & sqrt(pmax(diag(cov_full), 0)) > max_se
+  if (!any(b)) return(cov_full)
+  V <- matrix(0, length(par), length(par), dimnames = dimnames(cov_full))
+  V[!b, !b] <- tryCatch(solve(hess[!b, !b, drop = FALSE]), error = function(e) cov_full[!b, !b])
+  V
+}
+
+#' Each species' modelled mean at its climate centre, and (with `Xp_sp`,
+#' `Xt_sp`) its total within-species climate slopes, with the joint
+#' covariance of the three: what forecasting the species elsewhere needs
+#' (R/process/forecast_species.R). The mean has a delta-method
+#' interval, as glmmTMB's predict(se.fit = TRUE) gives for the pooled model
+#' (`V`: the covariance of the fixed parameters to propagate, by default
+#' the full inverse Hessian; fit_spread_rtmb() passes the one with boundary
+#' variance parameters treated as known, .boundary_conditional_cov()).
 #'
 #' The mean is x_s beta + u_s: the fixed part at the species' medoid (`X_sp`,
 #' one row per species, within-species deviations 0) plus its species effect;
@@ -247,32 +286,56 @@ fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 
 #'
 #' @return tibble(log_estimate, log_se, log_conf.low, log_conf.high, estimate,
 #'   conf.low, conf.high), one row per species in the fit's species order.
-.rtmb_species_centres <- function(obj, opt, hess, X_sp, level) {
+.rtmb_species_centres <- function(obj, opt, hess, X_sp, level, V = NULL,
+                                  Xp_sp = NULL, Xt_sp = NULL) {
   sdr <- RTMB::sdreport(obj, par.fixed = opt$par, hessian.fixed = hess,
                         getJointPrecision = TRUE)
   Q <- sdr$jointPrecision                  # full parameter order
   r <- obj$env$random
   nonr <- setdiff(seq_len(nrow(Q)), r)
   stopifnot(identical(rownames(Q)[nonr], names(opt$par)))
-  V <- sdr$cov.fixed
+  if (is.null(V)) V <- sdr$cov.fixed
+  H <- Q[r, r]
   # d u-hat / d theta for every random effect (n_random x n_fixed)
-  J <- -as.matrix(Matrix::solve(Q[r, r], as.matrix(Q[r, nonr])))
-  u_i <- which(rownames(Q)[r] == "u")
-  stopifnot(length(u_i) == nrow(X_sp))
-  Ju <- J[u_i, , drop = FALSE]
-  # conditional variance of u given theta: sdreport's total less the theta term
-  cond_var <- sdr$diag.cov.random[u_i] - rowSums((Ju %*% V) * Ju)
-  g <- Ju
+  J <- -as.matrix(Matrix::solve(H, as.matrix(Q[r, nonr])))
+  # the conditional covariance of the random effects given theta, H^-1, on
+  # the sparsity pattern of its Cholesky factor (TMB's selected inverse, as
+  # sdreport() uses for their variances); it holds every pair of one
+  # species' effects, which share its records
+  S <- TMB:::solveSubset(Q = H)
+  rn <- rownames(Q)[r]
+  idx <- list(c = which(rn == "u"), p = which(rn == "sP"), t = which(rn == "sT"))
+  stopifnot(length(idx$c) == nrow(X_sp))
   b_i <- which(names(opt$par) == "beta")
-  g[, b_i] <- g[, b_i] + X_sp
-  se <- sqrt(cond_var + rowSums((g %*% V) * g))
+  # gradients in theta of the three species quantities: the mean at the
+  # centre (x_s beta + u_s) and the total within-species slopes (the growth
+  # form's slope + the species' own)
+  grad <- function(i, Xb) {
+    g <- J[i, , drop = FALSE]
+    if (!is.null(Xb)) g[, b_i] <- g[, b_i] + Xb
+    g
+  }
+  G <- list(c = grad(idx$c, X_sp), p = grad(idx$p, Xp_sp), t = grad(idx$t, Xt_sp))
+  covq <- function(a, b) as.numeric(S[cbind(idx[[a]], idx[[b]])]) +
+    rowSums((G[[a]] %*% V) * G[[b]])
   pl <- obj$env$parList(opt$par)
   est <- as.vector(X_sp %*% pl$beta) + pl$u
+  se <- sqrt(covq("c", "c"))
   z <- stats::qnorm(1 - (1 - level) / 2)
-  tibble::tibble(log_estimate = est, log_se = se,
-                 log_conf.low = est - z * se, log_conf.high = est + z * se,
-                 estimate = exp(est), conf.low = exp(est - z * se),
-                 conf.high = exp(est + z * se))
+  out <- tibble::tibble(log_estimate = est, log_se = se,
+                        log_conf.low = est - z * se, log_conf.high = est + z * se,
+                        estimate = exp(est), conf.low = exp(est - z * se),
+                        conf.high = exp(est + z * se))
+  if (!is.null(Xp_sp)) {
+    out <- dplyr::mutate(out,
+      slope_precipitation = as.vector(Xp_sp %*% pl$beta) + pl$sP,
+      slope_temperature = as.vector(Xt_sp %*% pl$beta) + pl$sT,
+      var_slope_precipitation = covq("p", "p"), var_slope_temperature = covq("t", "t"),
+      cov_centre_slope_precipitation = covq("c", "p"),
+      cov_centre_slope_temperature = covq("c", "t"),
+      cov_slope_precipitation_temperature = covq("p", "t"))
+  }
+  out
 }
 
 #' Empirical-Bayes shrinkage of the spread climate terms of a free fit.
@@ -335,7 +398,7 @@ estimate_spread_shrinkage <- function(theta, cov, tau_bounds = c(1e-3, 10)) {
 #'   posterior covariance and P = diag(1 / tau^2) the penalty. The taus are
 #'   not counted, as in mgcv's AIC; on the scale of the free and constant
 #'   fits' AICs.
-fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_species = 20,
+fit_spread_shrunk <- function(data, trait, groups, free, n_min = 5, min_group_species = 5,
                               centres = FALSE, level = 0.94) {
   # a fit, or the summary run_spread_rtmb.R stores (theta and cov at the top)
   fs <- if (!is.null(free$spread)) free$spread else free

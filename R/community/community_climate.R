@@ -15,7 +15,10 @@
 #                        + sd_w^2                                     species x location
 # with E[(x_k - m_k)^2] = (x_k - mbar_k)^2 + S_kk, and E_m[sd_u(m)^2] taken
 # over m ~ N(mbar, S) by Gauss-Hermite quadrature, each node's SD kept within
-# the range of the fitted species' SDs as in community_statistics().
+# the range of the fitted species' SDs as in community_statistics(). The
+# species-spread term is scaled by a sorting factor k <= 1
+# (community_sorting.R). Intervals come from draws of the model's fixed
+# parameters.
 #
 # mbar(x) and S(x) are smooth surfaces (mgcv, a tensor product of log
 # precipitation and temperature) fitted per growth form to the cells with at
@@ -68,7 +71,9 @@ fit_centre_surfaces <- function(summaries, min_species = 20, k = 8) {
 #'   mean_t, sd_p, sd_t, cor_pt, centres_extrapolated).
 predict_centre_surfaces <- function(surfaces, climate) {
   purrr::imap(surfaces, function(s, g) {
-    pr <- lapply(s$fits, function(f) as.numeric(stats::predict(f, newdata = climate)))
+    # mgcv::predict.gam explicitly: a fit read back from the store dispatches
+    # to predict.glm when mgcv is not loaded
+    pr <- lapply(s$fits, function(f) as.numeric(mgcv::predict.gam(f, newdata = climate)))
     climate |>
       dplyr::mutate(woodiness_group = g, .after = cell_y,
                     mean_p = pr$mean_p, mean_t = pr$mean_t,
@@ -89,62 +94,122 @@ predict_centre_surfaces <- function(surfaces, climate) {
   list(z = sqrt(2) * e$values, w = e$vectors[1, ]^2)
 }
 
+# The parameters the community statistics use, from a vector of the fit's
+# fixed parameters (its estimates `par_fixed`, or a draw around them).
+.community_params <- function(m, v) {
+  terms <- m$spread$terms
+  a_names <- paste0(m$groups, ":(Intercept)")
+  b_names <- if (length(terms)) unlist(lapply(m$groups, function(g) paste0(g, ":", terms)))
+  list(fixed = stats::setNames(v[names(v) == "beta"], names(m$fixed)),
+       theta = c(stats::setNames(v[names(v) == "a"], a_names),
+                 if (length(terms)) stats::setNames(v[names(v) == "b"], b_names)),
+       sd_p = exp(v[["log_sd_P"]]), sd_t = exp(v[["log_sd_T"]]), sd_w = exp(v[["log_sd_w"]]))
+}
+
+# log SD of the species spread at standardised centres (p, t), growth form g.
+.log_sd_u <- function(m, theta, g, p, t) {
+  theta[[paste0(g, ":(Intercept)")]] +
+    Reduce(`+`, lapply(m$spread$terms, function(k)
+      theta[[paste0(g, ":", k)]] * .spread_term_cols(p, t, k)[, 1]), 0)
+}
+
+# Community mean (log) and variance of growth form g at the cells of `d`
+# (predicted centres), for parameters `pr`; k scales the species spread.
+.community_climate_moments <- function(m, pr, g, d, fitted_z, k, nodes) {
+  b <- pr$fixed[.group_coef_names(m, g)]
+  names(b) <- c("b0", "bP", "bT", "wP", "wT")
+  s <- m$centre_scaling
+  xP <- d$log_annual_precipitation
+  xT <- d$average_temperature
+  dP <- b[["bP"]] - b[["wP"]]
+  dT <- b[["bT"]] - b[["wT"]]
+  vPP <- d$sd_p^2
+  vTT <- d$sd_t^2
+  vPT <- d$cor_pt * d$sd_p * d$sd_t
+  mean_log <- b[["b0"]] + b[["wP"]] * xP + b[["wT"]] * xT + dP * d$mean_p + dT * d$mean_t
+  var_between <- dP^2 * vPP + dT^2 * vTT + 2 * dP * dT * vPT
+  var_slopes <- pr$sd_p^2 * ((xP - d$mean_p)^2 + vPP) + pr$sd_t^2 * ((xT - d$mean_t)^2 + vTT)
+  # E[sd_u(m)^2] over m ~ N(mean, S): quadrature on the Cholesky factor,
+  # each node's log SD clamped to the range of the fitted species'
+  sd_range <- range(.log_sd_u(m, pr$theta, g, fitted_z$p, fitted_z$t))
+  l11 <- d$sd_p
+  l21 <- vPT / pmax(l11, 1e-12)
+  l22 <- sqrt(pmax(vTT - l21^2, 0))
+  var_u <- Reduce(`+`, lapply(seq_along(nodes$w), function(i) {
+    mp <- d$mean_p + l11 * nodes$z1[i]
+    mt <- d$mean_t + l21 * nodes$z1[i] + l22 * nodes$z2[i]
+    log_sd <- .log_sd_u(m, pr$theta, g, (mp - s$p_mean) / s$p_sd, (mt - s$t_mean) / s$t_sd)
+    nodes$w[i] * exp(2 * pmin(pmax(log_sd, sd_range[1]), sd_range[2]))
+  }))
+  list(mean_log = mean_log, variance = var_between + k * var_u + var_slopes + pr$sd_w^2)
+}
+
 #' Community mean and range per trait x cell x growth form, from the
-#' location model and the cell's climate alone (see the file header).
+#' location model and the cell's climate alone (see the file header), with
+#' intervals for parameter uncertainty.
 #'
 #' @param fits list of fit_location_target() results.
 #' @param centres output of `predict_centre_surfaces()`.
+#' @param sorting optional `estimate_sorting_factors()` result: the species
+#'   spread is scaled by its `k` (community_sorting.R).
 #' @param level mass of the community range.
-#' @return long tibble in the schema of community_statistics(), with
-#'   `n_species` replaced by the surfaces' `centres_extrapolated` flag; every
-#'   cell gets statistics.
-community_statistics_climate <- function(fits, centres, level = 0.90,
+#' @param n_draws draws of the fit's fixed parameters from their estimated
+#'   normal distribution (the inverse Hessian), for the intervals; 0 for
+#'   none.
+#' @param ci_level mass of those intervals.
+#' @param spatial `centres` are grid cells (add their coordinates); FALSE for
+#'   points of a climate grid (community_surface()).
+#' @return long tibble: trait_name, woodiness_group, cell, cell climate,
+#'   `extrapolated` (outside the trait's record climate for the growth form),
+#'   `centres_extrapolated` (outside the cells the centre surfaces were fitted
+#'   to), sorting factor `k`, community_mean, community_sd, range_lower,
+#'   range_upper, and the `ci_level` intervals community_mean_lower / _upper
+#'   and community_sd_lower / _upper. The intervals carry the uncertainty of
+#'   the model's parameters (those at the boundary held fixed), not of the
+#'   centre surfaces or of k.
+community_statistics_climate <- function(fits, centres, sorting = NULL, level = 0.90,
+                                         n_draws = 200, ci_level = 0.94, spatial = TRUE,
                                          settings = community_layer_settings()) {
   gh <- .gauss_hermite_normal(7)
-  nodes <- expand.grid(i = seq_along(gh$z), j = seq_along(gh$z))
-  z1 <- gh$z[nodes$i]
-  z2 <- gh$z[nodes$j]
-  w <- gh$w[nodes$i] * gh$w[nodes$j]
+  grid <- expand.grid(i = seq_along(gh$z), j = seq_along(gh$z))
+  nodes <- list(z1 = gh$z[grid$i], z2 = gh$z[grid$j], w = gh$w[grid$i] * gh$w[grid$j])
+  qs <- c((1 - ci_level) / 2, 1 - (1 - ci_level) / 2)
   purrr::map(purrr::compact(fits), function(m) {
-    vc <- m$vc
-    sP <- vc$sd[vc$grouping == "taxon_name" & vc$term == "log_annual_precipitation_c"]
-    sT <- vc$sd[vc$grouping == "taxon_name" & vc$term == "average_temperature_c"]
-    sw <- vc$sd[vc$grouping == "taxon_name:location"]
     s <- m$centre_scaling
-    th <- m$spread$theta
-    fitted_sp <- dplyr::distinct(m$data, taxon_name, woodiness_group)
+    draws <- NULL
+    if (n_draws > 0 && !is.null(m$cov_fixed)) {
+      # variance parameters at the boundary (zero rows; fit_spread_rtmb()) are
+      # held at their estimate
+      V <- m$cov_fixed
+      free <- diag(V) > 0
+      R <- tryCatch(chol(V[free, free, drop = FALSE]), error = function(e) NULL)
+      if (!is.null(R)) {
+        set.seed(1)
+        z <- matrix(stats::rnorm(n_draws * sum(free)), n_draws)
+        draws <- matrix(m$par_fixed, n_draws, length(m$par_fixed), byrow = TRUE)
+        draws[, free] <- sweep(z %*% R, 2, m$par_fixed[free], `+`)
+        colnames(draws) <- names(m$par_fixed)
+      }
+    }
+    fitted <- dplyr::distinct(m$data, taxon_name, woodiness_group,
+                              log_annual_precipitation_mn, average_temperature_mn)
     purrr::map(m$groups, function(g) {
-      b <- m$fixed[.group_coef_names(m, g)]
-      names(b) <- c("b0", "bP", "bT", "wP", "wT")
       d <- dplyr::filter(centres, woodiness_group == g)
       if (nrow(d) == 0) return(NULL)
-      xP <- d$log_annual_precipitation
-      xT <- d$average_temperature
-      dP <- b[["bP"]] - b[["wP"]]
-      dT <- b[["bT"]] - b[["wT"]]
-      vPP <- d$sd_p^2
-      vTT <- d$sd_t^2
-      vPT <- d$cor_pt * d$sd_p * d$sd_t
-      mean_log <- b[["b0"]] + b[["wP"]] * xP + b[["wT"]] * xT + dP * d$mean_p + dT * d$mean_t
-      var_between <- dP^2 * vPP + dT^2 * vTT + 2 * dP * dT * vPT
-      var_slopes <- sP^2 * ((xP - d$mean_p)^2 + vPP) + sT^2 * ((xT - d$mean_t)^2 + vTT)
-      # E[sd_u(m)^2] over m ~ N(mean, S): quadrature on the Cholesky factor,
-      # each node's log SD clamped to the fitted species' range
-      fitted_log_sd <- 0.5 * log(m$species_variance$species_variance[
-        m$species_variance$taxon_name %in% fitted_sp$taxon_name[fitted_sp$woodiness_group == g]])
-      l11 <- d$sd_p
-      l21 <- vPT / pmax(l11, 1e-12)
-      l22 <- sqrt(pmax(vTT - l21^2, 0))
-      var_u <- Reduce(`+`, lapply(seq_along(w), function(k) {
-        mp <- d$mean_p + l11 * z1[k]
-        mt <- d$mean_t + l21 * z1[k] + l22 * z2[k]
-        p <- (mp - s$p_mean) / s$p_sd
-        t <- (mt - s$t_mean) / s$t_sd
-        log_sd <- th[[paste0(g, ":(Intercept)")]] +
-          Reduce(`+`, lapply(m$spread$terms, function(term)
-            th[[paste0(g, ":", term)]] * .spread_term_cols(p, t, term)[, 1]), 0)
-        w[k] * exp(2 * pmin(pmax(log_sd, min(fitted_log_sd)), max(fitted_log_sd)))
-      }))
+      fg <- dplyr::filter(fitted, woodiness_group == g)
+      fitted_z <- list(p = (fg$log_annual_precipitation_mn - s$p_mean) / s$p_sd,
+                       t = (fg$average_temperature_mn - s$t_mean) / s$t_sd)
+      k <- .sorting_k(sorting, m$trait, g)
+      est <- .community_climate_moments(m, .community_params(m, m$par_fixed), g, d,
+                                        fitted_z, k, nodes)
+      ci <- if (is.null(draws)) NULL else {
+        sims <- lapply(seq_len(nrow(draws)), function(i) .community_climate_moments(
+          m, .community_params(m, draws[i, ]), g, d, fitted_z, k, nodes))
+        mean_q <- apply(do.call(cbind, lapply(sims, `[[`, "mean_log")), 1, stats::quantile, qs)
+        sd_q <- apply(sqrt(do.call(cbind, lapply(sims, `[[`, "variance"))), 1, stats::quantile, qs)
+        tibble::tibble(community_mean_lower = exp(mean_q[1, ]), community_mean_upper = exp(mean_q[2, ]),
+                       community_sd_lower = sd_q[1, ], community_sd_upper = sd_q[2, ])
+      }
       rec <- dplyr::filter(m$data, woodiness_group == g)
       outside <- function(v, r) v < min(r) | v > max(r)
       d |>
@@ -153,13 +218,15 @@ community_statistics_climate <- function(fits, centres, level = 0.90,
           annual_precipitation, log_annual_precipitation, average_temperature,
           extrapolated = outside(log_annual_precipitation, rec$log_annual_precipitation) |
             outside(average_temperature, rec$average_temperature),
-          centres_extrapolated) |>
-        dplyr::bind_cols(community_range(mean_log, var_between + var_u + var_slopes + sw^2,
-                                         level))
+          centres_extrapolated, k = k) |>
+        dplyr::bind_cols(community_range(est$mean_log, est$variance, level)) |>
+        dplyr::bind_cols(if (is.null(ci)) tibble::tibble(
+          community_mean_lower = NA_real_, community_mean_upper = NA_real_,
+          community_sd_lower = NA_real_, community_sd_upper = NA_real_) else ci)
     }) |> purrr::list_rbind()
   }) |>
     purrr::list_rbind() |>
-    add_cell_centres(settings) |>
+    (\(d) if (spatial) add_cell_centres(d, settings) else d)() |>
     dplyr::arrange(trait_name, woodiness_group, cell_y, cell_x)
 }
 
