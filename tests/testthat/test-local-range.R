@@ -110,6 +110,39 @@ test_that("RTMB spread model recovers spread that changes with climate", {
   expect_true(all(diff(cv$species_sd[cv$woodiness_group == "woody"]) > 0))
 })
 
+test_that("shrinking the spread terms keeps a real slope and drops the rest", {
+  skip_if_not_installed("RTMB")
+  # true: log species SD linear in temperature (0.4 per SD), no precipitation
+  # or quadratic effect
+  sim <- simulate_location_data(seed = 6, n_species = 600, spread_slope = 0.4)
+  free <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0))
+  r <- suppressMessages(fit_spread_shrunk(sim$data, "sim", sim$groups, free, n_min = 0))
+  expect_true(r$converged)
+  sh <- r$spread$shrinkage
+  expect_gt(sh$tau[["degree 1"]], 0.1)
+  expect_lt(sh$tau[["degree 2"]], sh$tau[["degree 1"]] / 3)
+  th <- r$spread$theta
+  se <- sqrt(diag(r$spread$cov))
+  expect_true(all(abs(th[c("woody:t", "non_woody:t")] - 0.4) < 3 * se[c("woody:t", "non_woody:t")]))
+  # every null term is pulled toward 0, relative to the free fit
+  null_terms <- names(th)[grepl(":(p|p2|t2)$", names(th))]
+  expect_true(all(abs(th[null_terms]) < abs(free$spread$theta[null_terms])))
+  # the refit's mode agrees with the Gaussian approximation that chose tau
+  expect_equal(unname(th[names(sh$b_post)]), unname(sh$b_post), tolerance = 0.05)
+  expect_gt(sh$edf, 2)
+  expect_lt(sh$edf, 8)
+  expect_lt(r$aic, free$aic)
+  expect_gt(sh$log_bf, 10)
+
+  # no climate effect at all: every degree is dropped
+  sim0 <- simulate_location_data(seed = 7, n_species = 300, spread_slope = 0)
+  free0 <- suppressMessages(fit_spread_rtmb(sim0$data, "sim", sim0$groups, n_min = 0))
+  sh0 <- estimate_spread_shrinkage(free0$spread$theta, free0$spread$cov)
+  expect_true(sh0$at_lower[["degree 1"]])
+  expect_true(all(abs(sh0$b_post) < 0.03))
+  expect_lt(sh0$log_bf, 1)
+})
+
 test_that("community_range back-transforms a central interval", {
   r <- community_range(log(10), 0.5^2, level = 0.90)
   expect_equal(r$community_mean, 10)

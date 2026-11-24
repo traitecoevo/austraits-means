@@ -211,9 +211,12 @@ Next, before the trait list and publication:
     - woody seed mass: rises from 0.8 to 2.9 from cool to warm;
     - height: changes little (0.6–1.1).
 
-    Two problems before it can be used:
-    1. **The quadratic overfits small groups.** Non-woody seed mass (27 species) gets a hump from 0.02 to 2.5 that the binned estimates (0.8–1.7) do not show. Non-woody leaf P per mass and dry-end wood density go to about 0. The climate terms need shrinkage, or a degree chosen per growth form.
-    2. **Mixed against observed cells.** The continuous model improves the ratio for wood density (1.57 → 1.35), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It worsens woody leaf area (1.23 → 1.44): it matches the observed decline at the warm, wet end but overshoots in cool and dry cells (about 2.2 against 1.3–1.9 observed), where most cells hold only 5–9 species.
+    1. **Free, the quadratic overfits small groups; shrinking the climate terms fixes it (25 November 2026).** Free, non-woody seed mass (27 species) got a hump from 0.02 to 2.5 that the binned estimates (0.8–1.7) do not show, and non-woody leaf P per mass and dry-end wood density went to about 0. Now the climate coefficients get a prior b ~ N(0, τ²), one τ for the linear and one for the quadratic terms, shared by the growth forms and estimated by empirical Bayes from the free fit; the model is then refitted with that ridge penalty (`fit_spread_shrunk()`). Results:
+       - non-woody seed mass is close to flat (1.0–1.5; benchmark ratio 1.24 → 1.01), wood density is a smooth rise (lowest SD 0.06, not 0), and well-supported curves (woody leaf area, woody seed mass, height) barely change;
+       - the data choose the degree: linear only for seed mass, wood density and leaf N and P per area; a slight quadratic only for LMA and leaf N and P per mass; both for leaf area and height;
+       - AIC against constant spread: leaf area −190, height −93, wood density −43, seed mass −29, the others −9 to 0. Only those four have a log Bayes factor above 2 (7–90).
+       Integrating b inside the Laplace approximation with the species effects was tried first and fails on real data (a funnel: a species seen in one cell can move its effect into the species × location term and send its own SD to 0). Do not go back to it.
+    2. **Still mixed against observed cells.** Climate-dependent spread improves the ratio for wood density (1.57 → 1.38), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It worsens woody leaf area (1.23 → 1.43): it matches the observed decline at the warm, wet end but overshoots in cool and dry cells (about 2.2 against 1.3–1.9 observed), where most cells hold only 5–9 species. Shrinkage does not change this, because the curve is well supported by the species data.
   - **Fit times** after the TMB 1.9.25 upgrade: height 6 min (glmmTMB), 10.5 min (RTMB); other traits seconds.
   - **Diagnostic figures** (records, species means and both models' ranges in 12 cells per trait) are in `outputs/local_range/figures/` and the notebook.
   - **Coarse cells cost nothing.** Cell size made little difference to LMA between 10, 25 and 50 km.
@@ -223,7 +226,7 @@ Next, before the trait list and publication:
   1. Predict to a location from its climate alone. This needs the mean and spread of co-occurring species' climate centres as a smooth function of climate, from GBIF co-occurrence (extend `cell_species_centres()`).
   2. Choose the trait list. Benchmark coverage of both growth forms is good for height, LMA and leaf area. The other six traits have woody cells only, or fewer than 10 non-woody cells.
   3. Decide whether a genus effect should take up the similarity of co-sampled congeners.
-  4. Spread by climate: shrink the climate terms of log species SD (or choose their degree per growth form), then decide per trait between constant and climate-dependent spread, on AIC and the cool/dry overshoot.
+  4. Spread by climate: decide per trait between constant and shrunk climate-dependent spread. On AIC and Bayes factor the candidates are leaf area, height, wood density and seed mass; the open question is woody leaf area's cool/dry overshoot, whether the model or the 5–9-species benchmark cells are wrong there.
 
 On the extensions milestone:
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.

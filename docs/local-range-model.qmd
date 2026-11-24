@@ -158,7 +158,40 @@ Everything else is as in the location model. Two checks:
 - With the climate terms removed, it reproduces the glmmTMB location model: same log-likelihood (to 1e-7 on LMA) and same variance components.
 - On simulated data whose species SD rises with temperature, it recovers the slope and finds no rainfall effect (tests in `tests/testthat/test-local-range.R`).
 
-AIC relative to the location model with constant spread (negative favours spread by climate). The binned variants each add 6 parameters with both growth forms, the continuous one 8:
+### Shrinking the climate terms
+
+Left free, the quadratic overfits groups with few species: non-woody seed mass (27 species) grows a hump to SD 2.5, and some curves fall to about 0 at the edge of the data. The climate coefficients b therefore get a prior, b ~ N(0, τ_d²), with one τ for the linear terms and one for the quadratic terms, shared by the two growth forms. τ is estimated from the data, so this is a ridge penalty with its strength chosen by marginal likelihood, as mgcv chooses smoothing parameters. A growth form that says little about how spread changes with climate is pulled toward constant spread, and a degree whose τ reaches 0 is dropped.
+
+It is done as empirical Bayes in two steps:
+
+1. From the free fit's coefficients b̂ and their covariance V, τ maximises N(b̂; 0, V + diag(τ²)).
+2. The model is refitted with the penalty b²/(2τ²). That gives the posterior mode, its covariance (the curve bands) and an AIC with b counted at its effective degrees of freedom, on the same scale as the other AICs.
+
+Integrating b inside the same Laplace approximation as the species effects was tried first and fails on real data. A species seen in only one cell can put its effect into the species × location term, leaving its species effect near 0. The joint density then grows without bound as that species' SD goes to 0, and the joint mode runs into this funnel.
+
+Checks on simulated data (`tests/testthat/test-local-range.R`):
+
+- with a real temperature slope, the slope survives and the null terms are pulled toward 0;
+- with no climate effect, the linear τ goes to 0 and every coefficient to about 0;
+- the refit agrees with the Gaussian approximation used to choose τ.
+
+Each τ is estimated from only four coefficients, so it is noisy.
+
+```{r spread-shrinkage}
+purrr::map(res, function(x) if (!is.null(x$spread$shrunk)) {
+  sh <- x$spread$shrunk$shrinkage
+  tibble::tibble(trait = x$trait,
+                 `tau, linear` = signif(sh$tau[["degree 1"]], 2),
+                 `tau, quadratic` = signif(sh$tau[["degree 2"]], 2),
+                 `terms kept` = paste(x$spread$shrunk$terms, collapse = ", "),
+                 `effective df of b` = round(sh$edf, 1),
+                 `log Bayes factor vs constant` = round(sh$log_bf, 1))
+}) |> purrr::list_rbind() |> knitr::kable()
+```
+
+### Comparison
+
+AIC relative to the location model with constant spread (negative favours spread by climate). The binned variants each add 6 parameters with both growth forms, the free continuous one 8, the shrunk one its effective degrees of freedom:
 
 ```{r spread-aic}
 purrr::map(res, function(x) if (!is.null(x$spread)) tibble::tibble(
@@ -166,11 +199,27 @@ purrr::map(res, function(x) if (!is.null(x$spread)) tibble::tibble(
   `rainfall classes` = round(x$aic[["spread_precipitation"]] - x$aic[["location"]]),
   `temperature classes` = round(x$aic[["spread_temperature"]] - x$aic[["location"]]),
   continuous = if (!is.null(x$spread$continuous))
-    round(x$aic[["spread_continuous"]] - x$aic[["location"]]) else NA_real_)) |>
+    round(x$aic[["spread_continuous"]] - x$aic[["location"]]) else NA_real_,
+  `continuous, shrunk` = if (!is.null(x$spread$shrunk))
+    round(x$aic[["spread_shrunk"]] - x$aic[["location"]]) else NA_real_)) |>
   purrr::list_rbind() |> knitr::kable()
 ```
 
-The species SD as a function of climate. The line and band show the continuous model with its 90% interval, with the other climate variable at the median species centre. Red points are the binned estimates, one per climate quartile of species; the dashed line is constant spread:
+Model-to-observed community SD ratio per growth form (as in the benchmark above; 1 is a match):
+
+```{r spread-benchmark}
+purrr::map(res, function(x) if (!is.null(x$spread$shrunk)) {
+  loc <- dplyr::filter(x$benchmark, model == "location")
+  tibble::tibble(trait = x$trait, woodiness_group = loc$woodiness_group,
+                 `constant spread` = round(loc$ratio, 2),
+                 free = round(x$spread$continuous$benchmark$ratio[
+                   match(loc$woodiness_group, x$spread$continuous$benchmark$woodiness_group)], 2),
+                 shrunk = round(x$spread$shrunk$benchmark$ratio[
+                   match(loc$woodiness_group, x$spread$shrunk$benchmark$woodiness_group)], 2))
+}) |> purrr::list_rbind() |> knitr::kable()
+```
+
+The species SD as a function of climate. The line and band show the shrunk continuous model with its 90% interval, with the other climate variable at the median species centre; the thin grey line is the free fit. Red points are the binned estimates, one per climate quartile of species; the dashed line is constant spread:
 
 ```{r spread-curves}
 #| fig-width: 9
@@ -197,7 +246,7 @@ purrr::map(res, function(x) if (!is.null(x$spread)) purrr::map(x$spread, "classe
   knitr::kable()
 ```
 
-Observed and modelled spread along each climate axis. Points are cells, coloured by how many species were recorded. The red line is the trend of the observed spread in cells with at least 10 species; the black lines are the trend of what each model implies for the same cells:
+Observed and modelled spread along each climate axis. Points are cells, coloured by how many species were recorded. The red line is the trend of the observed spread in cells with at least 10 species; the black lines are the trend of what each model implies for the same cells, and the green line the shrunk continuous model:
 
 ```{r spread-figures}
 #| fig-width: 11
@@ -210,7 +259,7 @@ for (x in res) {
 }
 ```
 
-## Findings (run of 24 November 2026)
+## Findings (runs of 24 and 25 November 2026)
 
 Ratios below are corrected (3c2156f). An earlier version of this notebook left the species × location variance out of the location model's community SD, which made its ratios 0.03–0.06 too low.
 
@@ -227,13 +276,16 @@ Ratios below are corrected (3c2156f). An earlier version of this notebook left t
 - **Spread depends on climate for some traits.** Against constant spread, the continuous model improves AIC for leaf area (−187), height (−91), wood density (−46) and seed mass (−27), but not for LMA or the leaf N and P traits. Where data are rich, the continuous and binned estimates agree:
   - woody leaf area: species SD falls from 2.35 at 10 °C to 0.60 at 27 °C;
   - woody seed mass: rises from 0.8 to 2.9 from cool to warm.
-- **The continuous model is not ready to use as is.**
-  - The quadratic overfits small groups. Non-woody seed mass (27 species) gets a hump to 2.5 that the binned estimates do not show, and some curves go to about 0 at the edge of the data.
-  - Against observed cells it helps wood density (1.57 → 1.35), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It overshoots woody leaf area in cool and dry cells (ratio 1.23 → 1.44), while matching its warm, wet end.
+- **Free, the continuous model overfits small groups; shrinking the climate terms fixes that** (25 November).
+  - Free: non-woody seed mass (27 species) gets a hump to SD 2.5 that the binned estimates do not show. Non-woody leaf P per mass and dry-end wood density go to about 0.
+  - Shrunk: non-woody seed mass is close to flat (1.0–1.5), and its benchmark ratio returns from 1.24 to 1.01. Wood density becomes a smooth rise with rainfall and temperature that follows the binned points; its lowest SD is now 0.06 rather than 0. Non-woody leaf P per mass stays at 0.33–0.50.
+  - Where the data are rich, shrinkage changes almost nothing: woody leaf area, woody seed mass, height.
+  - The data choose the degree. The quadratic terms are dropped for seed mass, wood density and leaf N and P per area; the linear terms are dropped for LMA, leaf N per mass and leaf P per mass, leaving a slight quadratic. Both are kept for leaf area and height.
+  - AIC against constant spread, shrunk: leaf area −190, height −93, wood density −43, seed mass −29, leaf P per mass −9, leaf N per area −6, LMA −4, leaf N per mass −1, leaf P per area 0. The free fit's +8 for leaf N per mass and +4 for leaf P per area disappear. Only the first four are clear wins (log Bayes factor 7–90; the rest 2 or less).
+- **Against observed cells, climate-dependent spread is still mixed.** It helps wood density (1.57 → 1.38), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It overshoots woody leaf area in cool and dry cells (ratio 1.23 → 1.43), while matching its warm, wet end. Shrinkage does not touch that, because those curves are well supported by the species data. Most of the cool and dry cells hold 5–9 species, the cells where the benchmark itself runs low.
 - **The modelled species means move.** The SD of the change is 0.06–0.35 log units, with correlations of 0.85–1.00 between old and new. Height barely moves; non-woody LMA, leaf area and seed mass move most, because a species measured at one site no longer carries that site's effect.
 - **Benchmark coverage decides which traits can be checked.** Plenty of cells for both growth forms: height (1,841 non-woody / 2,341 woody), LMA (36 / 167), leaf area (22 / 119). The other six traits have woody cells only, or fewer than 10 non-woody cells.
 
 Not done yet:
 
 - Predicting to a location from its climate alone. That needs the mean and spread of the climate centres of co-occurring species as a smooth function of climate, learned from GBIF co-occurrence; the benchmark above uses the species actually recorded at each location.
-- Shrinking the climate terms of the continuous spread model.

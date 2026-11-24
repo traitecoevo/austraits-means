@@ -37,24 +37,38 @@ plot_spread_by_climate <- function(res) {
       base_lines,
       model_cells(res$spread[[axis]]$cells, "location, spread by climate"),
       if (!is.null(res$spread$continuous))
-        model_cells(res$spread$continuous$cells, "location, continuous spread"))
+        model_cells(res$spread$continuous$cells, "location, continuous spread"),
+      if (!is.null(res$spread$shrunk))
+        model_cells(res$spread$shrunk$cells, "location, continuous spread, shrunk"))
     p <- ggplot2::ggplot(obs, ggplot2::aes(.data[[col]], sd)) +
       ggplot2::geom_point(ggplot2::aes(colour = species_recorded), size = 0.9, alpha = 0.6) +
       ggplot2::geom_smooth(data = dplyr::filter(obs, n_species >= 10), method = "loess",
                            formula = y ~ x, se = FALSE, span = 0.9,
                            colour = "#d73027", linewidth = 1.1) +
-      ggplot2::geom_smooth(data = lines, ggplot2::aes(linetype = model), colour = "grey15",
+      ggplot2::geom_smooth(data = lines, ggplot2::aes(linetype = model, colour = model),
                            method = "loess", formula = y ~ x, se = FALSE, span = 0.9,
                            linewidth = 0.8) +
       ggplot2::facet_grid(woodiness_group ~ ., labeller = form_lab) +
+      # one colour scale for the points (species recorded) and the model lines,
+      # which are black except the shrunk model
       ggplot2::scale_colour_manual(values = c(`5-9` = "#fdae61", `10-19` = "#74add1",
-                                              `20+` = "#313695"),
+                                              `20+` = "#313695",
+                                              pooled = "grey15",
+                                              `location, constant spread` = "grey15",
+                                              `location, spread by climate` = "grey15",
+                                              `location, continuous spread` = "grey15",
+                                              `location, continuous spread, shrunk` = "#1a9850"),
+                                   breaks = c("5-9", "10-19", "20+"),
                                    name = "species recorded\nin the cell") +
       ggplot2::scale_linetype_manual(values = c(pooled = "dotted",
                                                 `location, constant spread` = "solid",
                                                 `location, spread by climate` = "longdash",
-                                                `location, continuous spread` = "twodash"),
+                                                `location, continuous spread` = "twodash",
+                                                `location, continuous spread, shrunk` = "solid"),
                                      name = "modelled\ncommunity SD") +
+      # the line keys take their colour from the model, which the colour legend omits
+      ggplot2::guides(linetype = ggplot2::guide_legend(override.aes = list(
+        colour = ifelse(grepl("shrunk", sort(unique(lines$model))), "#1a9850", "grey15")))) +
       ggplot2::labs(x = xlab, y = "Community SD among species (natural-log units)") +
       ggplot2::theme_bw(base_size = 9) +
       ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
@@ -68,8 +82,8 @@ plot_spread_by_climate <- function(res) {
     patchwork::plot_annotation(
       title = paste0(res$trait, ": spread among species within a cell, along climate"),
       subtitle = paste("Points: observed SD in each cell (less sampling noise). Red: trend (loess) of",
-                       "the observed SD in cells with 10+ species. Black lines: trend of the SD each",
-                       "model implies for the same cells"),
+                       "the observed SD in cells with 10+ species.\nBlack lines: trend of the SD each",
+                       "model implies for the same cells; green: continuous spread, shrunk"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11),
                              plot.subtitle = ggplot2::element_text(size = 7)))
 }
@@ -80,9 +94,14 @@ plot_spread_by_climate <- function(res) {
 #' species centre), the binned glmmTMB estimates per climate class (points
 #' at each class's median centre) and the constant-spread estimate (dashed).
 #'
+#' With a shrunk fit (`spread$shrunk`), its curve and band are drawn and the
+#' free quadratic is a thin line.
+#'
 #' @param res one element of the prototype result, with `spread$continuous`.
 plot_spread_curves <- function(res) {
-  cont <- res$spread$continuous$curves
+  shrunk <- !is.null(res$spread$shrunk)
+  cont <- if (shrunk) res$spread$shrunk$curves else res$spread$continuous$curves
+  free <- res$spread$continuous$curves
   classes <- purrr::imap(res$spread[c("precipitation", "temperature")], function(s, ax)
     dplyr::mutate(s$classes, axis = ax)) |> purrr::list_rbind()
   constant <- tibble::tibble(woodiness_group = res$diagnostics$location$cells$woodiness_group |> unique()) |>
@@ -93,6 +112,8 @@ plot_spread_curves <- function(res) {
     p <- ggplot2::ggplot(dplyr::filter(cont, axis == ax), ggplot2::aes(climate, species_sd)) +
       ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper), fill = "grey80") +
       ggplot2::geom_line(linewidth = 0.9) +
+      (if (shrunk) ggplot2::geom_line(data = dplyr::filter(free, axis == ax),
+                                      linewidth = 0.4, colour = "grey40")) +
       ggplot2::geom_hline(data = constant, ggplot2::aes(yintercept = species_sd), linetype = "22") +
       ggplot2::geom_point(data = dplyr::filter(classes, axis == ax), colour = "#d73027", size = 2) +
       ggplot2::facet_grid(woodiness_group ~ ., labeller = form_lab) +
@@ -108,9 +129,11 @@ plot_spread_curves <- function(res) {
     one_axis("temperature", "Mean annual temperature of the species' climate centre (°C)", FALSE)) +
     patchwork::plot_annotation(
       title = paste0(res$trait, ": spread among species as a function of climate"),
-      subtitle = paste("Line and band: continuous model (RTMB), 90% interval, other climate variable",
-                       "at the median species centre. Red points: one variance per climate quartile",
-                       "of species (glmmTMB). Dashed: constant spread"),
+      subtitle = paste0(if (shrunk) paste("Line and band: continuous model (RTMB) with the climate terms shrunk,",
+                                          "90% interval; thin grey line: the same without shrinkage.\n")
+                        else "Line and band: continuous model (RTMB), 90% interval.\n",
+                        "Other climate variable at the median species centre. Red points: one ",
+                        "variance per climate quartile of species (glmmTMB). Dashed: constant spread"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11),
                              plot.subtitle = ggplot2::element_text(size = 7)))
 }
@@ -151,10 +174,11 @@ plot_community_range_cells <- function(res, n_cells = 12, cells = NULL, seed = 1
     dplyr::mutate(x = xpos[woodiness_group])
   rec <- prep(dl$records) |> dplyr::mutate(x = x - 0.12 + stats::runif(dplyr::n(), -0.1, 0.1))
   sp <- prep(dl$species) |> dplyr::mutate(x = x - 0.12 + stats::runif(dplyr::n(), -0.1, 0.1))
-  # the continuous-spread fit (R/scripts/run_spread_rtmb.R) is drawn when present:
+  # the continuous-spread fit (R/scripts/run_spread_rtmb.R; the shrunk one if
+  # there is one) is drawn when present:
   # its species SD depends on the species' climate centres, so its range varies
   # among cells; the other two have one species SD per growth form
-  dc <- res$spread$continuous$cells
+  dc <- if (!is.null(res$spread$shrunk)) res$spread$shrunk$cells else res$spread$continuous$cells
   rng <- dplyr::bind_rows(
     `location model` = prep(dl$cells) |> dplyr::mutate(x = x + 0.14),
     `climate-dependent spread` = if (!is.null(dc)) prep(dc) |> dplyr::mutate(x = x + 0.26),
