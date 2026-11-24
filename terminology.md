@@ -22,6 +22,7 @@ Species terms decided 14 October 2026. Community terms proposed 14 October 2026;
 - **Avoid these alternative names:** "naive mean" sounds dismissive in a published product. "Raw mean" clashes with `value_type = raw`. "Sample mean" is ambiguous, because in trait work a "sample" is a physical specimen.
 - **Both are geometric means.** Traits are treated as log-normal: values are averaged or modelled on the log scale, then back-transformed with `exp()`. For a log-normal, the geometric mean equals the median. It falls below the arithmetic mean, exp(μ + σ²/2), by an amount that grows with within-species spread. Keeping both estimates geometric means their difference comes from method alone, not from the type of summary. State "geometric" in definitions and metadata. It need not appear in the headline term.
 - **If an arithmetic mean is ever published,** it goes in a separate column with its own clear label, never in place of the observed mean.
+- **Except for signed traits** (decided 24 November 2026): a trait whose definition allows values below zero, such as a water potential, a temperature or an isotope ratio, is not log-normal and has no geometric mean. Its observed mean is the arithmetic mean of the same groups, in `value`, with `method = arithmetic` and `log_value` empty, so the `method` column says which kind each row is. In the AusTraits development build that is 43 traits. Before, 23 of them had no observed mean at all and 20 silently lost their negative records.
 
 ## What each estimate does and does not account for
 
@@ -54,6 +55,7 @@ Each row records how it was computed in a `method` column:
 |---|---|---|
 | `observed_mean` | `portal_arithmetic` | The method the AusTraits data portal used for 7.0.0: an unweighted **arithmetic** mean of per-location means (raw, mean and median records) and per-observation flora midpoints (minimum and maximum records). Reproduced exactly from the portal code at the commit that built the deployed data, quirks included, so that product can be archived as what users have been seeing. |
 | `observed_mean` | `geometric` | The observed mean as defined above (geometric), used from the next AusTraits build onward. The arithmetic mean is kept in its own clearly labelled column. |
+| `observed_mean` | `arithmetic` | The observed mean of a signed trait (one whose definition allows negative values): the arithmetic mean of the same groups, using every record. The geometric method's rows for all other traits. |
 | `modelled_mean` | `tmb` or `brms` | The modelled mean as defined above, by fitting backend. |
 
 The rule that both estimates are geometric means therefore holds from the `geometric` method onward. The `portal_arithmetic` product is the one exception, and it is labelled as arithmetic wherever it appears.

@@ -30,8 +30,17 @@ read_observed_means <- function(path, traits) {
     stop("`", path, "` lacks columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
   if (!identical(unique(means$estimate_type), "observed_mean") ||
-      !identical(unique(means$method), "geometric")) {
-    stop("`", path, "` is not the geometric observed means", call. = FALSE)
+      !all(means$method %in% c("geometric", "arithmetic"))) {
+    stop("`", path, "` is not the observed means", call. = FALSE)
+  }
+  # The modelled traits are on the log scale: their observed means must be
+  # geometric (a signed trait's are arithmetic, terminology.md)
+  not_geometric <- unique(means$trait_name[means$trait_name %in% traits &
+                                             means$type == "numerical" &
+                                             means$method != "geometric"])
+  if (length(not_geometric) > 0) {
+    stop("`", path, "` has arithmetic, not geometric, means for: ",
+         paste(not_geometric, collapse = ", "), call. = FALSE)
   }
   absent <- setdiff(traits, means$trait_name)
   if (length(absent) > 0) {

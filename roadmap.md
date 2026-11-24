@@ -67,6 +67,9 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 
 ### 24 November 2026
 
+- **Signed traits get an arithmetic observed mean** (traits.use#51). A trait whose definition allows values below zero (water potentials, temperatures, isotope ratios; 43 in the development build) has no geometric mean, so its `value` is the arithmetic mean of the same groups, labelled `method = arithmetic`. Alternative considered: leaving such traits without an observed mean, as the first version did (23 traits had none).
+- **The calculation moves to traits.use** as `summarise_trait_means()` (traits.use#51), after Lizzy Wenk's review: usable on any traits.build database or subset, every trait by default, with `by` for further grouping (AusInverTraits splits by sex). austraits.build#900 calls it.
+
 - **The geometric observed means ship with each AusTraits release, built in austraits.build, not here** ([austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). `post_export()` in austraits.build's `R/post_export.R`, which `traits.build::build_post_export()` runs from `create_release()`, writes `austraits-<version>-observed-means.parquet`, `.csv.gz` and `-dictionary.csv` into the release. The method is this repository's geometric method, ported to austraits.build's `R/observed_means.R`; on the development build `d535de9` the port reproduces `observed_means_geometric` exactly (602,644 rows), less the `source_primary_key` column. This repository keeps the portal-method product, the modelled means and the community layers. Alternative considered: publishing the observed means only in the separate "AusTraits species means" Zenodo deposit; set aside because the simple means are a direct summary of the release and belong with it.
 - **The method has one home: austraits.build.** This repository's copy (`R/means/observed_means_geometric.R`) is deleted; the `observed_means_geometric` target reads the file austraits.build's `post_export()` writes for the same build (`austraits_dev_observed_means` in `_targets.R`; `data-raw/austraits/README.md`), and no longer writes `outputs/species_means/<build>/observed_means_geometric.*`. A change to the method is made in austraits.build and reaches here through a new file. `roll_up_to_species()` here, used by the modelled means and the community layers, must keep rolling up the same way as austraits.build's `observed_means_records()`, so the two species estimates join.
 
@@ -119,7 +122,7 @@ Things a future edit could break without noticing:
 - The portal-method observed mean must stay reproducible from the AusTraits 7.0.0 release and the pinned portal commit. Do not "fix" its quirks; they are the product. Fixes go in the geometric method.
 - Value-type rules are per dataset: datasets that carry only minimum/maximum records (the AVH height dataset) enter the modelled means by an explicit rule, not by the default raw/mean/median filter.
 - Centring is on the GBIF medoid, never on the trait-sample mean.
-- Both species estimates are geometric means from the geometric method onward; an arithmetic mean is always a separately labelled column.
+- Both species estimates are geometric means from the geometric method onward, except the observed mean of a signed trait, which is arithmetic and labelled `method = arithmetic` (24 November 2026); otherwise an arithmetic mean is always a separately labelled column.
 - Column names follow `terminology.md`: `estimate_type` and `method`, never a bare `estimate` or `geom_mean`.
 - Community statistics are unweighted unless the weighting decision says otherwise; unweighted values are never called CWM or CWV.
 - Use "mean", never "average", in code, exports, docs and metadata.
