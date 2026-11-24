@@ -19,6 +19,10 @@ test_that("the location model recovers known variances; the pooled model oversta
   new <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
                                               location = "location"))
   vc <- tidy_varcomp(new)
+  # every component is found under the name the benchmark looks up
+  expect_setequal(unique(vc$grouping),
+                  c("taxon_name", "location", "taxon_name:location", "residual"))
+  expect_equal(sqrt(.vc(vc, "taxon_name:location", "(Intercept)")), 0.15, tolerance = 0.3)
   expect_equal(sqrt(.vc_species(vc, "woody")), 0.4, tolerance = 0.25)
   expect_equal(sqrt(.vc(vc, "location", "woodiness_groupwoody")), 0.4, tolerance = 0.25)
   expect_equal(sqrt(.vc(vc, "residual", "sigma")), 0.2, tolerance = 0.1)
@@ -46,8 +50,64 @@ test_that("community_diagnostics gives one row per location and form, with the l
   m <- dplyr::inner_join(dg$cells, obs, by = c("location", "woodiness_group"))
   expect_lt(mean((m$y - m$community_mean_log)^2), mean((m$y - m$fixed_mean)^2))
   p <- plot_community_range_cells(list(trait = "sim", unit = "u", cell_km = 50,
-                                       diagnostics = list(location = dg, published = dg)))
+                                       diagnostics = list(location = dg, pooled = dg)))
   expect_s3_class(p, "ggplot")
+})
+
+test_that("species variance by climate class: balanced classes, one variance each", {
+  sim <- simulate_location_data(seed = 4)
+  d <- dplyr::left_join(sim$data, sim$groups, by = "taxon_name")
+  cl <- add_spread_class(d, "temperature", n_bins = 3)
+  expect_equal(nrow(cl$bins), 6)
+  expect_true(all(abs(cl$bins$n_species - 50) <= 1))
+  expect_true(all(cl$bins$lower <= cl$bins$centre & cl$bins$centre <= cl$bins$upper))
+  expect_false(anyNA(cl$data$spread_class))
+
+  m <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                            location = "location", spread_by = "temperature",
+                                            n_bins = 3))
+  s <- spread_by_climate(m)
+  expect_equal(nrow(s), 6)
+  expect_true(all(s$species_sd > 0))
+  # the simulation's species SD is 0.4 in every class
+  expect_equal(mean(s$species_sd), 0.4, tolerance = 0.3)
+  sv <- .species_variances(m, tidy_varcomp(m))
+  expect_equal(nrow(sv), dplyr::n_distinct(sim$data$taxon_name))
+  b <- benchmark_community_variance(m)
+  expect_true(all(is.finite(b$model_community_variance)))
+})
+
+test_that("RTMB spread model reproduces glmmTMB with constant spread", {
+  skip_if_not_installed("RTMB")
+  sim <- simulate_location_data(seed = 5)
+  g <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                            location = "location"))
+  r <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = character(0)))
+  expect_true(r$converged)
+  expect_equal(r$logLik, as.numeric(stats::logLik(g$fit)), tolerance = 1e-4)
+  expect_equal(r$df, attr(stats::logLik(g$fit), "df"))
+  expect_equal(unname(exp(r$spread$theta)),
+               sqrt(c(.vc_species(tidy_varcomp(g), "woody"),
+                      .vc_species(tidy_varcomp(g), "non_woody"))), tolerance = 1e-3)
+  b_g <- benchmark_community_variance(g)
+  b_r <- benchmark_community_variance(r)
+  expect_equal(b_r$model_community_variance, b_g$model_community_variance, tolerance = 1e-3)
+})
+
+test_that("RTMB spread model recovers spread that changes with climate", {
+  skip_if_not_installed("RTMB")
+  sim <- simulate_location_data(seed = 6, n_species = 600, spread_slope = 0.4)
+  r <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = c("p", "t")))
+  expect_true(r$converged)
+  th <- r$spread$theta
+  se <- sqrt(diag(r$spread$cov))
+  # true: 0.4 per SD of temperature centre, 0 for precipitation
+  expect_true(all(abs(th[c("woody:t", "non_woody:t")] - 0.4) < 3 * se[c("woody:t", "non_woody:t")]))
+  expect_true(all(abs(th[c("woody:p", "non_woody:p")]) < 3 * se[c("woody:p", "non_woody:p")]))
+  cv <- spread_curve(r, "temperature")
+  expect_true(all(diff(cv$species_sd[cv$woodiness_group == "woody"]) > 0))
 })
 
 test_that("community_range back-transforms a central interval", {

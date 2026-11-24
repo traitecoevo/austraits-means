@@ -1,4 +1,4 @@
-# Location model prototype (#41): fit the published woodiness model and the
+# Location model prototype (#41): fit the pooled woodiness model (species effects only) and the
 # location model for each trait, and write the comparison to
 # outputs/local_range/prototype_<cell_km>km.rds, read by
 # docs/local-range-model.qmd. Not part of the product targets.
@@ -36,4 +36,8 @@ for (r in res) {
   save_figure(plot_community_range_cells(r),
               sprintf("outputs/local_range/figures/%s_cells_%gkm", r$trait, cell_km),
               width = 11, height = 6.5)
+  if (!is.null(r$spread))
+    save_figure(plot_spread_by_climate(r),
+                sprintf("outputs/local_range/figures/%s_spread_%gkm", r$trait, cell_km),
+                width = 11, height = 6.5)
 }

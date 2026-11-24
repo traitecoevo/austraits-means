@@ -17,7 +17,7 @@ Prototype for [#41](https://github.com/traitecoevo/austraits-means/issues/41) (`
 
 ## The question
 
-The spatial product is, for a location and from its climate, the woody and non-woody **community mean** and **community range**: the spread of the species' trait means there (`terminology.md`). The published model has species effects only, so it pools every record from the same climate. The spread among its species then also includes how locations with the same climate differ, through soils or regional species pools. That overstates the range at any one location.
+The spatial product is, for a location and from its climate, the woody and non-woody **community mean** and **community range**: the spread of the species' trait means there (`terminology.md`). The pooled model has species effects only, so it pools every record from the same climate. The spread among its species then also includes how locations with the same climate differ, through soils or regional species pools. That overstates the range at any one location.
 
 The location model adds a location effect, a 50 km equal-area cell with its variance per growth form, and a species × location effect:
 
@@ -56,7 +56,7 @@ sim_check <- function(sorting) {
   dplyr::bind_rows(
     `true variances` = summarise_community_benchmark(benchmark_community_variance(new, vc = sim$truth, noise_vc = sim$truth)),
     `location model` = summarise_community_benchmark(benchmark_community_variance(new, noise_vc = vc)),
-    `published model` = summarise_community_benchmark(benchmark_community_variance(old, noise_vc = vc)),
+    `pooled model` = summarise_community_benchmark(benchmark_community_variance(old, noise_vc = vc)),
     .id = "model") |>
     dplyr::mutate(scenario = if (sorting == 0) "independent" else "species sort among locations", .before = 1) |>
     dplyr::select(scenario, model, woodiness_group, n_locations, observed_community_sd, model_community_sd, ratio)
@@ -64,7 +64,7 @@ sim_check <- function(sorting) {
 knitr::kable(r2(dplyr::bind_rows(sim_check(0), sim_check(3))))
 ```
 
-With independent placement the location model recovers the local spread (ratio near 1); the published model overstates it by about half. With sorting, even the true variances overstate the local spread: the location model's assumption fails, and so it overstates it too, though by less than the published model. The real-data check below is what detects this.
+With independent placement the location model recovers the local spread (ratio near 1); the pooled model overstates it by about half. With sorting, even the true variances overstate the local spread: the location model's assumption fails, and so it overstates it too, though by less than the pooled model. The real-data check below is what detects this.
 
 ## AusTraits, 50 km cells
 
@@ -72,7 +72,7 @@ With independent placement the location model recovers the local spread (ratio n
 purrr::map(res, function(x) tibble::tibble(
   trait = x$trait, records = x$n_records, species = x$n_species, cells = x$n_locations,
   seconds = round(x$seconds), converged = x$converged,
-  `ΔAIC` = round(x$aic[["location"]] - x$aic[["published"]]))) |>
+  `ΔAIC` = round(x$aic[["location"]] - x$aic[["pooled"]]))) |>
   purrr::list_rbind() |> knitr::kable()
 ```
 
@@ -98,7 +98,7 @@ purrr::map(res, function(x) x$benchmark |> dplyr::mutate(trait = x$trait, .befor
   r2() |> knitr::kable()
 ```
 
-Change in the modelled species means (log scale), location model against published:
+Change in the modelled species means (log scale), location model against pooled:
 
 ```{r shift}
 purrr::map(res, function(x) x$species_shift |> dplyr::mutate(trait = x$trait, .before = 1)) |>
@@ -121,9 +121,9 @@ purrr::map(res, function(x) if (!is.null(x$diagnostics)) community_ratio_by_rich
 For twelve 50 km cells per trait, spread along the rainfall gradient, preferring cells with both growth forms:
 
 - each panel shows the trait records there (faint dots) and each species' mean of its records there (solid dots, sized by records);
-- beside them are the modelled community mean and 90% range of species means for those same species, from the location model (solid) and the published model (dashed).
+- beside them are the modelled community mean and 90% range of species means for those same species, from the location model (solid) and the pooled model (dashed).
 
-The location model's mean includes the cell's estimated location effect. That is why it follows the cell, whereas the published model's mean follows climate only. A range from climate alone (the product) would centre on the published model's mean, with the location model's width. The ranges are of species means, so the records spread wider than the bars by design.
+The location model's mean includes the cell's estimated location effect. That is why it follows the cell, whereas the pooled model's mean follows climate only. A range from climate alone (the product) would centre on the pooled model's mean, with the location model's width. The ranges are of species means, so the records spread wider than the bars by design.
 
 ```{r cells}
 #| fig-width: 11
@@ -136,14 +136,88 @@ for (x in res) {
 }
 ```
 
+## Spread as a function of climate
+
+The location model above has one species variance per growth form, so the community spread changes with climate only through:
+
+- how far apart the climate centres of the co-occurring species are;
+- the random slopes.
+
+To let the species variance itself depend on climate, species are split into four classes by their climate centre (rainfall or temperature quartiles of the species, within each growth form). Each class gets its own variance: `diag(0 + spread_class | taxon_name)`. glmmTMB cannot make a random-effect variance a continuous function of a covariate, so this binned version is a test of whether spread varies with climate at all. A continuous version needs a hand-written model (RTMB, or Stan for the smaller traits).
+
+### Continuous spread (RTMB)
+
+The continuous version is written in RTMB (`R/model/spread_rtmb.R`), the same TMB engine and Laplace approximation glmmTMB uses, so likelihoods and AICs are comparable. For species s of growth form g, with standardised climate centre (p, t):
+
+```
+u_s ~ N(0, sd_u(s)^2),  log sd_u(s) = a_g + b1_g p + b2_g t + b3_g p^2 + b4_g t^2
+```
+
+Everything else is as in the location model. Two checks:
+
+- With the climate terms removed, it reproduces the glmmTMB location model: same log-likelihood (to 1e-7 on LMA) and same variance components.
+- On simulated data whose species SD rises with temperature, it recovers the slope and finds no rainfall effect (tests in `tests/testthat/test-local-range.R`).
+
+AIC relative to the location model with constant spread (negative favours spread by climate). The binned variants each add 6 parameters with both growth forms, the continuous one 8:
+
+```{r spread-aic}
+purrr::map(res, function(x) if (!is.null(x$spread)) tibble::tibble(
+  trait = x$trait,
+  `rainfall classes` = round(x$aic[["spread_precipitation"]] - x$aic[["location"]]),
+  `temperature classes` = round(x$aic[["spread_temperature"]] - x$aic[["location"]]),
+  continuous = if (!is.null(x$spread$continuous))
+    round(x$aic[["spread_continuous"]] - x$aic[["location"]]) else NA_real_)) |>
+  purrr::list_rbind() |> knitr::kable()
+```
+
+The species SD as a function of climate. The line and band show the continuous model with its 90% interval, with the other climate variable at the median species centre. Red points are the binned estimates, one per climate quartile of species; the dashed line is constant spread:
+
+```{r spread-curves}
+#| fig-width: 9
+#| fig-height: 6
+#| results: asis
+for (x in res) {
+  if (is.null(x$spread$continuous)) next
+  cat("\n\n###", x$trait, "\n\n")
+  print(plot_spread_curves(x))
+}
+```
+
+Species SD by climate class (natural-log units; class centre is the median centre of its species):
+
+```{r spread-classes}
+purrr::map(res, function(x) if (!is.null(x$spread)) purrr::map(x$spread, "classes") |>
+  purrr::list_rbind() |> dplyr::mutate(trait = x$trait, .before = 1)) |>
+  purrr::list_rbind() |>
+  dplyr::mutate(cell = sprintf("%.2f (%s)", species_sd,
+                               ifelse(by == "precipitation", paste0(round(climate), " mm"),
+                                      paste0(round(climate, 1), " °C")))) |>
+  dplyr::select(trait, by, woodiness_group, bin, cell) |>
+  tidyr::pivot_wider(names_from = bin, names_prefix = "class ", values_from = cell) |>
+  knitr::kable()
+```
+
+Observed and modelled spread along each climate axis. Points are cells, coloured by how many species were recorded. The red line is the trend of the observed spread in cells with at least 10 species; the black lines are the trend of what each model implies for the same cells:
+
+```{r spread-figures}
+#| fig-width: 11
+#| fig-height: 6.5
+#| results: asis
+for (x in res) {
+  if (is.null(x$spread)) next
+  cat("\n\n###", x$trait, "\n\n")
+  print(plot_spread_by_climate(x))
+}
+```
+
 ## Findings (run of 24 November 2026)
 
 - **The location model fits better for every trait.** All nine converge. AIC falls by 84 (leaf P per area) to 25,832 (height). Fits take seconds, except height: 19 minutes and 8.5 GB for 320k records in 3,121 cells.
 - **It removes most of the overstatement of the local spread.** Model-to-observed community SD ratios:
   - location model: 0.97–1.31 for every trait except wood density (1.47), mostly 1.05–1.20;
-  - published model: 1.00–1.97.
+  - pooled model: 1.00–1.97.
   - The gain is largest for woody LMA (1.62 → 1.19), leaf P per mass (1.90 → 1.25), non-woody seed mass (1.44 → 0.99) and non-woody height (1.35 → 1.11).
-  - Woody height was already right under the published model (1.00 → 1.06).
+  - Woody height was already right under the pooled model (1.00 → 1.06).
 - **A residual overstatement of about 10–20% remains**, in the direction the simulation gives when co-occurring species are more alike than random. Two causes fit it, and these data cannot tell them apart:
   - real sorting, in which case the true local range is smaller than the model says;
   - studies measuring a few similar species together at a site, in which case the observed spread is too small and the model is closer to the truth.

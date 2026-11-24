@@ -195,11 +195,11 @@ Next, before the trait list and publication:
   Prototype result, 24 November 2026, all nine traits at 50 km (`docs/local-range-model.qmd`):
 
   - **Checks 1, 3 and 4 pass.**
-    - Simulation: the model recovers known variances. With independent placement it gets the local spread within about 8%; the published model overstates it by 1.4–1.7×.
+    - Simulation: the model recovers known variances. With independent placement it gets the local spread within about 8%; the pooled model overstates it by 1.4–1.7×.
     - Every trait converges, and AIC favours the location model for every trait.
     - The modelled species means move by 0.06–0.35 log units (SD), correlation 0.85–1.00 with the old ones.
   - **Check 2 mostly passes.** Model-to-observed community SD ratios:
-    - location model: 0.97–1.31, mostly 1.05–1.20, against 1.00–1.97 for the published model;
+    - location model: 0.97–1.31, mostly 1.05–1.20, against 1.00–1.97 for the pooled model;
     - the exception is wood density at 1.47.
   - **A 10–20% overstatement remains, and it is mostly in cells with few species.** Cells with 5–9 species give ratios of mostly 1.1–1.4; cells with 20 or more give 0.84–1.13. Height, from herbarium specimens rather than targeted studies, stays nearly flat (1.11 → 1.05). This points to studies co-sampling similar species, so the observed spread is too small in those cells, rather than to the model being too wide. Suggestive, not proof: species-rich cells also differ in other ways.
   - **Diagnostic figures** (records, species means and both models' ranges in 12 cells per trait) are in `outputs/local_range/figures/` and the notebook.

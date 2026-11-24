@@ -54,11 +54,16 @@ add_location_key <- function(data, grain = c("cell", "site", "coord"), cell_km =
 #' @param fit a glmmTMB fit, or a model list with `$fit`.
 #' @return tibble(grouping, term, sd, variance).
 tidy_varcomp <- function(fit) {
+  if (inherits(fit, "rtmb_spread_fit")) return(fit$vc)  # R/model/spread_rtmb.R
   if (is.list(fit) && !inherits(fit, "glmmTMB")) fit <- fit$fit
   vc <- glmmTMB::VarCorr(fit)$cond
   re <- purrr::imap(vc, function(m, nm) {
     sd <- attr(m, "stddev")
-    tibble::tibble(grouping = sub("\\.[0-9]+$", "", nm), term = names(sd), sd = unname(sd))
+    # glmmTMB names a repeated grouping "taxon_name.1" and an interaction
+    # "taxon_name.location"; normalise to "taxon_name" and
+    # "taxon_name:location" (column names here use underscores, not dots)
+    grouping <- gsub(".", ":", sub("\\.[0-9]+$", "", nm), fixed = TRUE)
+    tibble::tibble(grouping = grouping, term = names(sd), sd = unname(sd))
   }) |> purrr::list_rbind()
   dplyr::bind_rows(re, tibble::tibble(grouping = "residual", term = "sigma",
                                       sd = stats::sigma(fit))) |>
@@ -72,10 +77,69 @@ tidy_varcomp <- function(fit) {
 }
 
 # Species-effect variance of a growth form: per group in the location model,
-# shared in the published model.
+# shared in the pooled model.
 .vc_species <- function(vc, group) {
   v <- .vc(vc, "taxon_name", paste0("woodiness_group", group))
   if (v == 0) .vc(vc, "taxon_name", "(Intercept)") else v
+}
+
+.spread_vars <- c(precipitation = "log_annual_precipitation_mn",
+                  temperature = "average_temperature_mn")
+
+#' Climate classes of species, for a species variance that depends on climate.
+#'
+#' Species (not records) are split into `n_bins` quantile classes of their
+#' climate centre, within each growth form, so every class has about the same
+#' number of species. `spread_class` is "<group>.<k>".
+#'
+#' @param by "precipitation" or "temperature" (the species' medoid).
+#' @return list(data (with `spread_class`), bins (woodiness_group, bin,
+#'   spread_class, n_species, lower, upper, centre: the class's median
+#'   centre, all on the model scale)).
+add_spread_class <- function(data, by = c("precipitation", "temperature"), n_bins = 4) {
+  v <- .spread_vars[[match.arg(by)]]
+  sp <- data |>
+    dplyr::distinct(taxon_name, woodiness_group, centre = .data[[v]]) |>
+    dplyr::group_by(woodiness_group) |>
+    dplyr::mutate(bin = dplyr::ntile(centre, n_bins)) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(spread_class = paste(woodiness_group, bin, sep = "."))
+  bins <- sp |>
+    dplyr::group_by(woodiness_group, bin, spread_class) |>
+    dplyr::summarise(.groups = "drop", n_species = dplyr::n(), lower = min(centre),
+                     upper = max(centre), centre = stats::median(centre)) |>
+    dplyr::mutate(woodiness_group = as.character(woodiness_group), by = by)
+  data <- dplyr::left_join(data, dplyr::select(sp, taxon_name, spread_class), by = "taxon_name")
+  data$spread_class <- factor(data$spread_class, bins$spread_class)
+  list(data = data, bins = bins)
+}
+
+#' Species-effect variance of each species: by its climate class when the
+#' model has one, otherwise by its growth form.
+#' @return tibble(taxon_name, species_variance).
+.species_variances <- function(model, vc) {
+  if (!is.null(model$species_variance)) return(model$species_variance)  # RTMB fit
+  sp <- dplyr::distinct(model$data, taxon_name, woodiness_group,
+                        dplyr::across(dplyr::any_of("spread_class")))
+  if ("spread_class" %in% names(sp) && !is.null(model$spread_by)) {
+    v <- vapply(as.character(sp$spread_class),
+                function(k) .vc(vc, "taxon_name", paste0("spread_class", k)), numeric(1))
+  } else {
+    v <- vapply(as.character(sp$woodiness_group), function(g) .vc_species(vc, g), numeric(1))
+  }
+  tibble::tibble(taxon_name = sp$taxon_name, species_variance = unname(v))
+}
+
+#' The species variance by climate class: how the between-species spread
+#' changes with climate, per growth form.
+#' @return `model$spread_bins` with `species_sd`, and the class centre back
+#'   on the climate scale (`annual_precipitation` mm or `average_temperature`).
+spread_by_climate <- function(model, vc = tidy_varcomp(model)) {
+  if (is.null(model$spread_bins)) return(NULL)
+  model$spread_bins |>
+    dplyr::mutate(species_sd = sqrt(vapply(spread_class, function(k)
+                    .vc(vc, "taxon_name", paste0("spread_class", k)), numeric(1))),
+                  climate = if (by[[1]] == "precipitation") exp(centre) else centre)
 }
 
 #' Each species' records at each location, summarised: the observed mean log
@@ -85,8 +149,8 @@ tidy_varcomp <- function(fit) {
 species_at_locations <- function(model, min_species = 5) {
   d <- model$data
   stopifnot("location" %in% names(d))
-  d$fixed_pred <- stats::predict(model$fit, newdata = d, re.form = NA,
-                                 allow.new.levels = TRUE)
+  d$fixed_pred <- if (!is.null(model$fixed_pred)) model$fixed_pred else  # RTMB fit
+    stats::predict(model$fit, newdata = d, re.form = NA, allow.new.levels = TRUE)
   d |>
     dplyr::group_by(location, woodiness_group, taxon_name) |>
     dplyr::summarise(.groups = "drop", n = dplyr::n(), y = mean(log_value),
@@ -106,6 +170,7 @@ species_at_locations <- function(model, min_species = 5) {
 # Estimated location effect of each location x growth form (0 for a model
 # without one).
 .location_effects <- function(model) {
+  if (!is.null(model$location_effects)) return(model$location_effects)  # RTMB fit
   re <- glmmTMB::ranef(model$fit)$cond$location
   if (is.null(re)) return(NULL)
   re <- tibble::as_tibble(re, rownames = "location")
@@ -124,7 +189,7 @@ species_at_locations <- function(model, min_species = 5) {
 #' location x growth form with at least `min_species` species.
 #'
 #' The model's community mean is the mean of the species' fixed-effect
-#' predictions plus the estimated location effect (none for the published
+#' predictions plus the estimated location effect (none for the pooled
 #' model); the range is the central `level` interval from the model's
 #' community variance (`benchmark_community_variance()`).
 #'
@@ -165,7 +230,7 @@ community_diagnostics <- function(model, vc = tidy_varcomp(model), min_species =
 #' For each location x growth form with at least `min_species` species, the
 #' variance of the species' observed mean log values there, against the
 #' spread the model implies for those same species (header). Works for the
-#' published model and the location model alike; `vc` can be replaced by
+#' pooled model and the location model alike; `vc` can be replaced by
 #' known values (simulation).
 #'
 #' @param model output of `fit_woodiness_model()`; its `data` must carry
@@ -186,17 +251,18 @@ benchmark_community_variance <- function(model, vc = tidy_varcomp(model),
   sigma2 <- .vc(noise_vc, "residual", "sigma")
 
   species_at_locations(model, min_species) |>
+    dplyr::left_join(.species_variances(model, vc), by = "taxon_name") |>
     dplyr::group_by(location, woodiness_group) |>
     dplyr::summarise(.groups = "drop",
                      n_species = dplyr::n(),
                      observed_variance = stats::var(y),
                      sampling_variance = mean(sigma2 / n),
                      fixed_variance = stats::var(f),
-                     slope_variance = mean(sd_p * d_p^2 + sd_t * d_t^2)) |>
+                     slope_variance = mean(sd_p * d_p^2 + sd_t * d_t^2),
+                     species_variance = mean(species_variance)) |>
     dplyr::mutate(
       woodiness_group = as.character(woodiness_group),
       observed_community_variance = observed_variance - sampling_variance,
-      species_variance = vapply(woodiness_group, function(g) .vc_species(vc, g), numeric(1)),
       species_location_variance = sd_w,
       model_community_variance = fixed_variance + species_variance +
         species_location_variance + slope_variance)
@@ -238,7 +304,7 @@ species_centre_values <- function(model) {
     dplyr::transmute(taxon_name, woodiness_group = as.character(woodiness_group), log_centre)
 }
 
-#' The location prototype for one trait: the published woodiness model and
+#' The location prototype for one trait: the pooled woodiness model (species effects only) and
 #' the location model, compared (roadmap.md, Later work; #41).
 #'
 #' @return list(trait, cell_km, n_records, n_species, n_locations, seconds,
@@ -257,7 +323,7 @@ run_location_prototype <- function(data, trait, groups, cell_km = 50, min_specie
   bench <- dplyr::bind_rows(
     location = summarise_community_benchmark(
       benchmark_community_variance(new, noise_vc = vc_new, min_species = min_species)),
-    published = summarise_community_benchmark(
+    pooled = summarise_community_benchmark(
       benchmark_community_variance(old, noise_vc = vc_new, min_species = min_species)),
     .id = "model")
   shift <- dplyr::inner_join(species_centre_values(old), species_centre_values(new),
@@ -268,13 +334,28 @@ run_location_prototype <- function(data, trait, groups, cell_km = 50, min_specie
                      max_abs_change = max(abs(log_centre_new - log_centre_old)),
                      correlation = stats::cor(log_centre_old, log_centre_new))
   diagnostics <- list(location = community_diagnostics(new, vc_new, min_species),
-                      published = community_diagnostics(old, vc_old, min_species))
+                      pooled = community_diagnostics(old, vc_old, min_species))
+
+  # species variance as a function of climate: one variance per climate
+  # class of species x growth form, by rainfall and by temperature
+  spread <- purrr::map(c(precipitation = "precipitation", temperature = "temperature"), function(by) {
+    m <- fit_woodiness_model(data, trait, groups, location = "location", spread_by = by)
+    vc <- tidy_varcomp(m)
+    list(aic = stats::AIC(m$fit), converged = isTRUE(m$fit$sdr$pdHess),
+         varcomp = vc, classes = spread_by_climate(m, vc),
+         benchmark = summarise_community_benchmark(
+           benchmark_community_variance(m, vc = vc, noise_vc = vc_new, min_species = min_species)),
+         cells = community_diagnostics(m, vc, min_species)$cells)
+  })
+
   list(trait = trait, cell_km = cell_km, unit = new$data$unit[[1]],
-       diagnostics = diagnostics, n_records = nrow(new$data),
+       diagnostics = diagnostics, spread = spread, n_records = nrow(new$data),
        n_species = dplyr::n_distinct(new$data$taxon_name),
        n_locations = dplyr::n_distinct(new$data$location),
        seconds = secs, converged = isTRUE(new$fit$sdr$pdHess),
-       aic = c(published = stats::AIC(old$fit), location = stats::AIC(new$fit)),
+       aic = c(pooled = stats::AIC(old$fit), location = stats::AIC(new$fit),
+               spread_precipitation = spread$precipitation$aic,
+               spread_temperature = spread$temperature$aic),
        varcomp_old = vc_old, varcomp_new = vc_new, benchmark = bench, species_shift = shift)
 }
 
@@ -324,7 +405,9 @@ community_range <- function(mean_log, variance_log, level = 0.90) {
 simulate_location_data <- function(n_species = 300, n_locations = 150,
                                    locations_per_species = 4, records = 3,
                                    sd_u = 0.4, sd_L = 0.4, sd_w = 0.15,
-                                   sigma = 0.2, sorting = 0, seed = 1) {
+                                   sigma = 0.2, sorting = 0, spread_slope = 0, seed = 1) {
+  # spread_slope: log sd_u changes by this per SD of the species' temperature
+  # centre (0 = constant species SD, as the truth table assumes)
   set.seed(seed)
   loc <- tibble::tibble(location = paste0("L", seq_len(n_locations)),
                         x_p = stats::rnorm(n_locations, 6.5, 0.6),
@@ -334,7 +417,8 @@ simulate_location_data <- function(n_species = 300, n_locations = 150,
                        woodiness_group = rep(c("woody", "non_woody"), length.out = n_species),
                        m_p = stats::rnorm(n_species, 6.5, 0.5),
                        m_t = stats::rnorm(n_species, 18, 3.5),
-                       u = stats::rnorm(n_species, 0, sd_u))
+                       u = 0)
+  sp$u <- stats::rnorm(n_species, 0, sd_u * exp(spread_slope * (sp$m_t - 18) / 3.5))
   b <- list(woody = c(1.0, 0.30, -0.04, 0.05, -0.01),
             non_woody = c(0.5, 0.20, -0.02, 0.03, 0.00))
   pick <- function(i) {
