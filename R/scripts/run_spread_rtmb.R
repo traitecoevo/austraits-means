@@ -41,6 +41,9 @@ for (r in res) {
   save_figure(plot_spread_by_climate(r),
               sprintf("outputs/local_range/figures/%s_spread_%gkm", r$trait, cell_km),
               width = 11, height = 6.5)
+  save_figure(plot_community_range_cells(r),
+              sprintf("outputs/local_range/figures/%s_cells_%gkm", r$trait, cell_km),
+              width = 11, height = 6.5)
   save_figure(plot_spread_curves(r),
               sprintf("outputs/local_range/figures/%s_spread_curve_%gkm", r$trait, cell_km),
               width = 9, height = 6)

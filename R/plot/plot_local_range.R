@@ -151,10 +151,17 @@ plot_community_range_cells <- function(res, n_cells = 12, cells = NULL, seed = 1
     dplyr::mutate(x = xpos[woodiness_group])
   rec <- prep(dl$records) |> dplyr::mutate(x = x - 0.12 + stats::runif(dplyr::n(), -0.1, 0.1))
   sp <- prep(dl$species) |> dplyr::mutate(x = x - 0.12 + stats::runif(dplyr::n(), -0.1, 0.1))
+  # the continuous-spread fit (R/scripts/run_spread_rtmb.R) is drawn when present:
+  # its species SD depends on the species' climate centres, so its range varies
+  # among cells; the other two have one species SD per growth form
+  dc <- res$spread$continuous$cells
   rng <- dplyr::bind_rows(
-    `location model` = prep(dl$cells) |> dplyr::mutate(x = x + 0.17),
-    `pooled model` = prep(dp$cells) |> dplyr::mutate(x = x + 0.32),
+    `location model` = prep(dl$cells) |> dplyr::mutate(x = x + 0.14),
+    `climate-dependent spread` = if (!is.null(dc)) prep(dc) |> dplyr::mutate(x = x + 0.26),
+    `pooled model` = prep(dp$cells) |> dplyr::mutate(x = x + if (is.null(dc)) 0.29 else 0.38),
     .id = "model")
+  models <- c("location model", if (!is.null(dc)) "climate-dependent spread", "pooled model")
+  rng$model <- factor(rng$model, models)
   cols <- c(woody = "#1b7837", non_woody = "#b2182b")
 
   ggplot2::ggplot() +
@@ -169,20 +176,28 @@ plot_community_range_cells <- function(res, n_cells = 12, cells = NULL, seed = 1
     ggplot2::facet_wrap(~panel, nrow = 2) +
     ggplot2::scale_y_log10() +
     ggplot2::scale_x_continuous(breaks = xpos, labels = c("woody", "non-woody"),
-                                limits = c(0.6, 2.5)) +
+                                limits = c(0.6, 2.55)) +
     ggplot2::scale_colour_manual(values = cols, guide = "none") +
     # log scale with a floor: one species with hundreds of records in a cell
     # would otherwise shrink every other species mean to nothing
     ggplot2::scale_size(range = c(0.9, 3.2), trans = "log10", name = "records of\nthe species") +
-    ggplot2::scale_linetype_manual(values = c(`location model` = "solid", `pooled model` = "22"),
+    ggplot2::scale_linetype_manual(values = c(`location model` = "solid",
+                                              `climate-dependent spread` = "solid",
+                                              `pooled model` = "22"),
+                                   breaks = models,
                                    name = "modelled\ncommunity\nmean and\n90% range") +
-    ggplot2::scale_shape_manual(values = c(`location model` = 16, `pooled model` = 1),
+    ggplot2::scale_shape_manual(values = c(`location model` = 16,
+                                           `climate-dependent spread` = 17,
+                                           `pooled model` = 1),
+                                breaks = models,
                                 name = "modelled\ncommunity\nmean and\n90% range") +
     ggplot2::labs(x = NULL, y = paste0(res$trait, " (", res$unit, ")"),
                   title = paste0(res$trait, ": records, species means and modelled community range"),
                   subtitle = paste0(res$cell_km, " km cells along the rainfall gradient. ",
                                     "Faint dots: records; solid dots: species means there; ",
-                                    "bars: modelled range of species means (solid: location model, dashed: pooled)")) +
+                                    "bars: modelled range of species means (",
+                                    if (!is.null(dc)) "circle: location model, triangle: climate-dependent spread, dashed: pooled)"
+                                    else "solid: location model, dashed: pooled)")) +
     ggplot2::theme_bw(base_size = 9) +
     ggplot2::theme(panel.grid.minor = ggplot2::element_blank(),
                    plot.subtitle = ggplot2::element_text(size = 7))
