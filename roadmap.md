@@ -2,7 +2,7 @@
 
 This is the planning document for `austraits-means`. It records what the repository delivers, the decisions taken and why, the milestones and the issues that reach them, and the invariants a future edit could break. Keep it current or retire it; do not start a second plan beside it. Issue numbers are on the [AusTraits board](https://github.com/orgs/traitecoevo/projects/9) (view "means").
 
-Last revised: 24 November 2026.
+Last revised: 25 November 2026.
 
 ## Products
 
@@ -79,6 +79,12 @@ Status, 24 November 2026: the due date passed with the products re-scoped (decis
 ## Decisions and their reasons
 
 Dated decisions, newest first. Earlier decisions from the refactor plan are kept below them.
+
+### 25 November 2026
+
+Decided by Daniel Falster:
+
+- **The community range has climate-dependent spread for every trait, with log species SD linear in the species' rainfall and temperature centres, shrunk by empirical Bayes; no quadratic terms.** One model for every trait, and the data decide each slope: shrinkage sets it to 0 where they don't support it (LMA, leaf N per mass, leaf P per mass), which is constant spread. The quadratic is dropped for three reasons. On the log scale it grows or collapses fast outside the species' centres, and the product predicts from climate anywhere. It was supported only for leaf area and height, and adds little to their linear terms (AIC −190 against −166, −93 against −75). And one slope per climate axis is easy to report and defend. Alternatives considered: a per-trait choice between constant and climate-dependent spread; keeping the shrunk quadratic, which the data choose for leaf area and height. Evidence: `docs/local-range-model.qmd`, Later work.
 
 ### 24 November 2026
 
@@ -204,19 +210,14 @@ Next, before the trait list and publication:
   - **A 10–25% overstatement remains, and it is mostly in cells with few species.** Cells with 5–9 species give ratios of 1.16–1.95 (leaf P per area 3.19, from 9 cells); cells with 20 or more give 0.89–1.18. Height, from herbarium specimens rather than targeted studies, stays nearly flat (1.16 → 1.10). This points to studies co-sampling similar species, so the observed spread is too small in those cells, rather than to the model being too wide. Suggestive, not proof: species-rich cells also differ in other ways.
   - **Spread as a function of climate** (Daniel asked, 24 November 2026). Two versions, both in the notebook:
     - binned (glmmTMB): one species variance per climate quartile of species;
-    - continuous (RTMB, `R/model/spread_rtmb.R`): log species SD quadratic in the species' rainfall and temperature centres, per growth form. With constant spread it reproduces glmmTMB to 1e-7; on simulated data it recovers a known spread slope.
+    - continuous (RTMB, `R/model/spread_rtmb.R`): log species SD linear in the species' rainfall and temperature centres, per growth form (decision of 25 November 2026; a quadratic version came first). With constant spread it reproduces glmmTMB to 1e-7; on simulated data it recovers a known spread slope.
 
-    AIC against constant spread: strong support for leaf area (−187), height (−91), wood density (−46) and seed mass (−27). None for LMA (−2) or the leaf N and P traits (−6 to +8). Where the data are rich the continuous and binned estimates agree:
-    - woody leaf area: species SD falls from 2.35 at 10 °C to 0.60 at 27 °C, and from about 1.9 below 1,000 mm to 0.56 at 3,000 mm;
-    - woody seed mass: rises from 0.8 to 2.9 from cool to warm;
-    - height: changes little (0.6–1.1).
-
-    1. **Free, the quadratic overfits small groups; shrinking the climate terms fixes it (25 November 2026).** Free, non-woody seed mass (27 species) got a hump from 0.02 to 2.5 that the binned estimates (0.8–1.7) do not show, and non-woody leaf P per mass and dry-end wood density went to about 0. Now the climate coefficients get a prior b ~ N(0, τ²), one τ for the linear and one for the quadratic terms, shared by the growth forms and estimated by empirical Bayes from the free fit; the model is then refitted with that ridge penalty (`fit_spread_shrunk()`). Results:
-       - non-woody seed mass is close to flat (1.0–1.5; benchmark ratio 1.24 → 1.01), wood density is a smooth rise (lowest SD 0.06, not 0), and well-supported curves (woody leaf area, woody seed mass, height) barely change;
-       - the data choose the degree: linear only for seed mass, wood density and leaf N and P per area; a slight quadratic only for LMA and leaf N and P per mass; both for leaf area and height;
-       - AIC against constant spread: leaf area −190, height −93, wood density −43, seed mass −29, the others −9 to 0. Only those four have a log Bayes factor above 2 (7–90).
+    1. **The climate slopes are shrunk (25 November 2026).** Free, the first (quadratic) version overfitted small groups: non-woody seed mass (27 species) got a hump from 0.02 to 2.5 that the binned estimates (0.8–1.7) do not show, and non-woody leaf P per mass and dry-end wood density went to about 0. The climate coefficients now get a prior b ~ N(0, τ²), τ shared by the growth forms and estimated by empirical Bayes from the free fit; the model is then refitted with that ridge penalty (`fit_spread_shrunk()`). Linear, shrunk, against constant spread:
+       - AIC: leaf area −166, height −75, wood density −43, seed mass −29, leaf N per area −5, the others 0 to −1. Only the first four have a log Bayes factor above 2 (13–77).
+       - τ is 0 for LMA and leaf N per mass, 0.017 for leaf P per mass, so those three have constant spread; leaf P per area keeps slopes of about −0.03, effectively flat.
+       - Where the data are rich the continuous and binned estimates agree: woody leaf area's species SD falls from 2.7 to 0.6 from cool to warm centres; woody seed mass's rises from 0.9 to 3.1; height changes little (0.6–1.1).
        Integrating b inside the Laplace approximation with the species effects was tried first and fails on real data (a funnel: a species seen in one cell can move its effect into the species × location term and send its own SD to 0). Do not go back to it.
-    2. **Still mixed against observed cells.** Climate-dependent spread improves the ratio for wood density (1.57 → 1.38), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It worsens woody leaf area (1.23 → 1.43): it matches the observed decline at the warm, wet end but overshoots in cool and dry cells (about 2.2 against 1.3–1.9 observed), where most cells hold only 5–9 species. Shrinkage does not change this, because the curve is well supported by the species data.
+    2. **Still mixed against observed cells.** Climate-dependent spread improves the ratio for wood density (1.57 → 1.38), woody seed mass (1.33 → 1.15) and non-woody height (1.18 → 1.13). It worsens woody leaf area (1.23 → 1.47): it matches the observed decline at the warm, wet end but overshoots in cool and dry cells, where most cells hold only 5–9 species. The quadratic version did about the same (1.43).
   - **Fit times** after the TMB 1.9.25 upgrade: height 6 min (glmmTMB), 10.5 min (RTMB); other traits seconds.
   - **Diagnostic figures** (records, species means and both models' ranges in 12 cells per trait) are in `outputs/local_range/figures/` and the notebook.
   - **Coarse cells cost nothing.** Cell size made little difference to LMA between 10, 25 and 50 km.
@@ -226,7 +227,8 @@ Next, before the trait list and publication:
   1. Predict to a location from its climate alone. This needs the mean and spread of co-occurring species' climate centres as a smooth function of climate, from GBIF co-occurrence (extend `cell_species_centres()`).
   2. Choose the trait list. Benchmark coverage of both growth forms is good for height, LMA and leaf area. The other six traits have woody cells only, or fewer than 10 non-woody cells.
   3. Decide whether a genus effect should take up the similarity of co-sampled congeners.
-  4. Spread by climate: decide per trait between constant and shrunk climate-dependent spread. On AIC and Bayes factor the candidates are leaf area, height, wood density and seed mass; the open question is woody leaf area's cool/dry overshoot, whether the model or the 5–9-species benchmark cells are wrong there.
+  4. Spread by climate: the one shrunk linear model is used for every trait (decided 25 November 2026). Open: woody leaf area's cool/dry overshoot, whether the model or the 5–9-species benchmark cells are wrong there. When predicting from climate, clamp the climate to the range of the species' centres, because a slope in log SD still grows exponentially.
+  5. The RTMB fits estimate every species' effect but do not save it. To take modelled species means from the climate-dependent spread model, return the species effects from `fit_spread_rtmb()` (and their SEs, which are slow for height).
 
 On the extensions milestone:
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.

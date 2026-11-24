@@ -1,9 +1,10 @@
 # Continuous spread (#41): add the RTMB models with the species SD a smooth
 # function of the species' climate centre (R/model/spread_rtmb.R) to the
 # location prototype result, outputs/local_range/prototype_<cell_km>km.rds:
-# the free quadratic under `spread$continuous`, the shrunk one (from the
-# free one, fit_spread_shrunk()) under `spread$shrunk`. Fits already in the
-# file are kept unless --refit is given. Then draw the spread and cell figures. Run after
+# the free fit (linear in the climate centres) under `spread$continuous`,
+# the shrunk one (from the free one, fit_spread_shrunk()) under
+# `spread$shrunk`. Fits already in the file are kept unless --refit is
+# given. Then draw the spread and cell figures. Run after
 # R/scripts/run_location_prototype.R.
 #
 # Usage, from the project root:

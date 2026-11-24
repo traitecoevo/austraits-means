@@ -6,7 +6,12 @@
 # effect: for species s of growth form g with climate centre (P_s, T_s),
 # standardised to (p, t),
 #   u_s ~ N(0, sd_u(s)^2),
-#   log sd_u(s) = a_g + b1_g p + b2_g t + b3_g p^2 + b4_g t^2.
+#   log sd_u(s) = a_g + b1_g p + b2_g t.
+# Linear by default (decided 25 November 2026): the squares p^2 and t^2 can
+# be added through `spread_terms`, but a quadratic in log SD grows or
+# collapses fast outside the species' centres, the product predicts from
+# climate anywhere, and the quadratic was only supported for leaf area and
+# height, on top of a linear term that already was.
 # The rest as before: growth-form intercepts and climate slopes (fixed),
 # uncorrelated species random slopes on the centred climate, a location
 # effect per growth form, a species x location effect and the residual.
@@ -17,12 +22,12 @@
 # With `spread_terms = character(0)`, log sd_u(s) = a_g: the glmmTMB location
 # model, which checks this code (the likelihoods must agree).
 #
-# Shrinkage (fit_spread_shrunk()): without it the free quadratic overfits
-# small groups (non-woody seed mass, 27 species, grew a hump to SD 2.5) and
-# can send the SD to ~0 at the edge of the data. The climate coefficients b
-# get a prior b ~ N(0, tau_d^2), one tau per polynomial degree d (linear p, t;
-# quadratic p^2, t^2) shared by the growth forms, the taus estimated from the
-# data: a ridge penalty with its strength chosen by marginal likelihood, as
+# Shrinkage (fit_spread_shrunk()): without it the free model overfits small
+# groups (the free quadratic gave non-woody seed mass, 27 species, a hump to
+# SD 2.5) and can send the SD to ~0 at the edge of the data. The climate
+# coefficients b get a prior b ~ N(0, tau_d^2), one tau per polynomial degree
+# d (linear p, t; quadratic p^2, t^2 when used) shared by the growth forms,
+# the taus estimated from the data: a ridge penalty with its strength chosen by marginal likelihood, as
 # mgcv chooses smoothing parameters. A growth form whose species say little
 # about how spread changes with climate is pulled toward constant spread, and
 # tau_d -> 0 drops degree d.
@@ -50,6 +55,7 @@
 #' @param data records with a `location` column (`add_location_key()`).
 #' @param spread_terms terms of log sd_u in the standardised centres: any of
 #'   "p", "t", "p2", "t2" (precipitation, temperature, their squares).
+#'   Linear by default; see the file header.
 #' @param penalty_tau optional prior SD of each climate coefficient, one per
 #'   element of `spread_terms` (the same for every growth form): adds the
 #'   ridge penalty b^2 / (2 tau^2). Use fit_spread_shrunk() to choose it.
@@ -60,7 +66,7 @@
 #'   posterior one, logLik is unpenalised at that mode and aic is NA (see
 #'   fit_spread_shrunk()).
 fit_spread_rtmb <- function(data, trait, groups, n_min = 5, min_group_species = 20,
-                            spread_terms = c("p", "t", "p2", "t2"), penalty_tau = NULL) {
+                            spread_terms = c("p", "t"), penalty_tau = NULL) {
   penalised <- !is.null(penalty_tau)
   if (penalised) stopifnot(length(penalty_tau) == length(spread_terms), all(penalty_tau > 0))
   prep <- .woodiness_data(data, trait, groups, n_min, min_group_species)

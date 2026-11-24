@@ -113,9 +113,12 @@ test_that("RTMB spread model recovers spread that changes with climate", {
 test_that("shrinking the spread terms keeps a real slope and drops the rest", {
   skip_if_not_installed("RTMB")
   # true: log species SD linear in temperature (0.4 per SD), no precipitation
-  # or quadratic effect
+  # or quadratic effect. The quadratic terms are not the default; they are
+  # fitted here to check that shrinkage drops a degree the data don't support.
+  all_terms <- c("p", "t", "p2", "t2")
   sim <- simulate_location_data(seed = 6, n_species = 600, spread_slope = 0.4)
-  free <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0))
+  free <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                           spread_terms = all_terms))
   r <- suppressMessages(fit_spread_shrunk(sim$data, "sim", sim$groups, free, n_min = 0))
   expect_true(r$converged)
   sh <- r$spread$shrinkage
@@ -136,7 +139,8 @@ test_that("shrinking the spread terms keeps a real slope and drops the rest", {
 
   # no climate effect at all: every degree is dropped
   sim0 <- simulate_location_data(seed = 7, n_species = 300, spread_slope = 0)
-  free0 <- suppressMessages(fit_spread_rtmb(sim0$data, "sim", sim0$groups, n_min = 0))
+  free0 <- suppressMessages(fit_spread_rtmb(sim0$data, "sim", sim0$groups, n_min = 0,
+                                            spread_terms = all_terms))
   sh0 <- estimate_spread_shrinkage(free0$spread$theta, free0$spread$cov)
   expect_true(sh0$at_lower[["degree 1"]])
   expect_true(all(abs(sh0$b_post) < 0.03))

@@ -95,7 +95,7 @@ plot_spread_by_climate <- function(res) {
 #' at each class's median centre) and the constant-spread estimate (dashed).
 #'
 #' With a shrunk fit (`spread$shrunk`), its curve and band are drawn and the
-#' free quadratic is a thin line.
+#' free fit is a thin line.
 #'
 #' @param res one element of the prototype result, with `spread$continuous`.
 plot_spread_curves <- function(res) {
