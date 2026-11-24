@@ -1,5 +1,7 @@
 # Observed means, portal method: AusTraits species means 7.0.0
 
+> **Retired 24 November 2026, never published** (`roadmap.md`). The observed means are published by austraits.build with each AusTraits release. This product's code and reproduction check stay in the pipeline but are not maintained, and its draft Zenodo deposit (#10) was not completed.
+
 ## What this product is
 
 AusTraits species means 7.0.0 is a table summarising the trait records of each taxon and trait in AusTraits 7.0.0. It reproduces the species means that the AusTraits data portal computes offline for that release, so that what portal users have been seeing can be archived and cited. Every row carries `estimate_type = observed_mean` and `method = portal_arithmetic`.

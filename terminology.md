@@ -1,6 +1,8 @@
 # Terminology: species and community means
 
-This project publishes two species-level trait estimates, plus community-level summaries of them mapped across space. This file fixes what they are called and what each one means. The documentation, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
+There are two species-level trait estimates and community-level summaries predicted from climate. This file fixes what they are called and what each one means. The documentation, the exported data, the Zenodo and portal metadata, and the code should all use these terms. If a definition changes, change it here first.
+
+Who publishes what (decided 24 November 2026): the **observed mean** is published by austraits.build with each AusTraits release and its Zenodo record; this project reads it and does not publish it. This project publishes the **modelled mean**, for a short list of traits, and the **modelled community statistics** predicted from climate, in a Zenodo record of its own. The terms are defined here for both, so that the two products use them the same way.
 
 Species terms decided 14 October 2026. Community terms proposed 14 October 2026; their open choices were decided 19 October 2026 (see "Community choices" below). The choice of "mean" over "average" was confirmed on 14 October 2026: "average" had been suggested to leave room for medians and trimmed means, but both published estimates are geometric means, so "mean" is accurate, and flexibility of method is carried by the `method` column (below), not by the term.
 
@@ -47,38 +49,44 @@ That last difference is why both are published. The observed mean gives coverage
 
 ## Product versions and methods
 
-The species means product carries the **same version tag as the AusTraits release it derives from**, so the two are easily related: "species means 7.0.0" derives from AusTraits 7.0.0. A re-issue for the same release appends a fourth component (7.0.0.1). Products built from a development build carry that build's version string until the corresponding release exists.
+The species means product carries the **same version tag as the AusTraits release it derives from**, so the two are easily related: "species means 7.0.0" derives from AusTraits 7.0.0. A re-issue for the same release appends a fourth component (7.0.0.1). Products built from a development build carry that build's version string until the corresponding release exists. Whether the new modelled-means Zenodo record keeps this rule is open (roadmap, 24 November 2026).
 
 Each row records how it was computed in a `method` column:
 
 | `estimate_type` | `method` | Meaning |
 |---|---|---|
-| `observed_mean` | `portal_arithmetic` | The method the AusTraits data portal used for 7.0.0: an unweighted **arithmetic** mean of per-location means (raw, mean and median records) and per-observation flora midpoints (minimum and maximum records). Reproduced exactly from the portal code at the commit that built the deployed data, quirks included, so that product can be archived as what users have been seeing. |
+| `observed_mean` | `portal_arithmetic` | **Retired 24 November 2026, never published.** The method the AusTraits data portal used for 7.0.0: an unweighted **arithmetic** mean of per-location means (raw, mean and median records) and per-observation flora midpoints (minimum and maximum records). Reproduced exactly from the portal code at the commit that built the deployed data, quirks included, so that product can be archived as what users have been seeing. |
 | `observed_mean` | `geometric` | The observed mean as defined above (geometric), used from the next AusTraits build onward. The arithmetic mean is kept in its own clearly labelled column. |
 | `observed_mean` | `arithmetic` | The observed mean of a signed trait (one whose definition allows negative values): the arithmetic mean of the same groups, using every record. The geometric method's rows for all other traits. |
 | `modelled_mean` | `tmb` or `brms` | The modelled mean as defined above, by fitting backend. |
 
-The rule that both estimates are geometric means therefore holds from the `geometric` method onward. The `portal_arithmetic` product is the one exception, and it is labelled as arithmetic wherever it appears.
+The rule that both estimates are geometric means therefore holds from the `geometric` method onward. The retired `portal_arithmetic` product is the one other exception, and it is labelled as arithmetic wherever it appears.
 
 ## Community means
 
-These summarise the trait values of the species present at a location. They are computed for all species, and for **woody** and **non-woody** plants separately.
+These summarise the trait values of the species that grow together at one location. They are given for **woody** and **non-woody** plants separately.
 
 | Term | Definition |
 |---|---|
 | **community mean** | the mean, on the log scale, of the trait values of the species present at a location, one value per species; back-transformed, so it is a geometric mean |
 | **community variance** | the variance, on the log scale, of those species values |
-| **woody** / **non-woody** | qualifiers on either term, for example "woody community mean" |
-| **observed** / **modelled** | observed = computed directly from the species in a spatial unit, with no model; modelled = the trait-climate model's net average for the unit over the species present, averaging over between- and within-species effects |
+| **community SD** | its square root, in natural-log units |
+| **community range** | the interval holding the central 90% of those species values (5th to 95th percentile), back-transformed to trait units |
+| **woody** / **non-woody** | qualifiers on any of these terms, for example "woody community mean" |
+| **modelled** / **observed** | modelled = predicted from the location's climate by the trait model; observed = computed directly from the species recorded in a spatial unit, with no model |
 
-An observed community mean takes each species' value either from its trait records collected in the unit (the *local records* product) or from its observed mean (the *GBIF presence* product). The modelled community mean uses no species values: the model's prediction for a species centred at climate m, observed at the unit's climate x, averaged over the species present, is b0 + b_within·x + (b_between − b_within)·m̄. It has no community variance. The three products are described in `docs/community-layers-design.md`.
+**What is published (decided 24 November 2026):** for a location, from its climate alone, the modelled woody and non-woody community mean and community range (with the community SD), for each trait with modelled means. The modelled community statistics are a function of climate. They can be evaluated at any location's climate, such as each cell of a grid, but they are not computed from the species recorded there. The records are too sparse to publish observed community statistics mapped across space. The observed statistics are still built, unpublished, as diagnostics and as the benchmark for the modelled ones (`docs/community-layers-design.md`).
+
+**The community variance is the spread among species of one growth form at one location.** It is not the spread among all the species, from anywhere, that share that climate. That pooled spread is larger, because it also includes how locations with the same climate differ from one another (soils, regional species pools). A model with species effects only cannot separate the two; the model with location effects (roadmap, "Later work") can. Do not report a community range computed from the pooled species variance.
+
+Until that model exists, the modelled community mean is the model's prediction for a species centred at climate m and observed at the location's climate x, averaged over the species present: b0 + b_within·x + (b_between − b_within)·m̄. It has no community variance. The products built so far are described in `docs/community-layers-design.md`.
 
 Full forms follow one order: estimate type, then growth form, then level, then statistic. For example: "modelled woody community mean", "observed non-woody community variance".
 
 Rules:
 
 - **Always say "community".** It is what separates these from the species terms. "Modelled mean" on its own always refers to a species. "Modelled community mean" refers to the spatial surface.
-- **Community variance is between-species only.** It is the spread of species means and leaves out variation within species. Say this wherever the term is defined. Report it in natural-log units. If the SD is also published, call it **community SD**.
+- **Community variance is between-species only, within one location and within one growth form** (woody or non-woody). It is the spread of the species means of one group at one location, and leaves out variation within species and the difference between the two groups. Say this wherever the term is defined. Report it in natural-log units.
 - **Name the source of the species values in the metadata, not in the term.** Record whether an observed community statistic uses the species' records in the unit or their observed means. Do not build that into the name; the product name (`observed_local`, `observed_presence`) carries it.
 - **Use "non-woody", not "herbaceous".** In AusTraits, "herbaceous" is one category of the `woodiness` trait, and non-woody is meant to cover everything that is not woody. The exact assignment of categories is an open choice below.
 - **The spatial unit is part of the definition.** "Location" means a stated unit; for these layers, a 10 × 10 km cell of an equal-area (Lambert Azimuthal Equal Area) grid of Australia (decided 19 October 2026, #20). Give it wherever the community terms are defined.

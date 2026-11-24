@@ -2,6 +2,11 @@
 # (or development build), each linked to the release it derives from (#10;
 # publication is #30).
 #
+# Retired 24 November 2026 (roadmap.md): this deposit held the portal-method
+# observed means, which are not published, and #10 is closed. Observed means
+# ship with the AusTraits release; the modelled means get a new record (#30),
+# for which these functions are a starting point, not the answer.
+#
 # `prepare_zenodo_package()` assembles one version's files, README and
 # deposit metadata into a directory. `create_zenodo_draft()` uploads that
 # directory as a new *draft* deposition. Nothing here publishes: publication

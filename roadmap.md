@@ -1,4 +1,4 @@
-# Roadmap: species means and community layers
+# Roadmap: modelled species means and community means from climate
 
 This is the planning document for `austraits-means`. It records what the repository delivers, the decisions taken and why, the milestones and the issues that reach them, and the invariants a future edit could break. Keep it current or retire it; do not start a second plan beside it. Issue numbers are on the [AusTraits board](https://github.com/orgs/traitecoevo/projects/9) (view "means").
 
@@ -6,13 +6,18 @@ Last revised: 24 November 2026.
 
 ## Products
 
-Three data products, defined in `terminology.md`:
+Re-scoped 24 November 2026 (decisions below). This repository publishes one product, in a Zenodo record of its own, for a short list of traits; terms are defined in `terminology.md`:
 
-1. **Observed means**: per species × trait, computed directly from the records. Two methods exist. The *portal method* (`method = portal_arithmetic`) reproduces exactly the species averages the AusTraits data portal computes for AusTraits 7.0.0, so that product can be archived and cited. The *geometric method* (`method = geometric`) is its successor from the next AusTraits build onward.
-2. **Modelled means**: per species × trait, the model-estimated geometric mean at the centre of the species' climate distribution (the within-species-centred model in `R/model/`), built here.
-3. **Community layers**: the community mean and community variance of the species present in each 10 km cell across Australia, for woody and non-woody plants separately and for all species, in three products: observed from the trait records in the cell, observed from GBIF presence × observed means, and modelled (each trait model's net average for the cell). A spatial model fitted to the observed layers is a later extension ([#38](https://github.com/traitecoevo/austraits-means/issues/38)).
+1. **Modelled means**: per species × trait, the model-estimated geometric mean at the centre of the species' climate distribution (the within-species-centred model in `R/model/`).
+2. **Modelled community statistics**, in the same record: for a location, predicted from its climate alone, the woody and non-woody **community mean** (mean trait across species) and **community range** (spread of the species' trait means there). They are a function of climate, which can be evaluated at any location; they are not maps of the records. The model that gives an honest community range is not built yet (Later work).
 
-Each product carries the **same version tag as the AusTraits release it derives from** (for example "species means 7.0.0"), so the two are easily related. A re-issue for the same release appends a fourth component (7.0.0.1). Products derived from a development build carry that build's version string until the corresponding release exists.
+Not published from here:
+
+- **Observed means** (the simple species means) are published by austraits.build with each AusTraits release and its Zenodo record ([austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). This repository reads them.
+- The **observed community layers** (`observed_local`, `observed_presence`) and the current GBIF-presence `modelled` layer stay in the pipeline as unpublished diagnostics: the within-cell spread of `observed_local` is the benchmark for the modelled community range.
+- The **portal-method observed means for AusTraits 7.0.0** are retired, unpublished. The code and its reproduction check are kept in the pipeline but not maintained.
+
+The trait list is open until the location-model prototype has been checked trait by trait (Later work). How the new record is named and versioned is open.
 
 ## Milestones
 
@@ -57,6 +62,16 @@ Status, 20 October 2026:
 - [#29](https://github.com/traitecoevo/austraits-means/issues/29)–[#31](https://github.com/traitecoevo/austraits-means/issues/31) wait on the review, the go-ahead to publish (licensing is settled: CC BY 4.0, as the NC records are dropped) and the consultation.
 - Per-trait figures of within- vs between-species responses are now drawn for every trait (`outputs/traits/figures/<trait>_within_between`). Collection method as a covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)) is untested: the model's `methodology` hook (a `(1 | dataset_id)` intercept) has never been run, height has a single `dataset_id` (`AVH_2026`), and the method-factor tables are not yet imported.
 
+Status, 24 November 2026: the due date passed with the products re-scoped (decisions below), so this milestone does not close as written.
+
+- Closed as not planned: [#10](https://github.com/traitecoevo/austraits-means/issues/10) and its epic [#6](https://github.com/traitecoevo/austraits-means/issues/6): the portal-method product is retired. The draft deposit on Zenodo is left for the maintainer to discard.
+- Re-scoped:
+  - [#28](https://github.com/traitecoevo/austraits-means/issues/28) and its epic [#21](https://github.com/traitecoevo/austraits-means/issues/21): the observed layers are built and become unpublished diagnostics; no further work on them for publication.
+  - [#30](https://github.com/traitecoevo/austraits-means/issues/30): publishes the modelled means and modelled community statistics in a new Zenodo record.
+  - [#38](https://github.com/traitecoevo/austraits-means/issues/38): becomes the community statistics predicted from climate, by the model with location effects (new issue [#41](https://github.com/traitecoevo/austraits-means/issues/41)).
+  - [#31](https://github.com/traitecoevo/austraits-means/issues/31): whether a consultation is still wanted for climate-derived statistics is open.
+- Next: the location-model prototype ([#41](https://github.com/traitecoevo/austraits-means/issues/41)), then the trait list, then [#29](https://github.com/traitecoevo/austraits-means/issues/29) and [#30](https://github.com/traitecoevo/austraits-means/issues/30). No new due date until the prototype reports.
+
 ### extensions (undated)
 
 [#35](https://github.com/traitecoevo/austraits-means/issues/35) BRMS refits for unconverged traits; [#3](https://github.com/traitecoevo/austraits-means/issues/3) collection method as a covariate, with [#36](https://github.com/traitecoevo/austraits-means/issues/36) importing the factor tables and testing on taxa measured under more than one method; [#37](https://github.com/traitecoevo/austraits-means/issues/37) methods description and figure set for the products; [#38](https://github.com/traitecoevo/austraits-means/issues/38) modelled community means across space. [#40](https://github.com/traitecoevo/austraits-means/issues/40) joint multivariate model with gap-filling. Deferred without a milestone: [#39](https://github.com/traitecoevo/austraits-means/issues/39) leaf_delta13C transform.
@@ -66,6 +81,18 @@ Status, 20 October 2026:
 Dated decisions, newest first. Earlier decisions from the refactor plan are kept below them.
 
 ### 24 November 2026
+
+Product re-scope, decided by Daniel Falster:
+
+- **Simple (observed) means are published by austraits.build with each AusTraits release and its Zenodo record, not here.** They are a direct summary of the release, and the API and portal can then serve one copy. Supersedes the 14 October decision that derived products share one "AusTraits species means" deposit.
+- **The portal-method observed means for AusTraits 7.0.0 are retired, unpublished** ([#6](https://github.com/traitecoevo/austraits-means/issues/6), [#10](https://github.com/traitecoevo/austraits-means/issues/10) closed). The successor method ships with the release, so a separate archive of the 7.0.0 portal values adds little. Their code and reproduction check stay in the pipeline, unmaintained. Alternatives considered: finishing the #10 deposit as a one-off archive; handing the table to austraits.build to sit with 7.0.0.
+- **Modelled means are a separate product, for far fewer traits, in a new Zenodo record.** Which traits is decided after the location-model prototype, by how well each trait supports a community range. Evidence so far is in Later work.
+- **No observed community layers are published: there are too few records.** A trait record collected in a cell is rare: 72–459 sites have 5 or more species measured together for the eight leaf, seed and wood traits (Later work). Spatial output is predicted from climate by the trait model instead. The observed layers already built stay as unpublished diagnostics, because their within-cell spread is the benchmark for the modelled community range. Supersedes the 19 October decision on three community products. Alternative considered: removing them.
+- **The community statistics are, for a location and from its climate, the community mean and the community range, for woody and non-woody plants separately** (`terminology.md`). There is no "all species" statistic: mixing the two groups needs each location's woody share, which comes from occurrence data.
+- **Community variance is between species only, within one location and within one growth form** (woody or non-woody), so it excludes the difference between the groups as well as variation within species.
+- **The community range comes from a model with location effects, never from the pooled species variance.** The current model pools all records from the same climate, so the spread among its species includes how locations with the same climate differ; the spread at one location is smaller (measured: 0.59–0.92 of it, Later work). The next modelling step is a model that separates the two ([#41](https://github.com/traitecoevo/austraits-means/issues/41)).
+
+Observed means:
 
 - **Signed traits get an arithmetic observed mean** (traits.use#51). A trait whose definition allows values below zero (water potentials, temperatures, isotope ratios; 43 in the development build) has no geometric mean, so its `value` is the arithmetic mean of the same groups, labelled `method = arithmetic`. Alternative considered: leaving such traits without an observed mean, as the first version did (23 traits had none).
 - **The calculation moves to traits.use** as `summarise_trait_means()` (traits.use#51), after Lizzy Wenk's review: usable on any traits.build database or subset, every trait by default, with `by` for further grouping (AusInverTraits splits by sex). austraits.build#900 calls it.
@@ -79,7 +106,7 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 - **Community layers use a 10 × 10 km equal-area grid, as Andrew et al. 2025** (Lambert Azimuthal Equal Area, `+proj=laea +lat_0=-25.2744 +lon_0=133.7751 +x_0=0 +y_0=0 +datum=WGS84 +units=m`), **at least 10 species with a mean per cell and group, and GBIF occurrence points for presence** ([#20](https://github.com/traitecoevo/austraits-means/issues/20)). Range maps from species distribution models were considered as the occurrence source.
 - **A species' woodiness and growth form are their most likely value as the AusTraits data portal computes it** (master's categorical summary: each space-separated value counted once per record, the most frequent kept, ties joined); the geometric observed means' `value_mode` is that same value ([#19](https://github.com/traitecoevo/austraits-means/issues/19)).
 - **Woody: `woodiness_detailed` woody or woody_like_stem (palms, cycads, grass trees); non-woody: herbaceous and the other intermediate categories (semi_woody, woody_base, woody_like_inflorescence, woody_root); then growth-form keywords; species still unassigned are left out of the woody and non-woody layers, with no fallback to the coarse `woodiness` trait** ([#19](https://github.com/traitecoevo/austraits-means/issues/19)). Unassigned species are few (23 in the development build) and unclear cases.
-- **Three community products, replacing the first draft's variants** ([#20](https://github.com/traitecoevo/austraits-means/issues/20), [#28](https://github.com/traitecoevo/austraits-means/issues/28)): *observed, local records*, where each species' records in a cell are averaged and then the species, with no model; *observed, GBIF presence*, the species present in a cell each given its geometric observed mean; and *modelled*, the per-trait model's net average for the cell, b0 + b_within·x + (b_between − b_within)·m̄, from the cell's climate x and the mean climate centre m̄ of the species present, using no species means. The first keeps values tied to where traits were measured; the second gives coverage; the third averages over between- and within-species effects. All three are built for woody and non-woody species separately, and for all species. The modelled product is split through a woodiness term in each trait's model (woody and non-woody intercepts and climate slopes, species random effects shared), so the layer for all species mixes the two by their species in the cell; without it, the model, fitted mostly on woody species, could not follow the woody share of a cell. Separate models per group were the alternative; the shared random effects help the groups with few species. A group with fewer than 20 fitted species gets no modelled layer (non-woody leaf N and P per area, wood density).
+- *(Superseded 24 November 2026: none of these is published; they stay as diagnostics.)* **Three community products, replacing the first draft's variants** ([#20](https://github.com/traitecoevo/austraits-means/issues/20), [#28](https://github.com/traitecoevo/austraits-means/issues/28)): *observed, local records*, where each species' records in a cell are averaged and then the species, with no model; *observed, GBIF presence*, the species present in a cell each given its geometric observed mean; and *modelled*, the per-trait model's net average for the cell, b0 + b_within·x + (b_between − b_within)·m̄, from the cell's climate x and the mean climate centre m̄ of the species present, using no species means. The first keeps values tied to where traits were measured; the second gives coverage; the third averages over between- and within-species effects. All three are built for woody and non-woody species separately, and for all species. The modelled product is split through a woodiness term in each trait's model (woody and non-woody intercepts and climate slopes, species random effects shared), so the layer for all species mixes the two by their species in the cell; without it, the model, fitted mostly on woody species, could not follow the woody share of a cell. Separate models per group were the alternative; the shared random effects help the groups with few species. A group with fewer than 20 fitted species gets no modelled layer (non-woody leaf N and P per area, wood density).
 
 - **Only openly licensed GBIF records are used (CC0 and CC BY), so every product can be CC BY 4.0** ([#30](https://github.com/traitecoevo/austraits-means/issues/30), [#32](https://github.com/traitecoevo/austraits-means/issues/32)). GBIF licenses a download as its most restrictive record, and both downloads used are CC BY-NC 4.0. In the October 2026 download the CC BY-NC records are 12.3% (3.36 million, mostly iNaturalist research-grade observations, NSW weeds and the ACT Wildlife Atlas); dropping them leaves 603 of 27,730 species names with no records, of which only 49 have a trait mean. Alternatives considered: licensing the occurrence-derived products CC BY-NC, or treating aggregates as outside the NC terms.
 - **The occurrence refresh uses GBIF download `0027765-260928105237408`** ([10.15468/dl.766erw](https://doi.org/10.15468/dl.766erw), 15 October 2026), cleaned with the current cornsters_australian_annuals method, whose capital-city buffer is 2 km rather than the 20 km of the 2025 extract (fewer genuine urban records lost). That download uses GBIF's new taxonomic backbone (Catalogue of Life), so its names are realigned to APC rather than reusing the 2025 alignment.
@@ -89,17 +116,17 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 ### 14 October 2026
 
 - **The term is "mean", not "average".** Both species estimates are geometric means, so "mean" is accurate; "average" is ambiguous and clashes with `average_temperature`. Flexibility of method is carried by the `method` column, not by the term. An earlier preference for "average" (to leave room for medians and trimmed means) was considered and set aside.
-- **The portal-method observed mean reproduces the deployed portal output for AusTraits 7.0.0.** The portal computes its species averages offline (`estimate_species_trait_means()` in `austraits.portal`, at the commit that built the deployed data); that is what users have been seeing, so it is the product to archive. Exactness is at key level (taxon × trait × unit) with numeric tolerance; row order is excluded because the portal has no lockfile.
+- *(Superseded 24 November 2026: the portal-method product is retired, unpublished.)* **The portal-method observed mean reproduces the deployed portal output for AusTraits 7.0.0.** The portal computes its species averages offline (`estimate_species_trait_means()` in `austraits.portal`, at the commit that built the deployed data); that is what users have been seeing, so it is the product to archive. Exactness is at key level (taxon × trait × unit) with numeric tolerance; row order is excluded because the portal has no lockfile.
 - **That product is an arithmetic mean and is labelled as such.** The geometric observed mean is the successor method from the next AusTraits build onward, with the arithmetic mean kept in its own column. The portal method's quirks (a geometric-mean column that equals the mean; no life-stage or basis-of-record filter on raw/mean/median records; lone flora bounds; no taxonomic roll-up) are documented, not fixed, in that product.
-- **Derived products get their own Zenodo deposit**, "AusTraits species means", with its own concept DOI and one version per AusTraits release (or per development build, tagged with its version string), each linked to the release or build it derives from. Alternative considered: re-releasing AusTraits 7.0.0 with the product added. Set aside because a derived product is not a database release and the two would drift.
+- *(Superseded 24 November 2026: observed means go out with the AusTraits release; modelled means get a new record.)* **Derived products get their own Zenodo deposit**, "AusTraits species means", with its own concept DOI and one version per AusTraits release (or per development build, tagged with its version string), each linked to the release or build it derives from. Alternative considered: re-releasing AusTraits 7.0.0 with the product added. Set aside because a derived product is not a database release and the two would drift.
 - **Versioning follows the AusTraits release tag** (see Products).
 - **Trait and height records come from an austraits.build development build** (which now includes the AVH height dataset), replacing the separate AVH CSV. The GBIF refresh and medoid rebuild follow in the release candidate; the first draft uses the existing occurrence extract and medoids, with the crosswalk rebuilt from the new names.
 - **Unconverged BRMS fits stay postponed** to the extensions milestone; TMB estimates serve the first two milestones.
 - **The name crosswalk is built inside the pipeline, against APC release 2026-07-30** (`apc_version` in `_targets.R`), from every taxon name in the development build and every GBIF name ([#13](https://github.com/traitecoevo/austraits-means/issues/13)). Changing the release rebuilds everything downstream. The release candidate re-pins it when the GBIF extract is refreshed ([#33](https://github.com/traitecoevo/austraits-means/issues/33)).
-- **The field-only per-record geometric mean (`estimate_simple_means()`) is retired** ([#17](https://github.com/traitecoevo/austraits-means/issues/17)). The geometric observed mean ([#15](https://github.com/traitecoevo/austraits-means/issues/15)) supersedes it as the observed mean, and the combined product (modelled where available, otherwise observed) is built from that. Exports carry `estimate_type` and `method` and name their values `value`, `log_value`, `value_lower`, `value_upper` (`terminology.md`).
+- **The field-only per-record geometric mean (`estimate_simple_means()`) is retired** ([#17](https://github.com/traitecoevo/austraits-means/issues/17)). The geometric observed mean ([#15](https://github.com/traitecoevo/austraits-means/issues/15)) supersedes it as the observed mean, and the combined table (modelled where available, otherwise observed) is built from that; since 24 November 2026 that table is an internal input, not a product. Exports carry `estimate_type` and `method` and name their values `value`, `log_value`, `value_lower`, `value_upper` (`terminology.md`).
 - **Infraspecific taxa are rolled up to species** for the modelled means and the geometric observed means (`roll_up_to_species()`; [#13](https://github.com/traitecoevo/austraits-means/issues/13), [#15](https://github.com/traitecoevo/austraits-means/issues/15)). The AVH height dataset in austraits.build keeps subspecies, varieties and forms, which the earlier AVH CSV had rolled up to species, and GBIF names (and so medoids) are almost all at species rank. Rolling up gives every record a species-level climate centre and makes both species estimates join on species. The build's own name is kept in `taxon_name_aligned`. Alternative considered and set aside: keeping infraspecific taxa as their own groups, centred on their parent species' medoid. The portal-method product is not rolled up; that is one of its documented quirks.
 - **Weighting and woody / non-woody assignment for the community layers are decisions, not defaults.** The first draft uses provisional choices, flagged as such; the release candidate applies the decisions.
-- **The spatial layers get a community consultation**, scheduled after the first-draft review.
+- **The spatial layers get a community consultation**, scheduled after the first-draft review. (Open since 24 November 2026: whether it still applies to statistics predicted from climate.)
 
 ### Earlier (refactor plan, 2026)
 
@@ -110,7 +137,7 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 - Species with no medoid are dropped from the climate-response models and routed to the observed means.
 - AusTraits records for the modelled means: `basis_of_record == "field"`, `value_type` in raw, mean, median; per-dataset exceptions are allowed where a dataset carries only bounds (the AVH height dataset).
 - BRMS validated against TMB (centres r = 1.000); production path set up (cmdstanr, threading, on-disk cache, diagnostics); larger traits need `iter ≥ 4000`.
-- Medoid quality gated by a reasonableness check (`medoid_ok`): the medoid sits inside its own occurrence cloud, agrees with simple summaries (median and mean of occurrences), and falls within the climate span of the species' trait records. Species that fail are excluded from the models and get only an observed mean.
+- Medoid quality gated by a reasonableness check (`medoid_ok`): the medoid sits inside its own occurrence cloud, agrees with simple summaries (median and mean of occurrences), and falls within the climate span of the species' trait records. Species that fail are excluded from the models and get only an observed mean. (Not so in the pipeline, found 24 November 2026: `check_medoid()` is only called by `reports/dataset_construction.qmd`, and no species is excluded by it. Applying the gate is open.)
 - Height methodology: one `dataset_id` per AVH collector was carried for a later methodology factor; with the move to the austraits.build dataset this becomes a single `dataset_id`. The build carries no record identifiers for that dataset, so the collector is recoverable only by mapping the identifiers in its `data.csv` into the build ([#3](https://github.com/traitecoevo/austraits-means/issues/3)).
 - Orchestration by `targets`, dependencies pinned by `renv`, all logic in `R/` functions, notebooks as reporting layers, figures saved as PNG and PDF.
 - Trait list: plant height plus LMA, leaf area, leaf N and P per mass and per area, seed mass, wood density. `leaf_delta13C` deferred.
@@ -119,7 +146,9 @@ Dated decisions, newest first. Earlier decisions from the refactor plan are kept
 
 Things a future edit could break without noticing:
 
-- The portal-method observed mean must stay reproducible from the AusTraits 7.0.0 release and the pinned portal commit. Do not "fix" its quirks; they are the product. Fixes go in the geometric method.
+- A community range or community variance is never computed from the pooled species variance of a model without location effects: that includes how locations with the same climate differ, and overstates the spread at one location.
+- Community statistics are given per growth form (woody, non-woody); the variance is between species within one form and one location.
+- The portal-method code is retired and unmaintained. If it is ever revived, it must reproduce the deployed portal output for 7.0.0, quirks included.
 - Value-type rules are per dataset: datasets that carry only minimum/maximum records (the AVH height dataset) enter the modelled means by an explicit rule, not by the default raw/mean/median filter.
 - Centring is on the GBIF medoid, never on the trait-sample mean.
 - Both species estimates are geometric means from the geometric method onward, except the observed mean of a signed trait, which is arithmetic and labelled `method = arithmetic` (24 November 2026); otherwise an arithmetic mean is always a separately labelled column.
@@ -129,9 +158,41 @@ Things a future edit could break without noticing:
 
 ## Later work
 
-On the extensions milestone:
+Next, before the trait list and publication:
 
-- Modelled community layers across space ([#38](https://github.com/traitecoevo/austraits-means/issues/38)), after the observed layers are settled.
+- **Location model for the community range** ([#41](https://github.com/traitecoevo/austraits-means/issues/41), feeding [#38](https://github.com/traitecoevo/austraits-means/issues/38)). Extend the woodiness model (`fit_woodiness_model()`) with a location random effect and a species × location term, variances per growth form:
+
+  ```
+  log_value ~ 0 + g + g:(P_mn + T_mn + P_c + T_c)
+            + diag(0 + g | taxon_name) + (0 + P_c | taxon_name) + (0 + T_c | taxon_name)
+            + diag(0 + g | location) + (1 | taxon_name:location)
+  ```
+
+  `g` is the growth form and `location` a 10 km equal-area cell. The location variance (same climate, different place) is left out of the community range. The species variance, the species × location variance and the spread of co-occurring species' climate centres around the location's climate go into it. The prototype is LMA and height, in `docs/local-range-model.qmd`, kept out of the product targets until it passes all four checks:
+  1. A simulation in which species sort among locations: the model recovers the known community SD, and the current model overstates it.
+  2. The model's community SD agrees with the observed within-location SD, per growth form.
+  3. Likelihood and AIC with and without the location terms, and the convergence and fit time for height (~320k records, ~29k cells).
+  4. The shift in the modelled species means, old against new.
+
+  Risk to test, not assume: one location term covers both species sorting among locations and species responding to a location; if sorting dominates, the split between species and location variance is biased.
+
+  Evidence (24 November 2026, `austraits_climate` target, natural-log SDs). "Within a location" is the SD among species' means at sites with 5 or more species. "Pooled" is the SD of species means of residuals from a climate-only regression, a crude benchmark not yet split by growth form:
+
+  | trait | locations with ≥5 species | within a location | pooled, given climate | ratio |
+  |---|---|---|---|---|
+  | leaf_mass_per_area | 459 sites | 0.45 | 0.76 | 0.59 |
+  | leaf_P_per_dry_mass | 178 sites | 0.47 | 0.70 | 0.67 |
+  | leaf_N_per_dry_mass | 259 sites | 0.37 | 0.49 | 0.76 |
+  | leaf_area | 324 sites | 1.45 | 1.86 | 0.78 |
+  | leaf_P_per_area | 72 sites | 0.41 | 0.51 | 0.80 |
+  | wood_density | 120 sites | 0.21 | 0.25 | 0.84 |
+  | leaf_N_per_area | 101 sites | 0.40 | 0.45 | 0.89 |
+  | plant_height | 10,924 cells (10 km) | 1.19 | 1.30 | 0.92 |
+  | seed_dry_mass | 53 sites | 2.19 | 2.40 | 0.91 |
+
+  Site, exact-coordinate and 10 km-cell groupings give near-identical SDs for the eight leaf, seed and wood traits. Height is 99% herbarium specimens with one record per location, so it has replication only at the cell grain.
+
+On the extensions milestone:
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.
 - Joint multivariate model with gap-filling ([#40](https://github.com/traitecoevo/austraits-means/issues/40)).
 

@@ -1,5 +1,7 @@
 # Community layers: design
 
+> **Status, 24 November 2026: unpublished diagnostics.** None of the three products below is published: the records are too sparse for observed community statistics mapped across space (`roadmap.md`, 24 November 2026). The product is now the modelled woody and non-woody community mean and community range predicted from climate (`terminology.md`), by a model with location effects not yet built. These layers stay in the pipeline because the within-cell spread of `observed_local` is the benchmark for that community range. The community variance below is computed from all species in a cell or a group, without separating locations, so do not read it as the community range.
+
 The community layers summarise trait values of the plant species in each cell of a 10 × 10 km equal-area grid of Australia, for woody and non-woody species separately, and for all species together. Per trait, cell and group they give the **community mean**, exp(mean of the species' log values), a geometric mean in trait units, and for the observed products the **community variance**, the variance of the species' log values, in natural-log units (`terminology.md`). The community variance is between species only: it leaves out variation within species.
 
 Three products are built, which differ in where the species and their values come from:

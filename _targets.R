@@ -282,7 +282,8 @@ list(
 
   # Draft Zenodo deposit for species means 7.0.0 (#10): the files, README and
   # deposit metadata. Uploading is a separate, deliberate step
-  # (R/scripts/create_zenodo_draft.R); nothing publishes.
+  # (R/scripts/create_zenodo_draft.R); nothing publishes. Retired 24 November
+  # 2026 with the portal-method product (roadmap.md); kept, not maintained.
   tar_target(portal_method_doc, "docs/observed-means-portal-method.md",
              format = "file"),
   tar_target(zenodo_package_portal,
