@@ -31,11 +31,22 @@ woodiness_model_terms <- c("log_annual_precipitation_mn", "average_temperature_m
 #' non-woody class are left out. A group with fewer than `min_group_species`
 #' species is not fitted; the trait is then fitted on the other group alone.
 #'
+#' With `location`, the model of the location prototype (#41,
+#' `R/model/local_range.R`): species and location variances per growth form
+#' and a species x location term, so that the spread among species at one
+#' location can be separated from the shift between locations of the same
+#' climate:
+#' `... + diag(0 + group | taxon) + (0 + P_c | taxon) + (0 + T_c | taxon)
+#'  + diag(0 + group | location) + (1 | taxon:location)`.
+#' `data` must then carry that column (`add_location_key()`).
+#'
 #' @param data `unified`.
 #' @param groups woody lookup (`build_woody_lookup()`).
+#' @param location NULL (the published model) or the name of a location column.
 #' @return list(trait, groups (fitted), n_species (per group, before the
 #'   minimum), formula, fit, data, fixed), or NULL if no group can be fitted.
-fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_species = 20) {
+fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_species = 20,
+                                location = NULL) {
   sub <- data |>
     dplyr::filter(trait_name == trait) |>
     dplyr::inner_join(groups |>
@@ -57,15 +68,23 @@ fit_woodiness_model <- function(data, trait, groups, n_min = 5, min_group_specie
   } else {
     paste(woodiness_model_terms, collapse = " + ")
   }
-  form <- stats::as.formula(paste(
-    "log_value ~", fixed, "+ (1 | taxon_name)",
-    "+ (0 + log_annual_precipitation_c | taxon_name) + (0 + average_temperature_c | taxon_name)"))
-  message("== ", trait, " (woodiness model: ", paste(fitted, collapse = ", "), ") ==")
+  slopes <- "+ (0 + log_annual_precipitation_c | taxon_name) + (0 + average_temperature_c | taxon_name)"
+  form <- if (is.null(location)) {
+    stats::as.formula(paste("log_value ~", fixed, "+ (1 | taxon_name)", slopes))
+  } else {
+    # per-group variances need both groups; with one, plain intercepts
+    by_group <- if (length(fitted) > 1) "diag(0 + woodiness_group |" else "(1 |"
+    stats::as.formula(paste(
+      "log_value ~", fixed, "+", by_group, "taxon_name)", slopes,
+      sprintf("+ %s %s) + (1 | taxon_name:%s)", by_group, location, location)))
+  }
+  message("== ", trait, " (woodiness model: ", paste(fitted, collapse = ", "),
+          if (!is.null(location)) paste0("; location = ", location), ") ==")
   fit <- glmmTMB::glmmTMB(form, data = sub)
   b <- glmmTMB::fixef(fit)$cond
   se <- sqrt(diag(stats::vcov(fit)$cond))[names(b)]
   list(trait = trait, groups = fitted, n_species = n_species, formula = form,
-       fit = fit, data = sub,
+       location = location, fit = fit, data = sub,
        fixed = tibble::tibble(term = names(b), estimate = unname(b), std.error = unname(se)))
 }
 

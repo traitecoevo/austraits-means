@@ -168,7 +168,7 @@ Next, before the trait list and publication:
             + diag(0 + g | location) + (1 | taxon_name:location)
   ```
 
-  `g` is the growth form and `location` a 10 km equal-area cell. The location variance (same climate, different place) is left out of the community range. The species variance, the species × location variance and the spread of co-occurring species' climate centres around the location's climate go into it. The prototype is LMA and height, in `docs/local-range-model.qmd`, kept out of the product targets until it passes all four checks:
+  `g` is the growth form and `location` a coarse equal-area cell, 50 km by default (coarse so that a location pools several studies; see the result below). The location variance (same climate, different place) is left out of the community range. The species variance, the species × location variance and the spread of co-occurring species' climate centres around the location's climate go into it. The prototype (`R/model/local_range.R`, run by `R/scripts/run_location_prototype.R`, reported in `docs/local-range-model.qmd`) is kept out of the product targets until it passes all four checks:
   1. A simulation in which species sort among locations: the model recovers the known community SD, and the current model overstates it.
   2. The model's community SD agrees with the observed within-location SD, per growth form.
   3. Likelihood and AIC with and without the location terms, and the convergence and fit time for height (~320k records, ~29k cells).
@@ -191,6 +191,24 @@ Next, before the trait list and publication:
   | seed_dry_mass | 53 sites | 2.19 | 2.40 | 0.91 |
 
   Site, exact-coordinate and 10 km-cell groupings give near-identical SDs for the eight leaf, seed and wood traits. Height is 99% herbarium specimens with one record per location, so it has replication only at the cell grain.
+
+  Prototype result, 24 November 2026, all nine traits at 50 km (`docs/local-range-model.qmd`):
+
+  - **Checks 1, 3 and 4 pass.**
+    - Simulation: the model recovers known variances. With independent placement it gets the local spread within about 8%; the published model overstates it by 1.4–1.7×.
+    - Every trait converges, and AIC favours the location model for every trait.
+    - The modelled species means move by 0.06–0.35 log units (SD), correlation 0.85–1.00 with the old ones.
+  - **Check 2 mostly passes.** Model-to-observed community SD ratios:
+    - location model: 0.97–1.31, mostly 1.05–1.20, against 1.00–1.97 for the published model;
+    - the exception is wood density at 1.47.
+  - **A 10–20% overstatement remains, and its cause is open.** Either co-occurring species really are more alike than random (the true range is smaller), or studies co-sample similar species (the observed spread is too small). These data cannot separate the two.
+  - **Coarse cells cost nothing.** Cell size made little difference to LMA between 10, 25 and 50 km.
+  - **Daniel's concern about sites with few species.** The range is estimated from variance parameters across all the data, not from each site's own spread. A site with one or two species adds little information but does not shrink the range. Selective sampling of similar species does bias it low, and coarse cells reduce that.
+
+  Next:
+  1. Predict to a location from its climate alone. This needs the mean and spread of co-occurring species' climate centres as a smooth function of climate, from GBIF co-occurrence (extend `cell_species_centres()`).
+  2. Choose the trait list. Benchmark coverage of both growth forms is good for height, LMA and leaf area. The other six traits have woody cells only, or fewer than 10 non-woody cells.
+  3. Decide whether a genus effect should take up the similarity of co-sampled congeners.
 
 On the extensions milestone:
 - Collection-method covariate ([#3](https://github.com/traitecoevo/austraits-means/issues/3), [#36](https://github.com/traitecoevo/austraits-means/issues/36)): waits for the factor tables and a test on taxa measured under more than one method.

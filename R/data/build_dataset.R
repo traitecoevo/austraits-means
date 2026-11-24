@@ -159,9 +159,11 @@ add_medoid_centring <- function(data, medoid_lookup = build_medoid_lookup()) {
   out
 }
 
-# Common record-level schema of the unified table.
+# Common record-level schema of the unified table. `location_id` and
+# `observation_id` are carried for the location model (#41).
 .unified_cols <- c(
-  "source", "dataset_id", "taxon_name", "original_name", "family", "genus",
+  "source", "dataset_id", "location_id", "observation_id",
+  "taxon_name", "original_name", "family", "genus",
   "trait_name", "value", "log_value", "unit", "value_type",
   "decimal_longitude", "decimal_latitude", "state", "year",
   "annual_precipitation", "average_temperature", "log_annual_precipitation"

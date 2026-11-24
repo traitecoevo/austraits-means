@@ -1,0 +1,124 @@
+---
+title: "Location model: the community range at one location"
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_knit:
+    root.dir: ".."
+---
+
+Prototype for [#41](https://github.com/traitecoevo/austraits-means/issues/41) (`roadmap.md`, Later work). Render from the project root with `quarto render docs/local-range-model.qmd` after `Rscript R/scripts/run_location_prototype.R 50`. Functions in `R/model/local_range.R`.
+
+## The question
+
+The spatial product is, for a location and from its climate, the woody and non-woody **community mean** and **community range**: the spread of the species' trait means there (`terminology.md`). The published model has species effects only, so it pools every record from the same climate. The spread among its species then also includes how locations with the same climate differ, through soils or regional species pools. That overstates the range at any one location.
+
+The location model adds a location effect, a 50 km equal-area cell with its variance per growth form, and a species × location effect:
+
+```
+log_value ~ 0 + g + g:(P_mn + T_mn + P_c + T_c)
+          + diag(0 + g | taxon_name) + (0 + P_c | taxon_name) + (0 + T_c | taxon_name)
+          + diag(0 + g | location) + (1 | taxon_name:location)
+```
+
+The location effect shifts every species of a growth form at a location together, so it does not spread them, and it is left out of the community range. The community variance of the species of growth form g at a location is:
+
+- the spread of their fixed-effect predictions (they have different climate centres);
+- plus the species variance of g;
+- plus the species × location variance;
+- plus the random-slope terms.
+
+**Check.** For every location × growth form with at least five species, the observed variance of the species' mean log values, less the sampling term σ²/n, is compared with what each model implies for those same species. A ratio of 1 means the model gets the local spread right.
+
+```{r setup}
+source("R/init.R")
+res <- readRDS("outputs/local_range/prototype_50km.rds")
+res <- res[!vapply(res, is.null, logical(1))]
+r2 <- function(d) dplyr::mutate(d, dplyr::across(where(is.double), ~ round(.x, 2)))
+```
+
+## Simulation
+
+Simulated species of two growth forms are recorded at a few locations near their climate centre. The true variances are: species SD 0.4, location SD 0.4, species × location SD 0.15 and residual SD 0.2. In the first scenario species are placed independently of the location effect. In the second they *sort*: a species is more often recorded where the location effect is close to its own. Sorting makes co-occurring species more alike than species drawn at random, which the model's independence assumption cannot represent.
+
+```{r simulation}
+sim_check <- function(sorting) {
+  sim <- simulate_location_data(sorting = sorting, seed = 1)
+  old <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0))
+  new <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0, location = "location"))
+  vc <- tidy_varcomp(new)
+  dplyr::bind_rows(
+    `true variances` = summarise_community_benchmark(benchmark_community_variance(new, vc = sim$truth, noise_vc = sim$truth)),
+    `location model` = summarise_community_benchmark(benchmark_community_variance(new, noise_vc = vc)),
+    `published model` = summarise_community_benchmark(benchmark_community_variance(old, noise_vc = vc)),
+    .id = "model") |>
+    dplyr::mutate(scenario = if (sorting == 0) "independent" else "species sort among locations", .before = 1) |>
+    dplyr::select(scenario, model, woodiness_group, n_locations, observed_community_sd, model_community_sd, ratio)
+}
+knitr::kable(r2(dplyr::bind_rows(sim_check(0), sim_check(3))))
+```
+
+With independent placement the location model recovers the local spread (ratio near 1); the published model overstates it by about half. With sorting, even the true variances overstate the local spread: the location model's assumption fails, and so it overstates it too, though by less than the published model. The real-data check below is what detects this.
+
+## AusTraits, 50 km cells
+
+```{r fits}
+purrr::map(res, function(x) tibble::tibble(
+  trait = x$trait, records = x$n_records, species = x$n_species, cells = x$n_locations,
+  seconds = round(x$seconds), converged = x$converged,
+  `ΔAIC` = round(x$aic[["location"]] - x$aic[["published"]]))) |>
+  purrr::list_rbind() |> knitr::kable()
+```
+
+Variance components of the location model (SD, natural-log units):
+
+```{r varcomp}
+purrr::map(res, function(x) x$varcomp_new |> dplyr::mutate(trait = x$trait)) |>
+  purrr::list_rbind() |>
+  dplyr::mutate(component = paste(
+    dplyr::recode(grouping, taxon_name = "species", `taxon_name:location` = "species×location"),
+    sub("woodiness_group", "", sub("\\(Intercept\\)|sigma", "", term)))) |>
+  dplyr::select(trait, component, sd) |>
+  tidyr::pivot_wider(names_from = component, values_from = sd) |>
+  r2() |> knitr::kable()
+```
+
+Community SD, observed against model, per growth form (locations with at least five species of the form):
+
+```{r benchmark}
+purrr::map(res, function(x) x$benchmark |> dplyr::mutate(trait = x$trait, .before = 1)) |>
+  purrr::list_rbind() |>
+  dplyr::select(trait, model, woodiness_group, n_locations, observed_community_sd, model_community_sd, ratio) |>
+  r2() |> knitr::kable()
+```
+
+Change in the modelled species means (log scale), location model against published:
+
+```{r shift}
+purrr::map(res, function(x) x$species_shift |> dplyr::mutate(trait = x$trait, .before = 1)) |>
+  purrr::list_rbind() |> r2() |> knitr::kable()
+```
+
+## Findings (run of 24 November 2026)
+
+- **The location model fits better for every trait.** All nine converge. AIC falls by 84 (leaf P per area) to 25,832 (height). Fits take seconds, except height: 19 minutes and 8.5 GB for 320k records in 3,121 cells.
+- **It removes most of the overstatement of the local spread.** Model-to-observed community SD ratios:
+  - location model: 0.97–1.31 for every trait except wood density (1.47), mostly 1.05–1.20;
+  - published model: 1.00–1.97.
+  - The gain is largest for woody LMA (1.62 → 1.19), leaf P per mass (1.90 → 1.25), non-woody seed mass (1.44 → 0.99) and non-woody height (1.35 → 1.11).
+  - Woody height was already right under the published model (1.00 → 1.06).
+- **A residual overstatement of about 10–20% remains**, in the direction the simulation gives when co-occurring species are more alike than random. Two causes fit it, and these data cannot tell them apart:
+  - real sorting, in which case the true local range is smaller than the model says;
+  - studies measuring a few similar species together at a site, in which case the observed spread is too small and the model is closer to the truth.
+
+  The coarse 50 km cells pool several studies per location, which weakens the second cause. Cell size barely matters between 10 and 50 km for LMA, the one trait compared at all three sizes.
+- **The modelled species means move.** The SD of the change is 0.06–0.35 log units, with correlations of 0.85–1.00 between old and new. Height barely moves (0.06–0.07). Non-woody LMA, leaf area and seed mass move most (0.30–0.35), because a species measured at one site no longer carries that site's effect.
+- **Benchmark coverage decides which traits can be checked.** Plenty of cells for both growth forms: height (1,841 non-woody / 2,341 woody), LMA (36 / 167), leaf area (22 / 119). Woody only, or fewer than 10 non-woody cells: leaf N per mass, leaf P per mass, seed mass, wood density, and leaf N and P per area. For those traits a model fits, but its non-woody community range cannot be checked against observations.
+
+Not done yet: predicting to a location from its climate alone. That needs the mean and spread of the climate centres of co-occurring species as a smooth function of climate, learned from GBIF co-occurrence. The benchmark above uses the species actually recorded at each location.
