@@ -5,7 +5,7 @@
 # taken from `austraits.portal` at commit 13479b9 (the commit that built the
 # deployed AusTraits 7.0.0 data): `estimate_species_trait_means()` and its
 # helpers in `R/species_means.R`, and the steps of `prepare_data_for_portal()`
-# and `data-raw/prepare_data.R` that feed it. The logic is copied as it was,
+# and the portal's own `data-raw/prepare_data.R` that feed it. The logic is copied as it was,
 # with only namespaces made explicit and functions renamed. Its quirks are the
 # product, so they are kept, not fixed (roadmap.md, Invariants):
 #
@@ -30,10 +30,10 @@ austraits_release_md5 <- c(
 #' Core-trait list the portal computes means for.
 #'
 #' @param path the portal's `trait_groups_for_portal.csv`, recovered from
-#'   portal commit dc8a965^ (see `data-raw/portal/README.md`).
+#'   portal commit dc8a965^ (see `data/portal/README.md`).
 #' @return character vector of trait names (96 for 7.0.0).
 read_portal_core_traits <- function(
-    path = "data-raw/portal/trait_groups_for_portal.csv") {
+    path = "data/portal/trait_groups_for_portal.csv") {
   readr::read_csv(path, show_col_types = FALSE) |>
     dplyr::filter(!is.na(core_trait)) |>
     dplyr::pull(trait)
@@ -63,7 +63,7 @@ observed_means_portal_metadata <- function() {
     derived_from = "AusTraits 7.0.0 (doi:10.5281/zenodo.15718081)",
     method_source = paste0("traitecoevo/austraits.portal@", portal_method_commit,
                            ", R/species_means.R"),
-    trait_list = "the portal's 96 core traits (data-raw/portal/trait_groups_for_portal.csv)",
+    trait_list = "the portal's 96 core traits (data/portal/trait_groups_for_portal.csv)",
     documentation = "docs/observed-means-portal-method.md"
   ), repo_provenance())
 }
@@ -71,7 +71,7 @@ observed_means_portal_metadata <- function() {
 #' Flattened core-trait records, as the portal fed them to the means.
 #'
 #' Reproduces the deployed build's preparation: the Bryant_2021 fix to
-#' `methods$source_primary_key` applied in `data-raw/prepare_data.R`, then
+#' `methods$source_primary_key` applied in the portal's `data-raw/prepare_data.R`, then
 #' `austraits::flatten_database()`, then the core-trait filter. The portal also
 #' added a `row_id` and re-encoded `measurement_remarks`; neither column
 #' reaches the means, so both steps are omitted.

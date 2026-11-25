@@ -1,6 +1,6 @@
 # AusTraits inputs
 
-The pipeline reads three AusTraits files from `data/austraits/` (git-ignored, so they are not in the repository).
+The pipeline reads three AusTraits files from `data/austraits/`. They are git-ignored, so they are not in the repository; this README is.
 
 ## `austraits-7.0.0.rds`: the release
 

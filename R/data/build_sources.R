@@ -10,7 +10,7 @@
 # pinned in `_targets.R`.
 #
 # Trait records, height included, come from an austraits.build export
-# (`data-raw/austraits/README.md`); `build_austraits_climate()` runs inside the
+# (`data/austraits/README.md`); `build_austraits_climate()` runs inside the
 # pipeline, because flattening a build takes seconds.
 
 #' Name crosswalk from trait-record names to GBIF names, via one APC release.

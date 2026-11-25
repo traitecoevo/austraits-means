@@ -45,12 +45,12 @@ You need R 4.6. Steps, from the repository root:
 | Input | Where | How to get it |
 |---|---|---|
 | AusTraits 7.0.0 release | `data/austraits/austraits-7.0.0.rds` | `austraits::load_austraits(version = "7.0.0", path = "data/austraits")`; the pipeline checks its MD5 |
-| austraits.build development build | `data/austraits/austraits-7.0.0.9000-d535de9.rds` (the file name is set by `austraits_dev_rds` in `_targets.R`) | build the austraits.build repository at that commit and copy its export; steps in [`data-raw/austraits/README.md`](data-raw/austraits/README.md) |
+| austraits.build development build | `data/austraits/austraits-7.0.0.9000-d535de9.rds` (the file name is set by `austraits_dev_rds` in `_targets.R`) | build the austraits.build repository at that commit and copy its export; steps in [`data/austraits/README.md`](data/austraits/README.md) |
 | WorldClim 2.1 at 2.5′, BIO1 and BIO12 | `data/climate/wc2.1_2.5m_bio_1.tif`, `data/climate/wc2.1_2.5m_bio_12.tif` | [worldclim.org](https://www.worldclim.org) |
 | Australia extent raster | `data/australia.tif` | any raster covering 112.9–153.7° E, 43.8–9.1° S; it is used only for its extent, to crop the climate layers |
 | Cleaned GBIF occurrences | `data-processed/data_gbif_cleaned_<key>.parquet` (the extract in use is set by `gbif_cleaned_file` in `_targets.R`: GBIF download [10.15468/dl.766erw](https://doi.org/10.15468/dl.766erw), 15 October 2026) | `Rscript R/scripts/build_gbif.R <key> <folder>` fetches a GBIF download by key (no credentials needed), cleans it, keeps only CC0 and CC BY records, aligns names to the pinned APC release (from the provider's name, GBIF's name as fallback) and attaches climate, writing `data-processed/data_gbif_cleaned_<key>.parquet`; downloads used are listed in `gbif_downloads` (`R/data/gbif.R`) |
 | Species medoids | `data-processed/climate_centres_<key>.parquet` (set by `medoids_file` in `_targets.R`) | `Rscript R/scripts/build_medoids.R <key> <workers>` after the GBIF step (about 9 minutes for 22,900 taxa on 10 workers) |
-| The portal's deployed species means (optional) | `data/portal/austraits-7.0.0-full/austraits-species-averages.parquet` | a copy of the file the AusTraits data portal built for 7.0.0 (`inst/extdata/austraits/austraits-7.0.0-full/` in the portal's own data build; see [`data-raw/portal/README.md`](data-raw/portal/README.md)); used only by the reproduction check; without it the check's targets report an error and the rest of the pipeline still builds |
+| The portal's deployed species means (optional) | `data/portal/austraits-7.0.0-full/austraits-species-averages.parquet` | a copy of the file the AusTraits data portal built for 7.0.0 (`inst/extdata/austraits/austraits-7.0.0-full/` in the portal's own data build; see [`data/portal/README.md`](data/portal/README.md)); used only by the reproduction check; without it the check's targets report an error and the rest of the pipeline still builds |
 
 Only those two files in `data-processed/` are read; the others there are legacy caches.
 
@@ -78,7 +78,6 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 ├── docs/                      # method and design documents, the June 2026 baseline,
 │                              #   within-species-centring.qmd (why within-species centring),
 │                              #   collection-method-notes.md (working notes for #3)
-├── data-raw/                  # small pinned inputs with provenance (portal core-trait list)
 ├── R/
 │   ├── init.R                 # source() this to load the whole library
 │   ├── data/                  # records, climate, crosswalk, medoid lookup, roll-up
@@ -91,7 +90,8 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 │   ├── plot/  panels/  utils/ # figures (save_figure: PNG + PDF), helpers
 │   └── scripts/               # run-scripts (not sourced by init.R)
 ├── tests/testthat/            # tests
-├── data/  data-processed/     # inputs (git-ignored)
+├── data/  data-processed/     # inputs, git-ignored except the small pinned files and READMEs
+│                              #   in data/austraits/ and data/portal/ (provenance, core-trait list)
 ├── _targets/                  # targets store (git-ignored)
 └── outputs/                   # products, figures, checks (git-ignored)
 ```

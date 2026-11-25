@@ -24,7 +24,7 @@ The product is built from three inputs.
 
 - **The AusTraits 7.0.0 release**, Zenodo DOI [10.5281/zenodo.15718081](https://doi.org/10.5281/zenodo.15718081), file `austraits-7.0.0.rds`. The pipeline checks its MD5 (`c040dada5776177a1fabaced7ac0afdb`) before use and stops if it differs.
 - **The flattened database.** The release is flattened with `austraits::flatten_database()` (austraits R package 3.1.1), which joins traits, locations, contexts, methods, taxa and sources into one table of records.
-- **The core-trait list.** The portal computes means only for its 96 core traits, the rows of its `trait_groups_for_portal.csv` where `core_trait` is not `NA`. Four of them have no records in 7.0.0 (`leaf_hairs_juvenile_leaves`, `leaf_axil_angle`, `stem_density` and `climbing_plant_height`), so the product covers 92 traits. The file was deleted from the portal later. This repository holds the copy from immediately before its deletion (portal commit `dc8a965^`), which is identical to the file at commit `13479b9`. It is kept in `data-raw/portal/` and must not be edited.
+- **The core-trait list.** The portal computes means only for its 96 core traits, the rows of its `trait_groups_for_portal.csv` where `core_trait` is not `NA`. Four of them have no records in 7.0.0 (`leaf_hairs_juvenile_leaves`, `leaf_axil_angle`, `stem_density` and `climbing_plant_height`), so the product covers 92 traits. The file was deleted from the portal later. This repository holds the copy from immediately before its deletion (portal commit `dc8a965^`), which is identical to the file at commit `13479b9`. It is kept in `data/portal/` and must not be edited.
 
 The records are prepared in this order, reproducing the portal's data build of 9 February 2026:
 
@@ -251,7 +251,7 @@ The targets run in this order:
 2. `observed_means_portal`: compute the means with `estimate_observed_means_portal()`.
 3. `observed_means_portal_files`: label the rows and write the output files.
 
-Two input files are git-ignored and must be in place first: the release at `data/austraits/austraits-7.0.0.rds` (how to fetch it: `data-raw/austraits/README.md`), and, for the reproduction check, the deployed portal file at `data/portal/austraits-7.0.0-full/austraits-species-averages.parquet`. The `portal_reproduction` target compares the result with that file.
+Two input files are git-ignored and must be in place first: the release at `data/austraits/austraits-7.0.0.rds` (how to fetch it: `data/austraits/README.md`), and, for the reproduction check, the deployed portal file at `data/portal/austraits-7.0.0-full/austraits-species-averages.parquet`. The `portal_reproduction` target compares the result with that file.
 
 The output goes to `outputs/species_means/7.0.0/`:
 

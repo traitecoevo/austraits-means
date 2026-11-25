@@ -2,13 +2,13 @@
 
 ## What this product is
 
-The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. **austraits.build computes and publishes them**, from the release after 7.0.0 onward, as `austraits-<version>-observed-means.parquet` (`.csv.gz`, `-dictionary.csv`) beside each release (`R/observed_means.R` there, written by its `post_export()`; [austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). The method moved there from this repository, which now only reads the file; this document describes the method, and austraits.build's code is the authority if the two disagree. The pipeline here reads the file published for the development build 7.0.0.9000 (commit `d535de9e`; see `data-raw/austraits/README.md`).
+The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. They succeed the portal method (`docs/observed-means-portal-method.md`) from the next AusTraits build onward. **austraits.build computes and publishes them**, from the release after 7.0.0 onward, as `austraits-<version>-observed-means.parquet` (`.csv.gz`, `-dictionary.csv`) beside each release (`R/observed_means.R` there, written by its `post_export()`; [austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). The method moved there from this repository, which now only reads the file; this document describes the method, and austraits.build's code is the authority if the two disagree. The pipeline here reads the file published for the development build 7.0.0.9000 (commit `d535de9e`; see `data/austraits/README.md`).
 
 For a numeric trait the value is a **geometric mean**, as `terminology.md` requires of both species estimates. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
 
 ## Traits
 
-The portal's core traits (`data-raw/portal/trait_groups_for_portal.csv`), the traits the AusTraits API summarises, and three more: `leaf_N_per_area` and `leaf_P_per_area`, so that all nine modelled traits are covered, and `woodiness`, an input to the woody / non-woody lookup. Traits without records in the build drop out. The list is `observed_means_traits()` in austraits.build's `R/observed_means.R`.
+The portal's core traits (`data/portal/trait_groups_for_portal.csv`), the traits the AusTraits API summarises, and three more: `leaf_N_per_area` and `leaf_P_per_area`, so that all nine modelled traits are covered, and `woodiness`, an input to the woody / non-woody lookup. Traits without records in the build drop out. The list is `observed_means_traits()` in austraits.build's `R/observed_means.R`.
 
 ## Method
 
@@ -61,4 +61,4 @@ The column dictionary is published with the product (`austraits-<version>-observ
 
 ## Outputs and rebuilding
 
-austraits.build writes the files when it exports a build (`create_release()`, or `traits.build::build_post_export()` on a development build; `data-raw/austraits/README.md`). Here, the `observed_means_geometric` target reads them with `read_observed_means()` (`R/means/observed_means_release.R`), which checks the columns the pipeline uses and that every trait it needs is present; this repository no longer writes its own copy.
+austraits.build writes the files when it exports a build (`create_release()`, or `traits.build::build_post_export()` on a development build; `data/austraits/README.md`). Here, the `observed_means_geometric` target reads them with `read_observed_means()` (`R/means/observed_means_release.R`), which checks the columns the pipeline uses and that every trait it needs is present; this repository no longer writes its own copy.

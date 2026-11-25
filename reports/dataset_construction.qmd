@@ -30,7 +30,7 @@ tar_load(data_basis_info)
 tibble::enframe(unlist(data_basis_info), "item", "value") |> knitr::kable()
 ```
 
-- **Trait records, height included**, come from an austraits.build development build (`data/austraits/`; how it was built: `data-raw/austraits/README.md`). Plant height comes from the build's AVH dataset `AVH_2026`, which replaced the separate AVH CSV. `build_austraits_climate()` flattens the build, keeps field records of the nine analysis traits that have coordinates, and attaches climate.
+- **Trait records, height included**, come from an austraits.build development build (`data/austraits/`; how it was built: `data/austraits/README.md`). Plant height comes from the build's AVH dataset `AVH_2026`, which replaced the separate AVH CSV. `build_austraits_climate()` flattens the build, keeps field records of the nine analysis traits that have coordinates, and attaches climate.
 - **Value types**: `load_austraits_records()` keeps raw, mean and median records, except where `dataset_value_type_rules()` says otherwise: `AVH_2026` carries one label bound per specimen (a minimum or a maximum) and no raw values, so its bounds are used as observations.
 - **Taxa**: subspecies, varieties and forms are rolled up to species (`roll_up_to_species()`); the build's own name is kept in `taxon_name_aligned`.
 - **Climate**: WorldClim 2.1 at 2.5′, BIO1 (annual mean temperature, °C) and BIO12 (annual precipitation, mm/yr; modelled on the log scale), cropped to Australia (`load_climate_rasters()`).

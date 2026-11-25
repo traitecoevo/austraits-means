@@ -53,12 +53,12 @@ out_dir <- "outputs/traits"
 
 # austraits.build development export the trait records come from (height
 # included, via the AVH_2026 dataset). How it was built:
-# data-raw/austraits/README.md.
+# data/austraits/README.md.
 austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-d535de9.rds"
 
 # The geometric observed means that austraits.build's `post_export()` wrote for
 # that same build (austraits.build#899). This repository reads them rather
-# than computing its own; how to make the file: data-raw/austraits/README.md.
+# than computing its own; how to make the file: data/austraits/README.md.
 austraits_dev_observed_means <-
   "data/austraits/austraits-7.0.0.9000-d535de9-observed-means.parquet"
 
@@ -278,7 +278,7 @@ list(
   tar_target(austraits_release_file, "data/austraits/austraits-7.0.0.rds",
              format = "file"),
   tar_target(portal_core_traits_file,
-             "data-raw/portal/trait_groups_for_portal.csv", format = "file"),
+             "data/portal/trait_groups_for_portal.csv", format = "file"),
   tar_target(portal_records,
              prepare_portal_records(
                read_austraits_release(austraits_release_file, "7.0.0"),
