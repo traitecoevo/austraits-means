@@ -266,6 +266,43 @@ test_that("forecasts from the exported tables reproduce the model", {
                                    1e5, 50)$extrapolated))
 })
 
+test_that("forecasts for species without trait data are the growth form's line plus the species spread", {
+  skip_if_not_installed("RTMB")
+  sim <- simulate_location_data(seed = 5)
+  sim$data <- dplyr::mutate(
+    sim$data, unit = "u",
+    log_annual_precipitation = log_annual_precipitation_mn + log_annual_precipitation_c,
+    average_temperature = average_temperature_mn + average_temperature_c)
+  g <- suppressMessages(fit_woodiness_model(sim$data, "sim", sim$groups, n_min = 0,
+                                            location = "location"))
+  m <- suppressMessages(fit_spread_rtmb(sim$data, "sim", sim$groups, n_min = 0,
+                                        spread_terms = character(0), centres = TRUE))
+  groups <- growth_form_response_table(list(m))
+  variances <- site_variance_table(list(m))
+  expect_equal(nrow(groups), 2)
+  # a species centred at (log 700 mm, 16 deg C), forecast at 900 mm and 18 deg C
+  f <- forecast_unmeasured(groups, variances, "sim", "woody", 700, 16, 900, 18)
+  nd <- tibble::tibble(woodiness_group = factor("woody", m$groups),
+                       log_annual_precipitation_mn = log(700), average_temperature_mn = 16,
+                       log_annual_precipitation_c = log(900 / 700), average_temperature_c = 2,
+                       taxon_name = NA, location = NA)
+  p <- stats::predict(g$fit, newdata = nd, re.form = NA, se.fit = TRUE)
+  expect_equal(f$log_estimate, unname(p$fit), tolerance = 1e-4)
+  # the species terms: its effect (constant spread here) and its slopes
+  vc <- m$vc
+  sd_u2 <- exp(2 * m$spread$theta[["woody:(Intercept)"]])
+  slopes <- vc$sd[vc$term == "log_annual_precipitation_c"]^2 * log(900 / 700)^2 +
+    vc$sd[vc$term == "average_temperature_c"]^2 * 4
+  expect_equal(f$log_se^2 - sd_u2 - slopes, unname(p$se.fit)^2, tolerance = 1e-3)
+  # at a fitted species' centre, the line is its modelled mean less its own effect
+  ce <- m$centres[1, ]
+  f0 <- forecast_unmeasured(groups, variances, "sim", as.character(ce$woodiness_group),
+                            exp(ce$log_annual_precipitation_mn), ce$average_temperature_mn,
+                            exp(ce$log_annual_precipitation_mn), ce$average_temperature_mn)
+  expect_equal(f0$log_estimate, ce$log_estimate - ce$g_0, tolerance = 1e-10)
+  expect_true(forecast_unmeasured(groups, variances, "sim", "woody", 5, 50, 900, 18)$centre_extrapolated)
+})
+
 test_that("forecast_community interpolates the surface exactly at its nodes", {
   surface <- tidyr::expand_grid(log_annual_precipitation = log(c(200, 600, 1800)),
                                 average_temperature = c(10, 20, 30)) |>

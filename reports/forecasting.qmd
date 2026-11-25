@@ -10,13 +10,14 @@ execute:
   message: false
 ---
 
-This notebook shows how to forecast, with uncertainty, from three published tables alone:
+This notebook shows how to forecast, with uncertainty, from published tables alone:
 
 - **a named species' trait value at any climate**, from `species_climate_responses`;
+- **a species without trait data**, from its growth form and climate centre, from `growth_form_responses` (and `species_climate_centres`, which lists them);
 - **at an actual new site, or a single new record**, adding `site_variances`;
 - **the community mean and range of a growth form at any climate**, from `community_climate_surface`.
 
-Each forecast is checked against the original data. The tables come from the location model (`R/model/spread_rtmb.R`, `docs/local-range-model.qmd`). The forecasting needs nothing but the tables and two short functions in `R/process/forecast.R`, `forecast_species()` and `forecast_community()`, which a user could rewrite in any language. The checks also read the original records and fits from the pipeline.
+Each forecast is checked against the original data. The tables come from the location model (`R/model/spread_rtmb.R`, `docs/local-range-model.qmd`). The forecasting needs nothing but the tables and three short functions in `R/process/forecast.R`, `forecast_species()`, `forecast_unmeasured()` and `forecast_community()`, which a user could rewrite in any language. The checks also read the original records and fits from the pipeline.
 
 ```{r setup}
 library(dplyr)
@@ -151,6 +152,93 @@ calibration <- purrr::map(fits, function(m) {
          site_means = nrow(site), site_coverage = mean(abs(site$y - site$est) / sqrt(site$v) < z94))
 }) |> bind_rows()
 knitr::kable(calibration, digits = 3, format.args = list(big.mark = ","))
+```
+
+## A species without trait data
+
+A species with no trait record can still be forecast from its growth form and its climate centre (the medoid of its GBIF occurrences). Its expected value at climate x is the growth form's line, b0 + b_between · m + b_within · (x − m), with m its centre. The forecast adds three things to the line's uncertainty (from `growth_form_responses`):
+
+- the spread of species about the line at that centre (the climate-dependent species SD, kept within the range of the fitted species');
+- the uncertainty of its own climate slopes;
+- for a new site or record, `site_variances`, as before.
+
+`species_climate_centres` lists every species that can be forecast this way: those with a climate centre and a growth form. Per trait and growth form, how many have no trait data, how many of those have a centre within the range of the fitted species' centres, and how many have data:
+
+```{r unmeasured-setup}
+groups <- read("growth_form_responses")
+centres <- read("species_climate_centres")
+coverage <- centres |>
+  tidyr::crossing(trait_name = unique(groups$trait_name)) |>
+  semi_join(groups, by = c("trait_name", "woodiness_group")) |>
+  anti_join(responses, by = c("taxon_name", "trait_name")) |>
+  left_join(groups, by = c("trait_name", "woodiness_group")) |>
+  mutate(centre_inside = centre_precipitation >= centre_precipitation_min &
+           centre_precipitation <= centre_precipitation_max &
+           centre_temperature >= centre_temperature_min & centre_temperature <= centre_temperature_max) |>
+  group_by(trait_name, woodiness_group) |>
+  summarise(.groups = "drop", species_without_data = n(),
+            centre_within_fitted_range = sum(centre_inside)) |>
+  left_join(count(responses, trait_name, woodiness_group, name = "species_with_data"),
+            by = c("trait_name", "woodiness_group"))
+knitr::kable(coverage, format.args = list(big.mark = ","))
+```
+
+An example: a *Corymbia* with no LMA record, the one whose climate centre is closest to *C. terminalis*'s, against *C. terminalis* itself. The wider band is what not having data costs.
+
+```{r unmeasured-example, fig.width = 8, fig.height = 5}
+other <- centres |>
+  filter(grepl("^Corymbia ", taxon_name), woodiness_group == "woody",
+         !taxon_name %in% responses$taxon_name[responses$trait_name == trait]) |>
+  mutate(d = (log(centre_precipitation / r$centre_precipitation) / 0.5)^2 +
+           ((centre_temperature - r$centre_temperature) / 3)^2) |>
+  slice_min(d, n = 1)
+fu <- bind_rows(
+  forecast_species(responses, variances, taxon, trait, p_grid, r$centre_temperature) |>
+    mutate(species = paste(taxon, "(measured)")),
+  forecast_unmeasured(groups, variances, trait, "woody", other$centre_precipitation,
+                      other$centre_temperature, p_grid, r$centre_temperature) |>
+    mutate(species = paste(other$taxon_name, "(no data)")))
+pal <- stats::setNames(c("#1b7837", "#762a83"),
+                       c(paste(taxon, "(measured)"), paste(other$taxon_name, "(no data)")))
+ggplot(fu, aes(annual_precipitation, estimate, colour = species, fill = species)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.25, colour = NA) +
+  geom_line(linewidth = 1) +
+  scale_colour_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "Annual precipitation (mm)", y = "LMA (g/m2)", colour = NULL, fill = NULL,
+       title = paste0("LMA at ", round(r$centre_temperature, 1), " °C, with and without trait data"),
+       subtitle = "Each species' mean at an average location, 94% interval") +
+  theme_bw(base_size = 10) + theme(legend.position = "bottom")
+```
+
+### Check 6: forecasts without data, against species that have data
+
+Each fitted species is forecast as if it had no trait data, from its growth form and centre alone. Its mean at each 50 km site is then compared with that forecast for a new site, adding the residual variance over the records there. This is nearly out of sample: the growth form's line is fitted from hundreds of species, and none of the species' own effects are used. If the species spread is right, the 94% intervals should hold about 94% of the site means. Also shown: how much wider these intervals are than the same species' intervals with its data.
+
+```{r check-unmeasured}
+unmeasured <- purrr::map(fits, function(m) {
+  sv <- filter(variances, trait_name == m$trait)
+  m$data |>
+    mutate(woodiness_group = as.character(woodiness_group)) |>
+    group_by(taxon_name, location, woodiness_group) |>
+    summarise(.groups = "drop", n = n(), y = mean(log_value),
+              p = exp(mean(log_annual_precipitation)), t = mean(average_temperature),
+              cp = exp(first(log_annual_precipitation_mn)), ct = first(average_temperature_mn)) |>
+    group_by(woodiness_group) |>
+    group_modify(function(d, key) {
+      f <- forecast_unmeasured(groups, variances, m$trait, key$woodiness_group, d$cp, d$ct,
+                               d$p, d$t, type = "site")
+      res <- sv$sd_residual[sv$woodiness_group == key$woodiness_group]
+      se <- sqrt(f$log_se^2 + res^2 / d$n)
+      named <- purrr::pmap_dbl(list(d$taxon_name, d$p, d$t), function(tx, p, t)
+        forecast_species(responses, variances, tx, m$trait, p, t, type = "site")$log_se)
+      tibble(site_means = nrow(d), coverage = mean(abs(d$y - f$log_estimate) < z94 * se),
+             width_ratio = median(f$log_se / named))
+    }) |>
+    mutate(trait = m$trait, .before = 1)
+}) |> bind_rows()
+knitr::kable(unmeasured, digits = 2, format.args = list(big.mark = ","))
 ```
 
 ## A growth form at a location

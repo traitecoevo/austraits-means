@@ -65,7 +65,8 @@ R/
   process/     process_fit.R, species_centres.R, export_centres.R (modelled
                means product), compare_baseline.R, compare_means.R,
                compare_pooled_location.R, forecast.R (forecasting tables
-               and forecast_species() / forecast_community())
+               and forecast_species() / forecast_unmeasured() /
+               forecast_community())
   plot/        plot_fitted.R, plot_trait_centres.R, plot_within_between.R,
                figure_set.R
   means/       observed_means_portal.R, observed_means_release.R (reads the

@@ -1,7 +1,9 @@
 # Forecasting from the location model's exported parameters (roadmap.md, 25
-# November 2026): a trait value for a named species at any climate, and the
-# community mean and range of a growth form at any climate, each with
-# uncertainty, from three published tables and no model machinery.
+# November 2026): a trait value for a named species at any climate, for a
+# species without trait data from its growth form and climate centre
+# (forecast_unmeasured()), and the community mean and range of a growth form
+# at any climate, each with uncertainty, from published tables and no model
+# machinery.
 #
 # Species. In the location model a species' expected log trait value at a
 # site of climate x, at an average location, is
@@ -46,6 +48,139 @@ species_response_table <- function(fits) {
         cov_slope_precipitation_temperature) |>
       dplyr::left_join(rec, by = "taxon_name")
   }) |> purrr::list_rbind()
+}
+
+# The five fixed coefficients of a growth form, in this order, with short
+# names for the export.
+.coef_short <- c("intercept", "precipitation_between", "temperature_between",
+                 "precipitation_within", "temperature_within")
+
+#' The growth-form table: per trait x growth form, what forecasting a species
+#' without trait data needs (see forecast_unmeasured()): the five fixed
+#' coefficients and their covariance, the species spread as a function of the
+#' climate centre (and the range it is clamped to), the SDs of the species'
+#' climate slopes, and the climate ranges of the fitted species' centres and
+#' of the records.
+growth_form_response_table <- function(fits) {
+  purrr::map(purrr::compact(fits), function(m) {
+    beta_i <- which(names(m$par_fixed) == "beta")
+    Vb <- m$cov_fixed[beta_i, beta_i]
+    dimnames(Vb) <- list(names(m$fixed), names(m$fixed))
+    vc <- m$vc
+    s <- m$centre_scaling
+    th <- m$spread$theta
+    fitted <- dplyr::distinct(m$data, taxon_name, woodiness_group,
+                              log_annual_precipitation_mn, average_temperature_mn)
+    purrr::map(m$groups, function(g) {
+      nm <- .group_coef_names(m, g)
+      b <- stats::setNames(unname(m$fixed[nm]), paste0("coef_", .coef_short))
+      V <- Vb[nm, nm]
+      ij <- which(upper.tri(V, diag = TRUE), arr.ind = TRUE)
+      cv <- stats::setNames(V[ij], paste0("cov_", .coef_short[ij[, 1]], "__", .coef_short[ij[, 2]]))
+      fg <- dplyr::filter(fitted, woodiness_group == g)
+      sp <- .log_sd_u(m, th, g, (fg$log_annual_precipitation_mn - s$p_mean) / s$p_sd,
+                      (fg$average_temperature_mn - s$t_mean) / s$t_sd)
+      rec <- dplyr::filter(m$data, woodiness_group == g)
+      tib <- function(x) tibble::as_tibble(as.list(x))
+      dplyr::bind_cols(
+        tibble::tibble(trait_name = m$trait, unit = m$data$unit[1], woodiness_group = g,
+                       n_species = nrow(fg)),
+        tib(b), tib(cv),
+        tibble::tibble(
+          spread_intercept = th[[paste0(g, ":(Intercept)")]],
+          spread_precipitation = if (paste0(g, ":p") %in% names(th)) th[[paste0(g, ":p")]] else 0,
+          spread_temperature = if (paste0(g, ":t") %in% names(th)) th[[paste0(g, ":t")]] else 0,
+          spread_scale_precipitation_mean = s$p_mean, spread_scale_precipitation_sd = s$p_sd,
+          spread_scale_temperature_mean = s$t_mean, spread_scale_temperature_sd = s$t_sd,
+          spread_log_sd_min = min(sp), spread_log_sd_max = max(sp),
+          sd_slope_precipitation = vc$sd[vc$grouping == "taxon_name" &
+                                           vc$term == "log_annual_precipitation_c"],
+          sd_slope_temperature = vc$sd[vc$grouping == "taxon_name" &
+                                         vc$term == "average_temperature_c"],
+          centre_precipitation_min = exp(min(fg$log_annual_precipitation_mn)),
+          centre_precipitation_max = exp(max(fg$log_annual_precipitation_mn)),
+          centre_temperature_min = min(fg$average_temperature_mn),
+          centre_temperature_max = max(fg$average_temperature_mn),
+          record_precipitation_min = exp(min(rec$log_annual_precipitation)),
+          record_precipitation_max = exp(max(rec$log_annual_precipitation)),
+          record_temperature_min = min(rec$average_temperature),
+          record_temperature_max = max(rec$average_temperature)))
+    }) |> purrr::list_rbind()
+  }) |> purrr::list_rbind()
+}
+
+#' The species that can be forecast without trait data: every species with a
+#' climate centre (the medoid of its GBIF occurrences) and a woody or
+#' non-woody class.
+species_centre_table <- function(medoid_lookup, woody_lookup) {
+  medoid_lookup |>
+    dplyr::inner_join(dplyr::filter(woody_lookup, woodiness_group %in% c("woody", "non_woody")) |>
+                        dplyr::select(taxon_name, woodiness_group), by = "taxon_name") |>
+    dplyr::transmute(taxon_name, woodiness_group,
+                     centre_precipitation = annual_precipitation_centre,
+                     centre_temperature = average_temperature_centre) |>
+    dplyr::distinct(taxon_name, .keep_all = TRUE) |>
+    dplyr::arrange(taxon_name)
+}
+
+#' Forecast the trait value of a species without trait data, from its growth
+#' form and climate centre, at given climates, from the growth-form and
+#' site-variances tables only.
+#'
+#' The species' expected log value at climate x, at an average location, is
+#' the growth form's line b0 + b_between . m + b_within . (x - m), with m its
+#' centre. Its variance adds to the line's (from the coefficients'
+#' covariance) the spread of species about it: the species SD at its centre,
+#' sd_u(m)^2 (clamped to the range of the fitted species'), and the species'
+#' unknown climate slopes, sd_P^2 dP^2 + sd_T^2 dT^2. "site" and "record" add
+#' the site variances as in forecast_species().
+#'
+#' @param groups,variances the exported tables (growth_form_response_table(),
+#'   site_variance_table()).
+#' @param centre_precipitation,centre_temperature the species' climate centre
+#'   (mm, deg C); from species_centre_table() or the user's own.
+#' @return tibble as forecast_species(), with `extrapolated` (the climate is
+#'   outside the growth form's records) and `centre_extrapolated` (the centre
+#'   is outside those of the fitted species).
+forecast_unmeasured <- function(groups, variances, trait, woodiness_group, centre_precipitation,
+                                centre_temperature, annual_precipitation, average_temperature,
+                                type = c("mean", "site", "record"), level = 0.94) {
+  type <- match.arg(type)
+  g <- groups[groups$trait_name == trait & groups$woodiness_group == woodiness_group, ]
+  if (nrow(g) != 1) stop("no growth-form row for ", trait, ", ", woodiness_group)
+  mP <- log(centre_precipitation)
+  mT <- centre_temperature
+  dp <- log(annual_precipitation) - mP
+  dt <- average_temperature - mT
+  X <- cbind(1, mP, mT, dp, dt)
+  b <- unlist(g[paste0("coef_", .coef_short)])
+  V <- matrix(0, 5, 5)
+  for (i in 1:5) for (j in i:5)
+    V[i, j] <- V[j, i] <- g[[paste0("cov_", .coef_short[i], "__", .coef_short[j])]]
+  est <- as.vector(X %*% b)
+  log_sd <- g$spread_intercept +
+    g$spread_precipitation * (mP - g$spread_scale_precipitation_mean) / g$spread_scale_precipitation_sd +
+    g$spread_temperature * (mT - g$spread_scale_temperature_mean) / g$spread_scale_temperature_sd
+  log_sd <- pmin(pmax(log_sd, g$spread_log_sd_min), g$spread_log_sd_max)
+  v <- rowSums((X %*% V) * X) + exp(2 * log_sd) +
+    g$sd_slope_precipitation^2 * dp^2 + g$sd_slope_temperature^2 * dt^2
+  if (type != "mean") {
+    sv <- variances[variances$trait_name == trait & variances$woodiness_group == woodiness_group, ]
+    v <- v + sv$sd_location^2 + sv$sd_species_location^2 + if (type == "record") sv$sd_residual^2 else 0
+  }
+  z <- stats::qnorm(1 - (1 - level) / 2)
+  se <- sqrt(v)
+  tibble::tibble(annual_precipitation, average_temperature,
+                 estimate = exp(est), lower = exp(est - z * se), upper = exp(est + z * se),
+                 log_estimate = est, log_se = se,
+                 extrapolated = annual_precipitation < g$record_precipitation_min |
+                   annual_precipitation > g$record_precipitation_max |
+                   average_temperature < g$record_temperature_min |
+                   average_temperature > g$record_temperature_max,
+                 centre_extrapolated = centre_precipitation < g$centre_precipitation_min |
+                   centre_precipitation > g$centre_precipitation_max |
+                   centre_temperature < g$centre_temperature_min |
+                   centre_temperature > g$centre_temperature_max)
 }
 
 #' The site-variances table: per trait x growth form, the SDs to add to a
@@ -173,10 +308,11 @@ forecast_community <- function(surface, trait, woodiness_group, annual_precipita
 
 #' Write the three forecasting tables (parquet, csv.gz, dictionary) to `dir`.
 #' @return the file paths.
-write_forecast_tables <- function(responses, variances, surface, dir) {
+write_forecast_tables <- function(responses, variances, surface, groups, centres, dir) {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   tables <- list(species_climate_responses = responses, site_variances = variances,
-                 community_climate_surface = surface)
+                 community_climate_surface = surface, growth_form_responses = groups,
+                 species_climate_centres = centres)
   dict <- forecast_dictionary()
   unlist(purrr::imap(tables, function(t, stem) {
     p <- file.path(dir, paste0(stem, c(".parquet", ".csv.gz", "_dictionary.csv")))
@@ -228,6 +364,28 @@ forecast_dictionary <- function() {
     "community_mean_lower", "Lower end of the 94% interval of community_mean (parameter uncertainty).",
     "community_mean_upper", "Upper end of the 94% interval of community_mean.",
     "community_sd_lower", "Lower end of the 94% interval of community_sd.",
-    "community_sd_upper", "Upper end of the 94% interval of community_sd."
+    "community_sd_upper", "Upper end of the 94% interval of community_sd.",
+    "n_species", "Species of the growth form in the fit.",
+    "coef_intercept", "Growth form's intercept (natural log of the trait).",
+    "coef_precipitation_between", "Between-species slope on the log annual precipitation of the species' centre.",
+    "coef_temperature_between", "Between-species slope on the mean annual temperature of the species' centre.",
+    "coef_precipitation_within", "Within-species slope on log annual precipitation (climate minus the species' centre).",
+    "coef_temperature_within", "Within-species slope on mean annual temperature (climate minus the species' centre).",
+    "cov_*__*", "Covariance of two of the five coefficients (upper triangle, diagonal included).",
+    "spread_intercept", "log SD of species about the growth form's line, at the mean standardised centre.",
+    "spread_precipitation", "Change in that log SD per SD of the species' log-precipitation centre (spread_scale_precipitation_*).",
+    "spread_temperature", "Change in that log SD per SD of the species' temperature centre (spread_scale_temperature_*).",
+    "spread_scale_precipitation_mean", "Mean of the fitted species' log-precipitation centres, for standardising.",
+    "spread_scale_precipitation_sd", "SD of the fitted species' log-precipitation centres.",
+    "spread_scale_temperature_mean", "Mean of the fitted species' temperature centres.",
+    "spread_scale_temperature_sd", "SD of the fitted species' temperature centres.",
+    "spread_log_sd_min", "Lowest log SD among the fitted species: the spread is clamped to this range.",
+    "spread_log_sd_max", "Highest log SD among the fitted species.",
+    "sd_slope_precipitation", "SD of species' own within-species slopes on log precipitation, about the growth form's.",
+    "sd_slope_temperature", "SD of species' own within-species slopes on temperature.",
+    "centre_precipitation_min", "Lowest annual precipitation among the fitted species' centres (mm).",
+    "centre_precipitation_max", "Highest annual precipitation among the fitted species' centres (mm).",
+    "centre_temperature_min", "Lowest mean annual temperature among the fitted species' centres (deg C).",
+    "centre_temperature_max", "Highest mean annual temperature among the fitted species' centres (deg C)."
   )
 }
