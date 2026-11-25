@@ -405,6 +405,16 @@ list(
              write_community_maps(community_stats, community_units, community_dir),
              format = "file"),
 
+  # All species, woody and non-woody mixed by their GBIF species counts: for
+  # comparison with published all-species maps only, not a product
+  # (R/community/community_all_species.R).
+  tar_target(community_all,
+             community_all_species(community_stats, community_species)),
+  tar_target(community_all_files,
+             write_community_all_species(community_all, community_units,
+                                         file.path(community_dir, "comparison_all_species")),
+             format = "file"),
+
   # The check: the same statistics from each cell's own GBIF species
   # (community_statistics()), against the climate-alone ones.
   tar_target(community_stats_gbif,

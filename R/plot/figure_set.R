@@ -104,9 +104,31 @@ plot_community_overview <- function(layers, traits = c("plant_height", "leaf_mas
   })
   patchwork::wrap_plots(panels, ncol = 2) +
     patchwork::plot_annotation(
-      title = paste0("Community mean, location model: species present from GBIF (",
+      title = paste0("Community mean, location model, from each cell's climate (",
                      location_cell_km(), " km cells)"),
       theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11)))
+}
+
+#' Community range maps for a few traits, woody and non-woody: how many times
+#' the central 90% of species' means spans (range_upper / range_lower), on a
+#' log scale.
+plot_community_range_overview <- function(layers, traits = c("plant_height", "leaf_mass_per_area",
+                                                             "leaf_area", "seed_dry_mass")) {
+  panels <- lapply(traits, function(tr) {
+    d <- dplyr::filter(layers, trait_name == tr, woodiness_group %in% c("woody", "non_woody")) |>
+      dplyr::mutate(woodiness_group = factor(woodiness_group, c("woody", "non_woody"),
+                                             c("Woody", "Non-woody")),
+                    range_fold = range_upper / range_lower)
+    map_cells(d, "range_fold", layer_colours$variance, tr, "log10") +
+      ggplot2::facet_wrap(~woodiness_group, ncol = 2)
+  })
+  patchwork::wrap_plots(panels, ncol = 2) +
+    patchwork::plot_annotation(
+      title = paste0("Community range, location model, from each cell's climate (",
+                     location_cell_km(), " km cells)"),
+      subtitle = "Fold span of the central 90% of species' means (upper / lower end of the range)",
+      theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 11),
+                             plot.subtitle = ggplot2::element_text(size = 9, colour = "#6b6a66")))
 }
 
 #' One-page overview of the products: coverage, observed vs modelled for
@@ -150,6 +172,8 @@ write_figure_set <- function(portal, geometric, modelled, fits, obs_mod, layers,
                 width = 7, height = 5),
     save_figure(plot_climate_responses(fits), file.path(dir, "climate_responses"),
                 width = 9, height = 7),
+    save_figure(plot_community_range_overview(layers), file.path(dir, "community_range_overview"),
+                width = 10, height = 9),
     save_figure(plot_community_overview(layers), file.path(dir, "community_mean_overview"),
                 width = 10, height = 9),
     save_figure(plot_product_overview(coverage, obs_mod$pairs, fits, layers),
