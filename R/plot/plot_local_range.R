@@ -179,14 +179,17 @@ plot_community_range_cells <- function(res, n_cells = 12, cells = NULL, seed = 1
   # its species SD depends on the species' climate centres, so its range varies
   # among cells; the other two have one species SD per growth form
   dc <- if (!is.null(res$spread$shrunk)) res$spread$shrunk$cells else res$spread$continuous$cells
+  # left to right: climate-dependent spread (the product), constant spread
+  # (one species SD per growth form), locations pooled (no location effects)
   rng <- dplyr::bind_rows(
-    `location model` = prep(dl$cells) |> dplyr::mutate(x = x + 0.14),
-    `climate-dependent spread` = if (!is.null(dc)) prep(dc) |> dplyr::mutate(x = x + 0.26),
-    `pooled model` = prep(dp$cells) |> dplyr::mutate(x = x + if (is.null(dc)) 0.29 else 0.38),
+    `climate-dependent spread` = if (!is.null(dc)) prep(dc) |> dplyr::mutate(x = x + 0.14),
+    `constant spread` = prep(dl$cells) |> dplyr::mutate(x = x + if (is.null(dc)) 0.14 else 0.26),
+    `locations pooled` = prep(dp$cells) |> dplyr::mutate(x = x + if (is.null(dc)) 0.29 else 0.38),
     .id = "model")
-  models <- c("location model", if (!is.null(dc)) "climate-dependent spread", "pooled model")
+  models <- c(if (!is.null(dc)) "climate-dependent spread", "constant spread", "locations pooled")
   rng$model <- factor(rng$model, models)
   cols <- c(woody = "#1b7837", non_woody = "#b2182b")
+  legend_name <- "modelled\ncommunity\nmean and\n90% range"
 
   ggplot2::ggplot() +
     ggplot2::geom_point(data = rec, ggplot2::aes(x, exp(log_value), colour = woodiness_group),
@@ -205,23 +208,23 @@ plot_community_range_cells <- function(res, n_cells = 12, cells = NULL, seed = 1
     # log scale with a floor: one species with hundreds of records in a cell
     # would otherwise shrink every other species mean to nothing
     ggplot2::scale_size(range = c(0.9, 3.2), trans = "log10", name = "records of\nthe species") +
-    ggplot2::scale_linetype_manual(values = c(`location model` = "solid",
-                                              `climate-dependent spread` = "solid",
-                                              `pooled model` = "22"),
-                                   breaks = models,
-                                   name = "modelled\ncommunity\nmean and\n90% range") +
-    ggplot2::scale_shape_manual(values = c(`location model` = 16,
-                                           `climate-dependent spread` = 17,
-                                           `pooled model` = 1),
-                                breaks = models,
-                                name = "modelled\ncommunity\nmean and\n90% range") +
+    ggplot2::scale_linetype_manual(values = c(`climate-dependent spread` = "solid",
+                                              `constant spread` = "dashed",
+                                              `locations pooled` = "dotted"),
+                                   breaks = models, name = legend_name) +
+    ggplot2::scale_shape_manual(values = c(`climate-dependent spread` = 16,
+                                           `constant spread` = 17,
+                                           `locations pooled` = 1),
+                                breaks = models, name = legend_name) +
     ggplot2::labs(x = NULL, y = paste0(res$trait, " (", res$unit, ")"),
                   title = paste0(res$trait, ": records, species means and modelled community range"),
                   subtitle = paste0(res$cell_km, " km cells along the rainfall gradient. ",
                                     "Faint dots: records; solid dots: species means there; ",
                                     "bars: modelled range of species means (",
-                                    if (!is.null(dc)) "circle: location model, triangle: climate-dependent spread, dashed: pooled)"
-                                    else "solid: location model, dashed: pooled)")) +
+                                    paste(models, c("solid", "dashed", "dotted")[
+                                      match(models, c("climate-dependent spread", "constant spread",
+                                                      "locations pooled"))], sep = ": ", collapse = "; "),
+                                    ")")) +
     ggplot2::theme_bw(base_size = 9) +
     ggplot2::theme(panel.grid.minor = ggplot2::element_blank(),
                    plot.subtitle = ggplot2::element_text(size = 7))
