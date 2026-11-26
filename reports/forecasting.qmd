@@ -90,7 +90,7 @@ ggplot(fc, aes(annual_precipitation, estimate)) +
 ### Check 1: at the climate centre, the forecast is the modelled mean
 
 ```{r check-centre}
-mm <- arrow::read_parquet(file.path("outputs/species_means", tar_read(austraits_dev_info)$austraits_version,
+mm <- arrow::read_parquet(file.path("outputs/species_means", tar_read(austraits_info)$austraits_version,
                                     "modelled_means.parquet"))
 at_centre <- purrr::pmap(responses, function(taxon_name, trait_name, centre_precipitation,
                                              centre_temperature, ...)

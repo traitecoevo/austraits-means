@@ -8,7 +8,7 @@
 # magnitudes use a single-hue blue ramp.
 
 product_colours <- c(
-  "Observed, geometric (development build)" = "#eb6834",
+  "Observed, geometric" = "#eb6834",
   "Modelled (location model, at climate centre)" = "#1baf7a"
 )
 

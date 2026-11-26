@@ -51,16 +51,22 @@ tar_option_set(
 # ---- configuration ---------------------------------------------------------
 out_dir <- "outputs/traits"
 
-# austraits.build development export the trait records come from (height
-# included, via the AVH_2026 dataset). How it was built:
-# data/austraits/README.md.
-austraits_dev_rds <- "data/austraits/austraits-7.0.0.9000-d535de9.rds"
+# AusTraits release the trait records come from (height included, via the
+# AVH_2026 dataset): 8.0.0, from its Zenodo record. How to fetch it, or to use
+# an austraits.build development build instead: data/austraits/README.md.
+austraits_rds <- "data/austraits/austraits-8.0.0.rds"
 
-# The geometric observed means that austraits.build's `post_export()` wrote for
-# that same build (austraits.build#899). This repository reads them rather
-# than computing its own; how to make the file: data/austraits/README.md.
-austraits_dev_observed_means <-
-  "data/austraits/austraits-7.0.0.9000-d535de9-observed-means.parquet"
+# The observed means published with that same release. This repository reads
+# them rather than computing its own.
+austraits_observed_means <-
+  "data/austraits/austraits-8.0.0-observed-means.parquet"
+
+# Version DOI of the release and the MD5s its Zenodo record gives for the two
+# files; the pipeline stops if a file differs. For a development build set
+# all three to NULL.
+austraits_doi <- "10.5281/zenodo.24543275"
+austraits_rds_md5 <- "7fb6c4bc0500247b3b0cf17b62414020"
+austraits_observed_means_md5 <- "597f9c53488172e603987da9e9fdecc1"
 
 # APC/APNI release that trait-record names and GBIF names are both aligned to
 # for the crosswalk (an APCalign release tag; #13). Changing it rebuilds the
@@ -153,20 +159,22 @@ list(
   tar_target(medoids_file,
              "data-processed/climate_centres_0027765-260928105237408.parquet",
              format = "file"),
-  tar_target(austraits_dev_file, austraits_dev_rds, format = "file"),
-  tar_target(austraits_dev_observed_means_file, austraits_dev_observed_means,
+  tar_target(austraits_file,
+             check_file_md5(austraits_rds, austraits_rds_md5), format = "file"),
+  tar_target(austraits_observed_means_file,
+             check_file_md5(austraits_observed_means, austraits_observed_means_md5),
              format = "file"),
 
   # ===== Tier A: computed modelling pipeline ================================
-  # Version string and commit of the austraits.build export, carried into the
-  # product metadata.
-  tar_target(austraits_dev_info, austraits_build_info(austraits_dev_file)),
+  # Version string, austraits.build commit and DOI of the AusTraits release,
+  # carried into the product metadata.
+  tar_target(austraits_info, austraits_build_info(austraits_file, austraits_doi)),
 
   # Field records of the analysis traits with climate attached, then the
   # value-type rule (per-dataset exceptions: dataset_value_type_rules()).
   tar_target(austraits_climate,
              build_austraits_climate(
-               austraits_dev_file, traits = trait_names,
+               austraits_file, traits = trait_names,
                rasters = load_climate_rasters(
                  vars = basename(c(climate_bio1_tif, climate_bio12_tif)),
                  climate_dir = dirname(climate_bio1_tif),
@@ -174,17 +182,17 @@ list(
   # Infraspecific taxa are rolled up to species (roadmap.md).
   tar_target(records_all,
              roll_up_to_species(load_austraits_records(austraits_climate),
-                                dev_taxa)),
+                                austraits_taxa)),
 
-  # Name crosswalk: every taxon name in the build and every GBIF name, both
+  # Name crosswalk: every taxon name in the release and every GBIF name, both
   # aligned to the pinned APC release.
-  tar_target(dev_taxa,
-             readRDS(austraits_dev_file)$taxa |>
+  tar_target(austraits_taxa,
+             readRDS(austraits_file)$taxa |>
                dplyr::select(taxon_name, taxon_rank, binomial)),
   tar_target(gbif_names, gbif_taxon_names(gbif_cleaned_file)),
   tar_target(name_crosswalk,
              build_name_crosswalk(
-               taxon_names = dev_taxa$taxon_name,
+               taxon_names = austraits_taxa$taxon_name,
                gbif_names = gbif_names, apc_version = apc_version)),
 
   # Per-species medoid lookup (crosswalk-bridged).
@@ -239,10 +247,10 @@ list(
              write_pooled_location_comparison(pooled_location_comparison),
              format = "file"),
 
-  # Data basis of the fits (build version, APC release, GBIF extract, medoid
-  # build), written next to the exports.
+  # Data basis of the fits (AusTraits release, APC release, GBIF extract,
+  # medoid build), written next to the exports.
   tar_target(data_basis_info,
-             data_basis(austraits_dev_info, apc_version, gbif_cleaned_file,
+             data_basis(austraits_info, apc_version, gbif_cleaned_file,
                         medoids_file)),
   tar_target(data_basis_file, {
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -267,17 +275,17 @@ list(
              write_species_means(
                modelled_means, modelled_means_dictionary(),
                dir = file.path("outputs/species_means",
-                               austraits_dev_info$austraits_version),
+                               austraits_info$austraits_version),
                stem = "modelled_means",
                metadata = modelled_means_metadata(data_basis_info)),
              format = "file"),
 
-  # ===== Observed means, geometric method (development build; #15) =========
-  # Published by austraits.build with the build, not computed here
+  # ===== Observed means, geometric method (#15) ============================
+  # Published by austraits.build with the release, not computed here
   # (R/means/observed_means_release.R, docs/observed-means-geometric-method.md).
   # The woody lookup needs the woodiness and growth-form traits too.
   tar_target(observed_means_geometric,
-             read_observed_means(austraits_dev_observed_means_file,
+             read_observed_means(austraits_observed_means_file,
                                  traits = c(trait_names, "woodiness_detailed",
                                             "plant_growth_form"))),
 
@@ -289,7 +297,7 @@ list(
   # Woody / non-woody per taxon, by the rule of #19.
   tar_target(woody_lookup, build_woody_lookup(observed_means_geometric)),
   tar_target(community_dir,
-             file.path("outputs/community", austraits_dev_info$austraits_version)),
+             file.path("outputs/community", austraits_info$austraits_version)),
   tar_target(woody_lookup_files, write_woody_lookup(woody_lookup, community_dir),
              format = "file"),
   tar_target(community_units, trait_units(observed_means_geometric, trait_names)),
@@ -302,7 +310,7 @@ list(
              write_species_means(
                species_means_combined, species_means_combined_dictionary(),
                dir = file.path("outputs/species_means",
-                               austraits_dev_info$austraits_version),
+                               austraits_info$austraits_version),
                stem = "species_means_combined",
                metadata = species_means_combined_metadata(data_basis_info)),
              format = "file"),
@@ -311,7 +319,7 @@ list(
   # the cell's climate.
   tar_target(gbif_presence, gbif_presence_cells(gbif_cleaned_file)),
   tar_target(gbif_species_map,
-             gbif_to_species(gbif_names, name_crosswalk, dev_taxa,
+             gbif_to_species(gbif_names, name_crosswalk, austraits_taxa,
                              woody_lookup$taxon_name)),
   tar_target(community_species,
              cell_species(gbif_presence, medoids_file, gbif_species_map, woody_lookup)),
@@ -389,7 +397,7 @@ list(
              write_forecast_tables(species_responses, site_variances, community_surface_table,
                                    growth_form_responses, species_climate_centres,
                                    dir = file.path("outputs/forecast",
-                                                   austraits_dev_info$austraits_version)),
+                                                   austraits_info$austraits_version)),
              format = "file"),
 
   # ===== Observed vs modelled means (#24) ===================================

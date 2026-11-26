@@ -9,9 +9,9 @@
 # (`build_name_crosswalk()`) runs inside the pipeline, with the APC release
 # pinned in `_targets.R`.
 #
-# Trait records, height included, come from an austraits.build export
+# Trait records, height included, come from an AusTraits release
 # (`data/austraits/README.md`); `build_austraits_climate()` runs inside the
-# pipeline, because flattening a build takes seconds.
+# pipeline, because flattening a release takes seconds.
 
 #' Name crosswalk from trait-record names to GBIF names, via one APC release.
 #'
@@ -79,20 +79,46 @@ data_basis <- function(austraits_info, apc_version, gbif_file, medoids_file) {
   ))
 }
 
-#' Version string and commit of an austraits.build export.
+#' Version string, commit and DOI of an AusTraits release or development
+#' build.
 #'
-#' @param austraits_rds an rds written by austraits.build (`build.R`).
-#' @return list(austraits_version, austraits_build_commit).
-austraits_build_info <- function(austraits_rds) {
+#' @param austraits_rds an rds written by austraits.build (a release's
+#'   `austraits-<version>.rds`, or a development build's export).
+#' @param doi version DOI of the release; `NULL` for a development build.
+#' @return list(austraits_version, austraits_build_commit, austraits_doi).
+austraits_build_info <- function(austraits_rds, doi = NULL) {
   info <- readRDS(austraits_rds)$build_info
   list(austraits_version = info$version,
-       austraits_build_commit = info$git_SHA)
+       austraits_build_commit = info$git_SHA,
+       austraits_doi = if (is.null(doi)) NA_character_ else doi)
+}
+
+#' Check a file against a published MD5 and return its path.
+#'
+#' Used on the AusTraits release files, so the products are known to derive
+#' from the files in the release's Zenodo record.
+#'
+#' @param path the file.
+#' @param md5 the expected MD5, or `NULL` to skip the check (a development
+#'   build has no published checksum).
+#' @return `path`.
+check_file_md5 <- function(path, md5 = NULL) {
+  if (!file.exists(path)) {
+    stop("`", path, "` is missing (see data/austraits/README.md)", call. = FALSE)
+  }
+  if (!is.null(md5)) {
+    found <- unname(tools::md5sum(path))
+    if (!identical(found, md5)) {
+      stop("`", path, "` has MD5 ", found, ", not the published ", md5, call. = FALSE)
+    }
+  }
+  path
 }
 
 #' Flatten AusTraits and attach climate for the analysis traits.
 #'
-#' Reads an austraits.build export (a development build since #12; it carries
-#' the AVH height dataset `AVH_2026`), keeps field records of the analysis
+#' Reads an AusTraits release or austraits.build export (it carries the AVH
+#' height dataset `AVH_2026`, in releases from 8.0.0), keeps field records of the analysis
 #' traits that have coordinates, and attaches WorldClim climate. Value-type
 #' rules are applied later, in `load_austraits_records()`.
 #'

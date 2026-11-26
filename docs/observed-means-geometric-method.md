@@ -1,50 +1,39 @@
-# Observed means, geometric method
+# Observed means
 
-## What this product is
+## What they are and who makes them
 
-The geometric observed means are per taxon × trait summaries of the trait records in an AusTraits build, with `estimate_type = observed_mean` and `method = geometric`. **austraits.build computes and publishes them**, from the release after 7.0.0 onward, as `austraits-<version>-observed-means.parquet` (`.csv.gz`, `-dictionary.csv`) beside each release (`R/observed_means.R` there, written by its `post_export()`; [austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). The method moved there from this repository, which now only reads the file; this document describes the method, and austraits.build's code is the authority if the two disagree. The pipeline here reads the file published for the development build 7.0.0.9000 (commit `d535de9e`; see `data/austraits/README.md`).
+The observed means are per taxon × trait summaries of the trait records in an AusTraits release, computed directly from the records, with no model (`estimate_type = observed_mean`). **austraits.build computes and publishes them** with each release from 8.0.0, as `austraits-<version>-observed-means.parquet` (also `.rds`, `.csv.gz` and `-dictionary.csv`) in the release's Zenodo record. This repository reads that file and does not compute or publish its own.
 
-For a numeric trait the value is a **geometric mean**, as `terminology.md` requires of both species estimates. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
+The method has one home, and this document does not restate it in full:
 
-## Traits
+- the calculation is `traits.use::summarise_trait_means()`; its help page describes every step;
+- what is specific to AusTraits is in austraits.build's `R/observed_means.R`: the rule that the AVH height dataset `AVH_2026` enters by its minimum and maximum records, and the files the release carries;
+- the columns are defined in the dictionary published beside the file (`traits.use::trait_means_dictionary()`).
 
-The AusTraits data portal's core traits, the traits the AusTraits API summarises, and three more: `leaf_N_per_area` and `leaf_P_per_area`, so that all nine modelled traits are covered, and `woodiness`, an input to the woody / non-woody lookup. Traits without records in the build drop out. The list is `observed_means_traits()` in austraits.build's `R/observed_means.R`.
+A change of method is made there and reaches this repository through a new release. The method began here as the "geometric method" (#15) and moved to austraits.build on 24 November 2026, then to traits.use (`roadmap.md`).
 
-## Method
+## The method in brief
 
-Every step is on the log scale. `observed_means()` in austraits.build's `R/observed_means.R` implements it.
+- **Numeric traits** (`method = geometric`): records with `value_type` raw, mean or median are grouped by dataset × location, and minimum and maximum records from preserved specimens and the literature (floras) by observation. A group's value is the geometric mean of its records, or the geometric midpoint of a flora range. The species value is the geometric mean of the groups, each counting once. Records with a zero or negative value are not used. The arithmetic mean of the same groups is kept alongside in `arithmetic_mean`.
+- **Signed traits** (`method = arithmetic`): a trait whose definition allows values below zero has no geometric mean, so its `value` is the arithmetic mean of the same groups, using every record.
+- **Categorical traits** (`method = mode`): `value_mode` is the most frequent value, with ties joined by a space, and `value_count` lists every value with its count. Traits that record months are summarised month by month (`method = majority`).
+- **Taxa**: subspecies, varieties and forms are rolled up to their species. Hybrid formulae and genus-level names keep their own rows.
+- **Evidence**: `n_records`, `n_datasets`, `n_locations`, `n_flora`, `n_field` and `sd_log` count what is behind each value, and `reliability` is a provisional class from them.
 
-**Record selection** (numeric traits).
+In AusTraits 8.0.0 the file has 767,333 rows for 34,115 taxa and 628 traits: 432 geometric, 43 arithmetic, 149 by mode and 4 by majority.
 
-- Records with `value_type` raw, mean or median are used, whatever their `basis_of_record` and `life_stage`.
-- Datasets listed in `dataset_value_type_rules()` use their own value types instead. Today that is the AVH height dataset `AVH_2026`, which carries one label bound per specimen (a minimum or a maximum) and no raw values; its bounds are used as observations, like raw records. The modelled means use the same rule.
-- Minimum and maximum records from other datasets are used only when `basis_of_record` is `preserved_specimen` or `literature` (floras).
+## What this repository relies on
 
-**Groups.** Raw, mean and median records (and the AVH bounds) are grouped by taxon × trait × dataset × location; the group value is the geometric mean of its records. Flora bounds are grouped by observation; the group value is the geometric midpoint, sqrt(minimum × maximum), or the lone bound when only one is given.
-
-**Species value.** `value` is the geometric mean of the group values, each group counting once whatever its number of records; `log_value` is its natural log. `arithmetic_mean` is the arithmetic mean of the groups' arithmetic means and midpoints. `value_min` and `value_max` are the smallest and largest record values used. The geometric mean sits below the arithmetic mean by an amount that grows with within-taxon spread. Across taxa the median ratio of `arithmetic_mean` to `value` is 1.10 for plant height and 1.12 for leaf length, and 1.00 for leaf mass per area and seed mass, where a third and a half of taxa respectively have a single record.
-
-**Zero and negative values.** A geometric mean needs positive values, so records with a zero or negative value are dropped before anything is computed, as for the modelled means; `arithmetic_mean` uses the same records. In the current build this drops 6,869 records: all 5,918 of `leaf_delta13C`, whose values are negative, so that trait has no geometric observed mean (it needs a transform first, as for the modelled means, #39); 895 of `petiole_length`, where zero means a sessile leaf; and a few of `leaf_stomatal_density_adaxial`, `seed_viability` and `leaf_inclination_angle`.
-
-**Taxa.** Subspecies, varieties and forms are rolled up to their species (the name before its rank marker), as for the modelled means (`roll_up_to_species()` here), so the two species estimates join on species. Hybrid formulae (*A x B var. c*) are not rolled up and keep their own rows. Taxon details (rank, establishment means, APC identifier) come from the species' row in the build's taxa table. Genus-level names keep their own rows. In the current build 186,692 of 1,939,853 records were rolled up.
-
-**Categorical traits.** One row per taxon × trait. Each record's value is split at spaces and every value counted; `value_count` lists `value (n)` for every value and `value_mode` gives the most frequent one, with tied values joined by a space.
-
-**Reliability indicators** (#16; `R/means/reliability.R`). `n_records` is the number of records used (each bound counts as a record), `n_datasets` the number of datasets, `n_locations` the number of dataset × location groups, `n_flora` the number of flora minimum/maximum records, `n_field` the number of field records, and `sd_log` the standard deviation of the log record values. `reliability` is a provisional class: high with at least 3 datasets and 10 records, medium with at least 2 datasets or 5 records, low otherwise. The same columns are added to the modelled means.
+- `read_observed_means()` (`R/means/observed_means_release.R`), behind the `observed_means_geometric` target, stops if the file lacks a column the pipeline reads, lacks one of the nine modelled traits, `woodiness_detailed` or `plant_growth_form`, or gives an arithmetic mean for a modelled trait. The file must come from the same release as the trait records (`austraits_rds` and `austraits_observed_means` in `_targets.R`; `data/austraits/README.md`).
+- The modelled traits are fitted on the log scale, so their observed means must be geometric for the two species estimates to be comparable.
+- `roll_up_to_species()` here must keep rolling taxa up the same way as `summarise_trait_means()`, so the modelled and observed means join on species.
+- The woody / non-woody lookup reads `value_mode` of `woodiness_detailed` and `plant_growth_form` (`R/community/woody_lookup.R`).
+- The observed mean uses a broader set of records than the modelled mean, which uses field records only (raw, mean or median, plus the AVH bounds) of species with a climate centre (`terminology.md`).
 
 ## Known limitations
 
-- No life-stage or basis-of-record filter on raw, mean and median records: seedlings, glasshouse and lab records are pooled with field records of adults.
+- There is no life-stage or basis-of-record filter on raw, mean and median records: seedlings, glasshouse and lab records are pooled with field records of adults.
 - Groups count equally: a site with one record counts as much as one with a hundred, and a flora midpoint as much as a site mean.
 - A lone flora bound stands in for the midpoint, biasing the value low (a minimum) or high (a maximum).
-- Minimum and maximum records with a basis other than preserved specimen or literature are not used, except under a per-dataset rule.
-- Zero values that carry meaning are dropped with the rest (a sessile leaf has a petiole length of zero), so the value describes the records with a positive value.
+- Zero values that carry meaning are dropped from a geometric mean (a sessile leaf has a petiole length of zero), so the value describes the records with a positive value.
 - The value does not adjust for where in the species' range the records came from; that is what the modelled mean is for.
-
-## Columns
-
-The column dictionary is published with the product (`austraits-<version>-observed-means-dictionary.csv`) and defined in `observed_means_dictionary()` in austraits.build. It has the columns above except `source_primary_key`: a dataset's references are in the release's `sources` table under its `dataset_id`.
-
-## Outputs and rebuilding
-
-austraits.build writes the files when it exports a build (`create_release()`, or `traits.build::build_post_export()` on a development build; `data/austraits/README.md`). Here, the `observed_means_geometric` target reads them with `read_observed_means()` (`R/means/observed_means_release.R`), which checks the columns the pipeline uses and that every trait it needs is present; this repository no longer writes its own copy.

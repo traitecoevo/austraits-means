@@ -110,6 +110,6 @@ plot_baseline_centres <- function(pairs) {
     ggplot2::geom_point(alpha = 0.25, stroke = 0, size = 0.8, colour = "#2C6E8E") +
     ggplot2::facet_wrap(~trait_name, scales = "free") +
     ggplot2::labs(x = "Modelled mean, June 2026 baseline (log)",
-                  y = "Modelled mean, development build (log)") +
+                  y = "Modelled mean, current (log)") +
     ggplot2::theme_classic()
 }

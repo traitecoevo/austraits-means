@@ -2,7 +2,7 @@
 
 This is the planning document for `austraits-means`. It records what the repository delivers, the decisions taken and why, the milestones and the issues that reach them, and the invariants a future edit could break. Keep it current or retire it; do not start a second plan beside it. Issue numbers are on the [AusTraits board](https://github.com/orgs/traitecoevo/projects/9) (view "means").
 
-Last revised: 25 November 2026.
+Last revised: 26 November 2026.
 
 ## Products
 
@@ -11,7 +11,7 @@ Re-scoped 24 November 2026 (decisions below). This repository publishes one prod
 1. **Modelled means**: per species × trait, the model-estimated geometric mean at the centre of the species' climate distribution and an average location, from the location model (`R/model/spread_rtmb.R`; 25 November 2026).
 2. **Modelled community statistics**, in the same record: for a location, predicted from its climate alone, the woody and non-woody **community mean** (mean trait across species) and **community range** (spread of the species' trait means there). They are a function of climate, which can be evaluated at any location; they are not maps of the records. They come from the same location model, from each 50 km cell's climate alone (`community_stats`, 25 November 2026).
 
-With them, as a draft (25 November 2026): **forecasting tables**, so users can forecast without the model. Per species, the three numbers that give its trait value at any climate (mean at the climate centre, the two within-species slopes) and their covariance; per trait and growth form, the variances to add for a new site or record, and what forecasting a species without trait data needs (the growth form's five coefficients and their covariance, the species spread and slope SDs), for the 22,791 species with a climate centre and a growth form; and the community statistics on a regular climate grid (`R/process/forecast.R`, `outputs/forecast/<build>/`). `reports/forecasting.qmd` shows their use and checks them against the data.
+With them, as a draft (25 November 2026): **forecasting tables**, so users can forecast without the model. Per species, the three numbers that give its trait value at any climate (mean at the climate centre, the two within-species slopes) and their covariance; per trait and growth form, the variances to add for a new site or record, and what forecasting a species without trait data needs (the growth form's five coefficients and their covariance, the species spread and slope SDs), for the 22,632 species with a climate centre and a growth form; and the community statistics on a regular climate grid (`R/process/forecast.R`, `outputs/forecast/<build>/`). `reports/forecasting.qmd` shows their use and checks them against the data.
 
 Not published from here:
 
@@ -81,6 +81,16 @@ Status, 24 November 2026: the due date passed with the products re-scoped (decis
 ## Decisions and their reasons
 
 Dated decisions, newest first. Earlier decisions from the refactor plan are kept below them.
+
+### 26 November 2026
+
+- **The data basis is the AusTraits 8.0.0 release** ([10.5281/zenodo.24543275](https://doi.org/10.5281/zenodo.24543275), published 26 November 2026; austraits.build `489360f0`; 503 datasets, 2,450,777 trait records), replacing the development build 7.0.0.9000 at `d535de9` (470 datasets). The database and its observed means are taken from the Zenodo record; the pipeline checks both against the record's MD5s and writes the version, commit and DOI into the product metadata (`data/austraits/README.md`). The products are under `outputs/*/8.0.0/`, following the versioning rule in `terminology.md`. Nothing else changed: the APC pin (2026-07-30), the GBIF download and medoids, the model, the trait list and the growth-form rule. The APC release is not re-pinned, because the crosswalk realigns the release's names to the pin whatever release they were built with; 89.6% of the trait species have a medoid (90.0% before). A later release is a change of five values in `_targets.R`.
+- **What the change of data did, 7.0.0.9000 against 8.0.0** (same code, one rebuild each):
+  - Eight of the nine traits barely move. Records with a medoid change by at most 3% (wood density +7%); the modelled means of species in both correlate at 0.993 or more on the log scale, with a median absolute shift of at most 0.03; a cell's community mean shifts by a median of at most 0.06 log units, except non-woody leaf area (−0.19).
+  - **Seed mass changes materially, and its earlier statistics are superseded.** Four seed-bank datasets new in 8.0.0 (`WA_Seed_Centre_2026`, `SA_Seed_Conservation_Centre_2026`, `ANBG_2026`, `Tas_Seed_Conservation_Centre_2026`) take the records with a medoid from 17,384 to 30,728 and the species from 1,939 to 6,008. Fitted species rise from 214 to 665: woody 187 to 440, non-woody 27 to 225. The non-woody fit had rested on 27 species, with 2,546 of 3,351 cells outside the climate of its records; now 13 cells are. Its community mean falls by a median 2.06 log units (about 8-fold), and the woody community SD is a median 0.78 of what it was.
+  - Leaf area: the `Laliberte_2012` values were corrected in the release (10 to 50 times smaller for the species checked), which moves six Western Australian species' modelled means down by 1.5 to 2.2 log units.
+  - The same three growth forms are dropped (non-woody wood density, leaf N and P per area). All nine location fits converge, and the forecasting checks hold (94% intervals hold 92–97% of site means for species treated as unmeasured).
+- Numbers in the dated entries below, in Later work and in `docs/local-range-model.qmd` were measured on the development build 7.0.0.9000 and are not recomputed; for seed mass they no longer describe the product.
 
 ### 25 November 2026
 

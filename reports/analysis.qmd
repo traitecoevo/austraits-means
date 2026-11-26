@@ -20,7 +20,7 @@ This analysis produces **national estimates of plant species' trait means** for 
 
 Since 25 November 2026 one model gives both products: the **location model** (`R/model/spread_rtmb.R`; its development and checks are in `docs/local-range-model.qmd`, the decisions in `roadmap.md`). Predictors are centred on the medoid (`x_c = obs − medoid`), so the between-species terms describe turnover across the continent and the within-species terms how a trait shifts across a species' range (`docs/within-species-centring.qmd`). The earlier models, which pool growth forms, locations or both, are kept only as the comparison that shows what the location model fixes.
 
-This notebook is a *reporting layer*: model fitting, exports and figures are produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the results and narrate them. The dataset (`dataset_construction.qmd`) takes every trait record, plant height included, from an austraits.build development build; all logic lives in `R/`.
+This notebook is a *reporting layer*: model fitting, exports and figures are produced by the `targets` pipeline (`_targets.R`); here we `tar_load()` the results and narrate them. The dataset (`dataset_construction.qmd`) takes every trait record, plant height included, from the AusTraits release named under Data basis below; all logic lives in `R/`.
 
 ```{r setup}
 library(tidyverse)
@@ -90,9 +90,9 @@ purrr::map(pooled_location_comparison, "benchmark") |>
   knitr::kable()
 ```
 
-## Refit on the development build: shifts against June 2026
+## Shifts against June 2026
 
-The modelled means were refitted after the data basis changed (#12, #13), and since 25 November 2026 come from the location model, so the shifts below combine the change of data and of model: trait and height records now come from an austraits.build development build, height from its AVH dataset rather than a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). Since #33 the occurrences are also new: a GBIF download of October 2026, keeping open-licence records only, with names aligned to APC from the providers' names, and medoids rebuilt from it. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
+The modelled means were refitted after the data basis changed (#12, #13), and since 25 November 2026 come from the location model, so the shifts below combine the change of data and of model: trait and height records now come from an AusTraits release that includes the AVH height dataset (8.0.0 onward; development builds of it from October 2026), not from AusTraits 7.0.0 and a separate AVH CSV, the name crosswalk is rebuilt against a pinned APC release, and subspecies, varieties and forms are rolled up to species (as the earlier AVH CSV had done for height). Since #33 the occurrences are also new: a GBIF download of October 2026, keeping open-licence records only, with names aligned to APC from the providers' names, and medoids rebuilt from it. The June 2026 outputs were snapshotted beforehand into `docs/baselines/2026-06/`; `compare_with_baseline()` compares the two. Tables and a figure are also written to `outputs/comparisons/`.
 
 ```{r baseline-setup}
 tar_load(baseline_comparison)
@@ -238,15 +238,15 @@ species_means_combined |>
 
 ## Exported files
 
-In `outputs/species_means/<build version>/`, each as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`, with `estimate_type` and `method` on every row (`terminology.md`):
+In `outputs/species_means/<AusTraits version>/`, each as `.parquet`, `.csv.gz`, `_dictionary.csv` and `_metadata.json`, with `estimate_type` and `method` on every row (`terminology.md`):
 
 - `modelled_means`: the modelled means of every trait (location model, `method = rtmb`), with their 94% interval, the climate centre, the growth form and the species' random effects (`modelled_means_files` target).
 - `species_means_combined`: one value per species × trait for the modelled traits, modelled where available, otherwise observed (`species_means_combined_files`).
 
-The geometric observed means are published by austraits.build with each build (`austraits-<version>-observed-means.parquet`), and read here rather than written.
+The geometric observed means are published by austraits.build with each release (`austraits-<version>-observed-means.parquet`), and read here rather than written.
 
 Per trait, in `outputs/traits/`:
 
 - `<trait>_climate_response.csv.gz`: that trait's modelled means in the same schema, with a `_meta.csv` column dictionary (`trait_export_*` targets).
 - `trait_model_summary.csv`: fitted fixed effects for every trait and growth form (`trait_summary_file` target).
-- `data_basis.json`: the build, APC release, GBIF extract and medoid build behind the fits.
+- `data_basis.json`: the AusTraits release, APC release, GBIF extract and medoid build behind the fits.

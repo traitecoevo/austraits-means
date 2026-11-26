@@ -24,7 +24,7 @@ Species terms decided 14 October 2026. Community terms proposed 14 October 2026;
 - **Avoid these alternative names:** "naive mean" sounds dismissive in a published product. "Raw mean" clashes with `value_type = raw`. "Sample mean" is ambiguous, because in trait work a "sample" is a physical specimen.
 - **Both are geometric means.** Traits are treated as log-normal: values are averaged or modelled on the log scale, then back-transformed with `exp()`. For a log-normal, the geometric mean equals the median. It falls below the arithmetic mean, exp(μ + σ²/2), by an amount that grows with within-species spread. Keeping both estimates geometric means their difference comes from method alone, not from the type of summary. State "geometric" in definitions and metadata. It need not appear in the headline term.
 - **If an arithmetic mean is ever published,** it goes in a separate column with its own clear label, never in place of the observed mean.
-- **Except for signed traits** (decided 24 November 2026): a trait whose definition allows values below zero, such as a water potential, a temperature or an isotope ratio, is not log-normal and has no geometric mean. Its observed mean is the arithmetic mean of the same groups, in `value`, with `method = arithmetic` and `log_value` empty, so the `method` column says which kind each row is. In the AusTraits development build that is 43 traits. Before, 23 of them had no observed mean at all and 20 silently lost their negative records.
+- **Except for signed traits** (decided 24 November 2026): a trait whose definition allows values below zero, such as a water potential, a temperature or an isotope ratio, is not log-normal and has no geometric mean. Its observed mean is the arithmetic mean of the same groups, in `value`, with `method = arithmetic` and `log_value` empty, so the `method` column says which kind each row is. In AusTraits 8.0.0 that is 43 traits. Before, 23 of them had no observed mean at all and 20 silently lost their negative records.
 
 ## What each estimate does and does not account for
 
@@ -51,7 +51,7 @@ From 25 November 2026 the modelled mean comes from the **location model** (`meth
 
 ## Product versions and methods
 
-The species means product carries the **same version tag as the AusTraits release it derives from**, so the two are easily related: "species means 7.0.0" derives from AusTraits 7.0.0. A re-issue for the same release appends a fourth component (7.0.0.1). Products built from a development build carry that build's version string until the corresponding release exists. Whether the new modelled-means Zenodo record keeps this rule is open (roadmap, 24 November 2026).
+The species means product carries the **same version tag as the AusTraits release it derives from**, so the two are easily related: "species means 8.0.0" derives from AusTraits 8.0.0. A re-issue for the same release appends a fourth component (8.0.0.1). Products built from a development build carry that build's version string until the corresponding release exists. Whether the new modelled-means Zenodo record keeps this rule is open (roadmap, 24 November 2026).
 
 Each row records how it was computed in a `method` column:
 

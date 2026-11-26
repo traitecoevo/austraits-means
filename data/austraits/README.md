@@ -1,27 +1,40 @@
 # AusTraits inputs
 
-The pipeline reads two AusTraits files from `data/austraits/`. They are git-ignored, so they are not in the repository; this README is.
+The pipeline reads two AusTraits files from `data/austraits/`, both from the same release. They are git-ignored, so they are not in the repository; this README is.
 
-## `austraits-<version>-<commit>.rds`: a development build
+The release in use is **AusTraits 8.0.0** ([10.5281/zenodo.24543275](https://doi.org/10.5281/zenodo.24543275), 26 November 2026; 503 datasets, 2,450,777 trait records, built from austraits.build `489360f0`). It is set in `_targets.R` by five values: the two paths (`austraits_rds`, `austraits_observed_means`), the release's version DOI (`austraits_doi`) and the MD5 of each file as its Zenodo record gives it (`austraits_rds_md5`, `austraits_observed_means_md5`). The pipeline stops if a file's MD5 differs (`check_file_md5()`), and writes the version, the austraits.build commit and the DOI into the product metadata.
 
-An export of austraits.build `develop`, input to everything built on the development build (geometric observed means, modelled means, community layers). It carries the AVH height dataset `AVH_2026`, which replaced the separate AVH height CSV. The file in use is set by `austraits_dev_rds` in `_targets.R`; its version and commit are read from the build's `build_info` into the product metadata.
+| File | What it is | MD5 |
+|---|---|---|
+| `austraits-8.0.0.rds` | the database: trait records for every product, including the AVH height dataset `AVH_2026` | `7fb6c4bc0500247b3b0cf17b62414020` |
+| `austraits-8.0.0-observed-means.parquet` | the observed means published with the release (`docs/observed-means-geometric-method.md`); read here, not computed | `597f9c53488172e603987da9e9fdecc1` |
 
-Current file: `austraits-7.0.0.9000-d535de9.rds`, built from austraits.build `develop` at `d535de9e` (19 October 2026; 470 datasets, 2,325,498 trait records) with traits.build 2.2.0, as `develop` requires, from an unmodified checkout.
+To fetch them:
 
-Earlier files: `austraits-7.0.0.9000-62aa0e7.rds` (`62aa0e79`) has the same data, built with a locally regenerated `build.R` before that fix reached `develop` ([traitecoevo/austraits.build#868](https://github.com/traitecoevo/austraits.build/issues/868)); `austraits-7.0.0.9000-cd26bb2.rds` (`cd26bb21`, 442 datasets) also needed traits.build from its `add-date-parsing` branch.
+```sh
+cd data/austraits
+for f in austraits-8.0.0.rds austraits-8.0.0-observed-means.parquet; do
+  curl -L -o "$f" "https://zenodo.org/api/records/24543275/files/$f/content"
+done
+md5 austraits-8.0.0.rds austraits-8.0.0-observed-means.parquet
+```
 
-To rebuild, check out austraits.build `develop` in a separate worktree (not a working checkout you curate in), install the traits.build version its `DESCRIPTION` requires, run `source("build.R")`, and copy `export/data/curr/austraits.rds` to `data/austraits/austraits-<version>-<short commit>.rds`. Then point `austraits_dev_rds` at it, and make the observed means for the same build (next section).
+(`traits.use::load_database()` and `austraits::load_austraits(version = "8.0.0", means = TRUE)` fetch the same files, but need traits.use 1.0.1 or austraits 4.0.1, which are newer than this project's `renv.lock` pins.)
 
-## `austraits-<version>-<commit>-observed-means.parquet`: the observed means
+## Moving to a new release
 
-The geometric observed means of that same build, as austraits.build publishes them (`R/observed_means.R` there, written by its `post_export()`; [austraits.build#899](https://github.com/traitecoevo/austraits.build/pull/899)). This repository reads them rather than computing its own (`read_observed_means()`), so the method has one home. The file in use is set by `austraits_dev_observed_means` in `_targets.R`, and must come from the same build as `austraits_dev_rds`.
+Fetch the new release's two files, then change the five values in `_targets.R`. `tar_make()` rebuilds everything from the records on, and writes the products under the new version (`outputs/species_means/<version>/`, `outputs/community/<version>/`, `outputs/forecast/<version>/`). Then update the release named above and in the main `README.md`.
 
-For a release, take `austraits-<version>-observed-means.parquet` from the release files. For a development build, in the same austraits.build worktree, after `source("build.R")`:
+## Using a development build instead
+
+To build on austraits.build `develop` between releases: check out `develop` in a separate worktree (not a working checkout you curate in), install the traits.build version its `DESCRIPTION` requires, and run `source("build.R")`, then
 
 ```r
 traits.build::build_post_export(austraits, "export/data/curr")
 ```
 
-which writes the flattened exports and `austraits-<version>-observed-means.parquet` into `export/data/curr/`; copy the latter to `data/austraits/austraits-<version>-<short commit>-observed-means.parquet`. (To write only the observed means: `source("R/observed_means.R"); write_observed_means(observed_means(austraits), dir, austraits$build_info$version)`.)
+which writes the observed means beside the database. Copy `export/data/curr/austraits.rds` to `data/austraits/austraits-<version>-<short commit>.rds` and the observed means to `data/austraits/austraits-<version>-<short commit>-observed-means.parquet`, point the two paths in `_targets.R` at them, and set the DOI and the two MD5s to `NULL`. The products then carry the build's version string (such as `8.0.0.9000`) and its commit.
 
-Current file: `austraits-7.0.0.9000-d535de9-observed-means.parquet`, written on 24 November 2026 by austraits.build#899 (`2b3607c0`) from `austraits-7.0.0.9000-d535de9.rds`.
+## Earlier files
+
+Before 26 November 2026 the pipeline read development builds of what became 8.0.0: `austraits-7.0.0.9000-d535de9.rds` (austraits.build `d535de9e`, 19 October 2026; 470 datasets, 2,325,498 trait records) with its observed means, and before that `-62aa0e7` and `-cd26bb2`. The products made from them are under `outputs/*/7.0.0.9000/`. `austraits-7.0.0.rds`, the 7.0.0 release, was the input to the portal-method product, removed on 25 November 2026. None of these files is read now.

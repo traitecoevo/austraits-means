@@ -6,7 +6,7 @@
 # `post_export()` (traitecoevo/austraits.build#899) as
 # `austraits-<version>-observed-means.parquet`. The method lives there; change
 # it there. The pipeline reads that file, for the same build as the records
-# (`austraits_dev_rds` and `austraits_dev_observed_means` in `_targets.R`).
+# (`austraits_rds` and `austraits_observed_means` in `_targets.R`).
 
 #' Columns of the published observed means this pipeline reads.
 observed_means_columns <- c(

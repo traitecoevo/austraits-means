@@ -13,7 +13,7 @@ The **observed means** (simple species means) are published by austraits.build w
 
 ## The products
 
-Every species means table carries `estimate_type` (`observed_mean` or `modelled_mean`) and `method` (`geometric` or `arithmetic` for an observed mean; `rtmb`, `tmb` or `brms` for a modelled mean), and comes as four files: `.parquet`, `.csv.gz`, `_dictionary.csv` (every column defined) and `_metadata.json` (provenance: source build, commit, data basis). Each product carries the version tag of the AusTraits release or build it derives from.
+Every species means table carries `estimate_type` (`observed_mean` or `modelled_mean`) and `method` (`geometric` or `arithmetic` for an observed mean; `rtmb`, `tmb` or `brms` for a modelled mean), and comes as four files: `.parquet`, `.csv.gz`, `_dictionary.csv` (every column defined) and `_metadata.json` (provenance: source build, commit, data basis). Each product carries the version tag of the AusTraits release it derives from.
 
 What the pipeline writes, published or not (status in [`roadmap.md`](roadmap.md)):
 
@@ -21,17 +21,17 @@ What the pipeline writes, published or not (status in [`roadmap.md`](roadmap.md)
 |---|---|---|
 | Observed means, geometric method | Published with each AusTraits release by austraits.build (`austraits-<version>-observed-means.*`); read here, not written | [`docs/observed-means-geometric-method.md`](docs/observed-means-geometric-method.md) |
 | Modelled means (the location model, RTMB; `method = rtmb`) | `species_means/<build>/modelled_means.*` | `terminology.md`, `docs/local-range-model.qmd`, `docs/within-species-centring.qmd`, `reports/analysis.qmd` (rendered as `reports/analysis.html`) |
-| Forecasting tables (draft, unpublished): a named species' trait value at any climate, a species without trait data from its growth form and climate centre, and a growth form's community statistics at any climate, each with uncertainty | `forecast/<build>/`: `species_climate_responses.*` (per trait × species: the mean at the climate centre, the two within-species slopes and their covariance, the records' climate range), `site_variances.*` (per trait × growth form: what to add for a new site or record), `community_climate_surface.*` (community statistics on a climate grid), `growth_form_responses.*` (per trait × growth form: what forecasting a species without trait data needs) and `species_climate_centres.*` (the 22,791 species that can be forecast that way: climate centre and growth form) | `reports/forecasting.qmd` (how to use them, with checks against the data), `R/process/forecast.R` |
+| Forecasting tables (draft, unpublished): a named species' trait value at any climate, a species without trait data from its growth form and climate centre, and a growth form's community statistics at any climate, each with uncertainty | `forecast/<build>/`: `species_climate_responses.*` (per trait × species: the mean at the climate centre, the two within-species slopes and their covariance, the records' climate range), `site_variances.*` (per trait × growth form: what to add for a new site or record), `community_climate_surface.*` (community statistics on a climate grid), `growth_form_responses.*` (per trait × growth form: what forecasting a species without trait data needs) and `species_climate_centres.*` (the 22,632 species that can be forecast that way: climate centre and growth form) | `reports/forecasting.qmd` (how to use them, with checks against the data), `R/process/forecast.R` |
 | Combined species means (modelled where available, otherwise observed; internal input) | `species_means/<build>/species_means_combined.*` | `terminology.md` |
 | Community statistics, 50 km equal-area grid, from each cell's climate alone (draft, unpublished) | `community/<build>/`: `community_statistics.parquet` (one row per trait × cell × growth form: community mean and SD with 94% intervals, 90% range, sorting factor, extrapolation flags), `sorting_factors.csv`, `geotiff/`, `figures/<trait>_community_statistics`, `community_statistics_metadata.json`, `check/` (against each cell's own GBIF species), `woody_lookup.csv` | `terminology.md`, `docs/local-range-model.qmd`, `R/community/community_climate.R` |
 
-`<build>` is the version string of the austraits.build development build the products came from: currently `7.0.0.9000`, built from austraits.build commit `d535de9`. Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; the pooled and locations-pooled models against the location model, `pooled_vs_location_*`; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the medoid checks), and `traits/`, the pipeline's working per-trait files, from the location model (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary per trait and growth form `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with, per growth form, the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to `reports/`, next to their sources (git-ignored).
+`<build>` is the version of the AusTraits release the products came from: currently `8.0.0` ([10.5281/zenodo.24543275](https://doi.org/10.5281/zenodo.24543275)). Alongside, under `outputs/`: `figures/` (the figure set), `comparisons/` (observed vs modelled; the pooled and locations-pooled models against the location model, `pooled_vs_location_*`; and the refit against the June 2026 baseline, the earlier outputs kept in `docs/baselines/2026-06/`), `checks/` (the medoid checks), and `traits/`, the pipeline's working per-trait files, from the location model (each trait's modelled means as `<trait>_climate_response.csv.gz` with a `_meta.csv` dictionary, the fixed-effect summary per trait and growth form `trait_model_summary.csv`, `data_basis.json`, and per-trait figures: `figures/<trait>` with the species' modelled means against climate, and `figures/<trait>_within_between` with, per growth form, the records, each species' within-species line, and the between-species and average within-species lines for rainfall and temperature); these are not versioned products. The two rendered reports, `analysis.html` and `dataset_construction.html`, are written to `reports/`, next to their sources (git-ignored).
 
 To read one:
 
 ```r
-means <- arrow::read_parquet("outputs/species_means/7.0.0.9000/modelled_means.parquet")
-readr::read_csv("outputs/species_means/7.0.0.9000/modelled_means_dictionary.csv")
+means <- arrow::read_parquet("outputs/species_means/8.0.0/modelled_means.parquet")
+readr::read_csv("outputs/species_means/8.0.0/modelled_means_dictionary.csv")
 ```
 
 ## Building
@@ -43,7 +43,7 @@ You need R 4.6. Steps, from the repository root:
 
 | Input | Where | How to get it |
 |---|---|---|
-| austraits.build development build | `data/austraits/austraits-7.0.0.9000-d535de9.rds` (the file name is set by `austraits_dev_rds` in `_targets.R`) | build the austraits.build repository at that commit and copy its export; steps in [`data/austraits/README.md`](data/austraits/README.md) |
+| AusTraits 8.0.0: the database and its observed means | `data/austraits/austraits-8.0.0.rds` and `data/austraits/austraits-8.0.0-observed-means.parquet` (set by `austraits_rds` and `austraits_observed_means` in `_targets.R`) | from the release's Zenodo record, [10.5281/zenodo.24543275](https://doi.org/10.5281/zenodo.24543275); the pipeline checks each file's MD5 against the record. Commands, and how to use a development build instead, in [`data/austraits/README.md`](data/austraits/README.md) |
 | WorldClim 2.1 at 2.5′, BIO1 and BIO12 | `data/climate/wc2.1_2.5m_bio_1.tif`, `data/climate/wc2.1_2.5m_bio_12.tif` | [worldclim.org](https://www.worldclim.org) |
 | Australia extent raster | `data/australia.tif` | any raster covering 112.9–153.7° E, 43.8–9.1° S; it is used only for its extent, to crop the climate layers |
 | Cleaned GBIF occurrences | `data-processed/data_gbif_cleaned_<key>.parquet` (the extract in use is set by `gbif_cleaned_file` in `_targets.R`: GBIF download [10.15468/dl.766erw](https://doi.org/10.15468/dl.766erw), 15 October 2026) | `Rscript R/scripts/build_gbif.R <key> <folder>` fetches a GBIF download by key (no credentials needed), cleans it, keeps only CC0 and CC BY records, aligns names to the pinned APC release (from the provider's name, GBIF's name as fallback) and attaches climate, writing `data-processed/data_gbif_cleaned_<key>.parquet`; downloads used are listed in `gbif_downloads` (`R/data/gbif.R`) |
@@ -58,9 +58,9 @@ targets::tar_make()                   # build everything that is out of date
 testthat::test_dir("tests/testthat")  # unit tests
 ```
 
-With the inputs in place, `tar_make()` takes about 15 minutes from an empty targets store. It rebuilds only what changed and renders the two reports at the end. `targets::tar_visnetwork()` draws the dependency graph; `targets::tar_outdated()` lists what a make would rebuild. The `brms` backend is opt-in (`run_brms <- TRUE` in `_targets.R`; diagnostics go to `outputs/traits/brms_diagnostics.csv`, fits are cached in `data-processed/brms_fits/`).
+With the inputs in place, `tar_make()` takes about 40 minutes from an empty targets store, half of it the location model for plant height (which needs about 9 GB of memory). It rebuilds only what changed and renders the three reports at the end. `targets::tar_visnetwork()` draws the dependency graph; `targets::tar_outdated()` lists what a make would rebuild. The `brms` backend is opt-in (`run_brms <- TRUE` in `_targets.R`; diagnostics go to `outputs/traits/brms_diagnostics.csv`, fits are cached in `data-processed/brms_fits/`).
 
-**Pipeline tiers.** The cleaned GBIF occurrences (~1.2 GB) and the 22k-species medoids are tracked as file inputs: `tar_make()` watches their hashes but does not recompute them; rebuild them deliberately with `R/scripts/build_gbif.R` and `R/scripts/build_medoids.R`. Everything else is computed by the pipeline, from the AusTraits builds onward: flattening, the name crosswalk, the unified record table, the models, the products, the layers, the figures and the reports.
+**Pipeline tiers.** The cleaned GBIF occurrences (~1.2 GB) and the 22k-species medoids are tracked as file inputs: `tar_make()` watches their hashes but does not recompute them; rebuild them deliberately with `R/scripts/build_gbif.R` and `R/scripts/build_medoids.R`. Everything else is computed by the pipeline, from the AusTraits release onward: flattening, the name crosswalk, the unified record table, the models, the products, the layers, the figures and the reports.
 
 ## Layout
 
@@ -69,9 +69,10 @@ With the inputs in place, `tar_make()` takes about 15 minutes from an empty targ
 ├── _targets.R                 # the pipeline (orchestration only; calls R/ functions)
 ├── renv.lock                  # pinned dependency versions
 ├── roadmap.md  terminology.md  AGENTS.md
-├── reports/                   # the two reports, rendered by the pipeline next to their .qmd:
-│                              #   analysis.qmd (models, the refit against June 2026, observed vs modelled),
-│                              #   dataset_construction.qmd (data basis, name matching, medoid checks)
+├── reports/                   # the three reports, rendered by the pipeline next to their .qmd:
+│                              #   analysis.qmd (models, shifts against June 2026, observed vs modelled),
+│                              #   dataset_construction.qmd (data basis, name matching, medoid checks),
+│                              #   forecasting.qmd (using the forecasting tables, with checks)
 ├── docs/                      # method and design documents, the June 2026 baseline,
 │                              #   within-species-centring.qmd (why within-species centring),
 │                              #   collection-method-notes.md (working notes for #3)
