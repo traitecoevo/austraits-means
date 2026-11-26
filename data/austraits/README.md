@@ -1,14 +1,6 @@
 # AusTraits inputs
 
-The pipeline reads three AusTraits files from `data/austraits/`. They are git-ignored, so they are not in the repository; this README is.
-
-## `austraits-7.0.0.rds`: the release
-
-The AusTraits 7.0.0 release from Zenodo ([10.5281/zenodo.15718081](https://doi.org/10.5281/zenodo.15718081)), input to the portal-method observed means (species means 7.0.0). `read_austraits_release()` checks its MD5 against the Zenodo record (`c040dada5776177a1fabaced7ac0afdb`). To fetch it:
-
-```r
-austraits::load_austraits(version = "7.0.0", path = "data/austraits")
-```
+The pipeline reads two AusTraits files from `data/austraits/`. They are git-ignored, so they are not in the repository; this README is.
 
 ## `austraits-<version>-<commit>.rds`: a development build
 

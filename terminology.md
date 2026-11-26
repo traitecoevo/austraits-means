@@ -36,7 +36,7 @@ Species terms decided 14 October 2026. Community terms proposed 14 October 2026;
 
 Records are first summarised per dataset × location (the geometric mean of the records there) and per flora observation (the geometric midpoint of its bounds); the species value is the geometric mean of those groups, each counting once. So a study that measured many individuals at one site counts once for that site, and a mean or median reported by a study counts the same as a raw record within its group. Records with a zero or negative value are not used (a geometric mean needs positive values). Subspecies, varieties and forms are rolled up to species. The records are not filtered by medoid, which gives maximum coverage, and the mean does not adjust for where in the species' range the records came from. The arithmetic mean of the same groups is kept in its own column, `arithmetic_mean`.
 
-The record selection differs from the modelled mean's, which uses field records only (raw, mean or median, plus the AVH bounds): the observed mean keeps the portal method's broader selection so that the two observed methods stay comparable.
+The record selection differs from the modelled mean's, which uses field records only (raw, mean or median, plus the AVH bounds): the observed mean keeps a broader selection, for coverage.
 
 **The modelled mean** corrects for records that cluster away from the centre of the species' climate range. Through partial pooling, it draws species with few records toward the across-species climate trend. A species is only included if it has a medoid that passes the reasonableness check and enough records to fit. All others get only an observed mean.
 
@@ -57,13 +57,12 @@ Each row records how it was computed in a `method` column:
 
 | `estimate_type` | `method` | Meaning |
 |---|---|---|
-| `observed_mean` | `portal_arithmetic` | **Retired 24 November 2026, never published.** The method the AusTraits data portal used for 7.0.0: an unweighted **arithmetic** mean of per-location means (raw, mean and median records) and per-observation flora midpoints (minimum and maximum records). Reproduced exactly from the portal code at the commit that built the deployed data, quirks included, so that product can be archived as what users have been seeing. |
-| `observed_mean` | `geometric` | The observed mean as defined above (geometric), used from the next AusTraits build onward. The arithmetic mean is kept in its own clearly labelled column. |
+| `observed_mean` | `geometric` | The observed mean as defined above (geometric), published with each AusTraits release from 8.0.0. The arithmetic mean is kept in its own clearly labelled column. |
 | `observed_mean` | `arithmetic` | The observed mean of a signed trait (one whose definition allows negative values): the arithmetic mean of the same groups, using every record. The geometric method's rows for all other traits. |
 | `modelled_mean` | `rtmb` | The modelled mean as defined above, from the location model (RTMB). The product's method from 25 November 2026. |
 | `modelled_mean` | `tmb` or `brms` | The modelled mean from the earlier pooled model, without location effects, by fitting backend. Kept in the pipeline as a diagnostic. |
 
-The rule that both estimates are geometric means therefore holds from the `geometric` method onward. The retired `portal_arithmetic` product is the one other exception, and it is labelled as arithmetic wherever it appears.
+Both estimates are therefore geometric means, except the observed mean of a signed trait.
 
 ## Model names
 
@@ -123,4 +122,4 @@ Every species means export carries `estimate_type` and `method` (values in "Prod
 | `arithmetic_mean` | the arithmetic mean, where an observed product gives it alongside the geometric `value` |
 | `n_records` | records behind the value |
 
-A bare `estimate`, `geom_mean`, or the older `method` values `climate_centre` and `simple_mean` are not used (renamed in #17). The portal-method product keeps the portal's own column names (`value_mean`, `value_geom_mean`, ...), because it reproduces the deployed portal output; its rows carry `estimate_type` and `method` like the others.
+A bare `estimate`, `geom_mean`, or the older `method` values `climate_centre` and `simple_mean` are not used (renamed in #17).

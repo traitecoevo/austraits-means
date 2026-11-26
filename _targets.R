@@ -272,61 +272,6 @@ list(
                metadata = modelled_means_metadata(data_basis_info)),
              format = "file"),
 
-  # ===== Observed means, portal method: species means 7.0.0 ================
-  # Reproduces the AusTraits data portal's species averages for release 7.0.0
-  # (R/means/observed_means_portal.R, docs/observed-means-portal-method.md).
-  tar_target(austraits_release_file, "data/austraits/austraits-7.0.0.rds",
-             format = "file"),
-  tar_target(portal_core_traits_file,
-             "data/portal/trait_groups_for_portal.csv", format = "file"),
-  tar_target(portal_records,
-             prepare_portal_records(
-               read_austraits_release(austraits_release_file, "7.0.0"),
-               read_portal_core_traits(portal_core_traits_file))),
-  tar_target(observed_means_portal,
-             estimate_observed_means_portal(portal_records)),
-  tar_target(observed_means_portal_files,
-             write_species_means(
-               label_estimates(
-                 add_portal_reliability(observed_means_portal,
-                                        portal_reliability(portal_records)),
-                 "observed_mean", "portal_arithmetic"),
-               dplyr::bind_rows(observed_means_portal_dictionary(),
-                                reliability_dictionary()),
-               dir = "outputs/species_means/7.0.0",
-               stem = "observed_means_portal_arithmetic",
-               metadata = observed_means_portal_metadata()),
-             format = "file"),
-
-  # Reproduction check against the parquet the portal deployed (built 9 Feb
-  # 2026; copied from the portal's git-ignored data build). Also asserted by
-  # tests/testthat/test-observed-means-portal.R. Optional: without that file
-  # these targets error and the rest of the pipeline carries on.
-  tar_target(portal_deployed_file,
-             "data/portal/austraits-7.0.0-full/austraits-species-averages.parquet",
-             format = "file", error = "continue"),
-  tar_target(portal_reproduction,
-             compare_portal_reproduction(observed_means_portal,
-                                         arrow::read_parquet(portal_deployed_file)),
-             error = "continue"),
-  tar_target(portal_reproduction_files,
-             write_portal_reproduction(portal_reproduction), format = "file",
-             error = "continue"),
-
-  # Draft Zenodo deposit for species means 7.0.0 (#10): the files, README and
-  # deposit metadata. Uploading is a separate, deliberate step
-  # (R/scripts/create_zenodo_draft.R); nothing publishes. Retired 24 November
-  # 2026 with the portal-method product (roadmap.md); kept, not maintained.
-  tar_target(portal_method_doc, "docs/observed-means-portal-method.md",
-             format = "file"),
-  tar_target(zenodo_package_portal,
-             prepare_zenodo_package(observed_means_portal_files,
-                                    portal_method_doc,
-                                    dir = "outputs/zenodo/7.0.0",
-                                    version = "7.0.0",
-                                    austraits_doi = "10.5281/zenodo.15718081"),
-             format = "file"),
-
   # ===== Observed means, geometric method (development build; #15) =========
   # Published by austraits.build with the build, not computed here
   # (R/means/observed_means_release.R, docs/observed-means-geometric-method.md).
@@ -450,16 +395,13 @@ list(
   # ===== Observed vs modelled means (#24) ===================================
   tar_target(observed_modelled,
              compare_observed_modelled(location_fits, observed_means_geometric, unified)),
-  tar_target(portal_geometric,
-             compare_portal_geometric(observed_means_portal,
-                                      observed_means_geometric)),
   tar_target(means_comparison_files,
-             write_means_comparison(observed_modelled, portal_geometric),
+             write_means_comparison(observed_modelled),
              format = "file"),
 
   # ===== Figure set (#25) ====================================================
   tar_target(figure_set,
-             write_figure_set(observed_means_portal, observed_means_geometric,
+             write_figure_set(observed_means_geometric,
                               modelled_means, location_fits, observed_modelled,
                               community_stats, means_comparison_files,
                               c(community_stats_maps, pooled_location_comparison_files)),

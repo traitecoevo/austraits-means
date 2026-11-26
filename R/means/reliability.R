@@ -29,60 +29,6 @@ reliability_dictionary <- function() {
   )
 }
 
-#' Reliability indicators for the portal-method product, from the records the
-#' portal method used.
-#'
-#' Numeric rows: records with value_type raw, mean or median (any basis),
-#' plus minimum/maximum records from preserved specimens or the literature,
-#' that parse as numbers. Categorical rows: every record of the trait.
-#'
-#' @param records output of `prepare_portal_records()`.
-#' @return list(numeric = per taxon × trait × unit, categorical = per taxon ×
-#'   trait).
-portal_reliability <- function(records) {
-  numeric <- records |>
-    dplyr::filter(!is.na(unit)) |>
-    dplyr::mutate(value = suppressWarnings(as.numeric(value)),
-                  flora = value_type %in% c("minimum", "maximum") &
-                    basis_of_record %in% c("preserved_specimen", "literature")) |>
-    dplyr::filter(!is.na(value),
-                  value_type %in% c("mean", "raw", "median") | flora) |>
-    dplyr::group_by(taxon_name, trait_name, unit) |>
-    dplyr::summarise(
-      .groups = "drop",
-      n_records = dplyr::n(),
-      n_datasets = dplyr::n_distinct(dataset_id),
-      n_locations = dplyr::n_distinct(paste(dataset_id, location_id)[!flora]),
-      n_flora = sum(flora),
-      n_field = sum(basis_of_record %in% "field"),
-      sd_log = if (sum(value > 0) > 1) stats::sd(log(value[value > 0])) else NA_real_
-    )
-  categorical <- records |>
-    dplyr::filter(is.na(unit)) |>
-    dplyr::group_by(taxon_name, trait_name) |>
-    dplyr::summarise(
-      .groups = "drop",
-      n_records = dplyr::n(),
-      n_datasets = dplyr::n_distinct(dataset_id),
-      n_field = sum(basis_of_record %in% "field")
-    )
-  list(numeric = numeric, categorical = categorical)
-}
-
-#' Add reliability indicators to the portal-method product, after its own
-#' columns (which stay exactly as the portal deployed them).
-add_portal_reliability <- function(means, reliability) {
-  num <- means |>
-    dplyr::filter(type == "numerical") |>
-    dplyr::left_join(reliability$numeric, by = c("taxon_name", "trait_name", "unit"))
-  cat <- means |>
-    dplyr::filter(type == "categorical") |>
-    dplyr::left_join(reliability$categorical, by = c("taxon_name", "trait_name"))
-  dplyr::bind_rows(num, cat) |>
-    dplyr::arrange(row_id) |>
-    dplyr::mutate(reliability = reliability_class(n_datasets, n_records))
-}
-
 #' Reliability indicators for modelled means, from the records in the fit.
 #'
 #' @param data a fit's `data` (field records of species in the model).

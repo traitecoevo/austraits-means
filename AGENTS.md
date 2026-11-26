@@ -9,7 +9,7 @@ Builds species-level and community-level trait means for the Australian flora fr
 1. **Modelled means** (`method = rtmb`, since 25 November 2026): the mean of each trait at the centre of a species' climate distribution (the 2D precipitation–temperature medoid of its occurrences) and an average location, from the **location model** (`R/model/spread_rtmb.R`, targets `location_fit_<trait>`): the within-group-centred ("Mundlak") model with woody and non-woody coefficients, location and species × location effects, and a species spread shrunk-linear in climate. The earlier pooled model (`tmb_fit_<trait>`, `method = tmb` or `brms`) stays in the pipeline as a diagnostic.
 2. **Modelled community statistics**: for a location, from its climate, the woody and non-woody community mean and community range, from the same location model. The prediction from climate alone is not built yet (roadmap, Later work). Never compute a community range from the pooled model's species variance.
 
-Built but not published: the **observed means** come from austraits.build (`austraits-<version>-observed-means.*`, read by `R/means/observed_means_release.R`); the three 10 km community layers were dropped on 25 November 2026 (in git history); the 7.0.0 *portal-method* observed means (`method = portal_arithmetic`) are retired and unmaintained.
+Built but not published: the **observed means** come from austraits.build (`austraits-<version>-observed-means.*`, read by `R/means/observed_means_release.R`); the three 10 km community layers were dropped on 25 November 2026 (in git history), as was the retired 7.0.0 portal-method product, with its code, test and Zenodo packaging.
 
 The aim is **national species-trait estimates** for Australia, for AusTraits: a consistent, defensible species mean per trait, with uncertainty intervals, the within/between decomposition and (via the BRMS backend) full posterior inference.
 
@@ -29,7 +29,7 @@ The two Quarto reports in `reports/` are **reporting layers** (rendered by `tar_
 - `reports/dataset_construction.qmd` — the data basis, name matching and medoid reasonableness checks.
 - `reports/analysis.qmd` — fitted fixed effects, the refit against the June 2026 baseline, observed vs modelled means, across-species turnover, the products.
 
-Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait fits: the location model (the product: species means, exports, figures), and the pooled and locations-pooled models with the comparison against them (`terminology.md`, Model names); the retired portal-method product for 7.0.0, its reproduction check and its Zenodo package; the geometric observed means (read from austraits.build); the woody lookup, combined species means, and the community statistics from the location model and each 50 km cell's climate alone (`R/community/community_climate.R`), checked against each cell's own GBIF species (`community_statistics.R`); the comparisons of species means; the figure set; the reports.
+Sections of `_targets.R`, in order: tracked inputs; the development-build records, crosswalk, medoid lookup and `unified`; the per-trait fits: the location model (the product: species means, exports, figures), and the pooled and locations-pooled models with the comparison against them (`terminology.md`, Model names); the geometric observed means (read from austraits.build); the woody lookup, combined species means, and the community statistics from the location model and each 50 km cell's climate alone (`R/community/community_climate.R`), checked against each cell's own GBIF species (`community_statistics.R`); the comparisons of species means; the figure set; the reports.
 
 **Pipeline tiers** (see the header comment in `_targets.R`):
 - *Tier B — tracked file inputs.* The cleaned GBIF occurrences (`data_gbif_cleaned.parquet`, ~1.2GB) and the 22k-species O(n²) medoids (`climate_centres.parquet`) are tracked by hash but **not** recomputed by `tar_make()`. Regenerate them deliberately with `R/scripts/build_gbif.R` (builders in `R/data/gbif.R`: download by key, cleaning ported from cornsters_australian_annuals, CC0/CC BY records only, APC alignment, climate) and `R/scripts/build_medoids.R` (`build_climate_medoids()`, parallel over taxa). The AusTraits rds files (`data/austraits/`) are file inputs too; how the development build is made is in `data/austraits/README.md`.
@@ -69,15 +69,14 @@ R/
                forecast_community())
   plot/        plot_fitted.R, plot_trait_centres.R, plot_within_between.R,
                figure_set.R
-  means/       observed_means_portal.R, observed_means_release.R (reads the
-               geometric observed means austraits.build publishes),
-               reliability.R, species_means_io.R, compare_portal.R
+  means/       observed_means_release.R (reads the geometric observed
+               means austraits.build publishes), reliability.R,
+               species_means_io.R
   community/   woody_lookup.R, community_climate.R (the product),
                community_statistics.R (grid, GBIF species per cell, the check)
-  release/     zenodo.R (draft deposits; never publishes)
   panels/      species_panel_functions.R
   scripts/     generate_species_panels.R, benchmark_species_panels.R,
-               combine_species_panels.R, create_zenodo_draft.R
+               combine_species_panels.R, build_gbif.R, build_medoids.R
                                            # RUN-SCRIPTS — execute on source,
                                            # NOT loaded by init.R
 ```
@@ -141,8 +140,7 @@ Package versions are pinned with `renv` so the pipeline is reproducible.
   `AVH_2026` carries one label bound per specimen and enters by its minimum
   and maximum records.
 - **Taxa:** subspecies, varieties and forms are rolled up to species
-  (`roll_up_to_species()`), for the modelled and geometric observed means;
-  the portal-method product is not rolled up (one of its kept quirks).
+  (`roll_up_to_species()`), for the modelled and geometric observed means.
 - **`dataset_id`:** height records are all `AVH_2026` (the per-collector
   grouping of the old AVH CSV is not carried by the build; see #3).
 
@@ -201,9 +199,9 @@ WorldClim 2.5 arc-min, cropped to Australia (`load_climate_rasters()`):
 ## Data locations (git-ignored; large)
 
 - `data/` — a directory of inputs (only `data/data-ausplants` is a symlink, into a shared drive):
-  `austraits/` (the AusTraits 7.0.0 release rds and the development-build export), `portal/` (the portal's deployed species means, for the reproduction check), `climate/` (WorldClim), `australia.tif`; the older AVH height CSVs are no longer read. Raw GBIF downloads live outside the repository; only the cleaned extract is used.
+  `austraits/` (the AusTraits 7.0.0 release rds and the development-build export), `climate/` (WorldClim), `australia.tif`; the older AVH height CSVs are no longer read. Raw GBIF downloads live outside the repository; only the cleaned extract is used.
 - `data-processed/` — seeded pipeline inputs tracked by `targets` as file inputs: `data_gbif_cleaned.parquet`, `climate_centres.parquet` (medoids), plus `brms_fits/` (BRMS fit cache). `data_height_climate.parquet`, `data_traits_climate.parquet`, `gbif_avh_name_crosswalk.parquet` and `data_traits_climate_unified.parquet` are no longer read by the pipeline (left in place; don't delete without asking).
-- `outputs/` — `species_means/<version>/` (the products), `community/<version>/` (layers), `traits/` (per-trait modelled means, fixed-effect summary, `data_basis.json`), `comparisons/`, `checks/`, `figures/`, `zenodo/` (deposit packages).
+- `outputs/` — `species_means/<version>/` (the products), `community/<version>/` (layers), `traits/` (per-trait modelled means, fixed-effect summary, `data_basis.json`), `comparisons/`, `checks/`, `figures/`.
 
 ## Gotchas
 

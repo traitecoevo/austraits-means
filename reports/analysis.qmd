@@ -144,7 +144,6 @@ The two species estimates (`terminology.md`) answer different questions: the obs
 
 ```{r obs-mod-setup}
 tar_load(observed_modelled)
-tar_load(portal_geometric)
 ```
 
 ### Coverage and agreement
@@ -165,22 +164,6 @@ Two candidate drivers: how far a species' records sit from its climate centre (t
 
 ```{r obs-mod-drivers, fig.width = 8, fig.height = 4}
 plot_difference_drivers(observed_modelled$drivers)
-```
-
-### Portal-method against geometric observed means
-
-The portal-method means (AusTraits 7.0.0, arithmetic) against the geometric observed means (development build), per trait. `median_diff_log` combines the change of method and of data; `median_diff_log_data` compares the two arithmetic means and so isolates the data (new records, the AVH height dataset, the roll-up to species); `pct_data_unchanged` is the share of taxa whose arithmetic mean did not change.
-
-```{r portal-geo-summary}
-portal_geometric$summary |>
-  dplyr::mutate(dplyr::across(where(is.double), \(x) round(x, 3))) |>
-  knitr::kable(format.args = list(big.mark = ","))
-```
-
-For most traits the data are unchanged for over 95% of taxa and the geometric mean sits slightly below the arithmetic one, as it must. Plant height changes most (a median 19% lower), because the AVH height dataset adds specimen records for most species; leaf length and width are a median 10 to 12% lower, because their flora ranges are wide and the geometric midpoint of a range sits below its arithmetic midpoint.
-
-```{r portal-geo-fig, fig.width = 8, fig.height = 9}
-plot_portal_geometric(portal_geometric$summary)
 ```
 
 ## Across-species turnover
@@ -260,7 +243,7 @@ In `outputs/species_means/<build version>/`, each as `.parquet`, `.csv.gz`, `_di
 - `modelled_means`: the modelled means of every trait (location model, `method = rtmb`), with their 94% interval, the climate centre, the growth form and the species' random effects (`modelled_means_files` target).
 - `species_means_combined`: one value per species × trait for the modelled traits, modelled where available, otherwise observed (`species_means_combined_files`).
 
-The portal-method observed means for AusTraits 7.0.0 are in `outputs/species_means/7.0.0/` (`docs/observed-means-portal-method.md`). The geometric observed means are published by austraits.build with each build (`austraits-<version>-observed-means.parquet`), and read here rather than written.
+The geometric observed means are published by austraits.build with each build (`austraits-<version>-observed-means.parquet`), and read here rather than written.
 
 Per trait, in `outputs/traits/`:
 

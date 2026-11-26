@@ -1,21 +1,19 @@
 # Figure set for presenting the species means and community products (#25),
 # written to outputs/figures/ as PNG and PDF via save_figure().
 #
-# Colours follow one fixed assignment across figures: the portal-method
-# observed mean is blue, the geometric observed mean orange, the modelled
-# mean aqua (the first three slots of the reference categorical palette, which
-# stay distinguishable for colour-blind readers); other two-way contrasts use
-# dark and light ink so they never reuse a product colour; magnitudes use a
-# single-hue blue ramp.
+# Colours follow one fixed assignment across figures: the geometric observed
+# mean orange, the modelled mean aqua (slots of the reference categorical
+# palette that stay distinguishable for colour-blind readers); other two-way
+# contrasts use dark and light ink so they never reuse a product colour;
+# magnitudes use a single-hue blue ramp.
 
 product_colours <- c(
-  "Observed, portal method (7.0.0)" = "#2a78d6",
   "Observed, geometric (development build)" = "#eb6834",
-  "Modelled (TMB, at climate centre)" = "#1baf7a"
+  "Modelled (location model, at climate centre)" = "#1baf7a"
 )
 
 #' Species with a mean per trait and product (the modelled traits).
-coverage_table <- function(portal, geometric, modelled) {
+coverage_table <- function(geometric, modelled) {
   traits <- unique(modelled$trait_name)
   count_species <- function(d, label) {
     d |>
@@ -25,9 +23,8 @@ coverage_table <- function(portal, geometric, modelled) {
       dplyr::mutate(product = label)
   }
   dplyr::bind_rows(
-    count_species(dplyr::filter(portal, type == "numerical"), names(product_colours)[1]),
-    count_species(dplyr::filter(geometric, type == "numerical"), names(product_colours)[2]),
-    count_species(modelled, names(product_colours)[3])
+    count_species(dplyr::filter(geometric, type == "numerical"), names(product_colours)[1]),
+    count_species(modelled, names(product_colours)[2])
   ) |>
     dplyr::mutate(product = factor(product, names(product_colours)))
 }
@@ -35,7 +32,7 @@ coverage_table <- function(portal, geometric, modelled) {
 #' Coverage: species per trait for each product (dot plot, log axis).
 plot_coverage <- function(coverage) {
   order <- coverage |>
-    dplyr::filter(product == names(product_colours)[2]) |>
+    dplyr::filter(product == names(product_colours)[1]) |>
     dplyr::arrange(n_species) |>
     dplyr::pull(trait_name)
   coverage |>
@@ -47,8 +44,7 @@ plot_coverage <- function(coverage) {
     ggplot2::scale_colour_manual(values = product_colours, name = NULL) +
     ggplot2::scale_x_log10(labels = scales::label_comma()) +
     ggplot2::labs(x = "Species with a mean (log scale)", y = NULL,
-                  title = "Coverage of the species means",
-                  caption = "Leaf N and P per area are not portal core traits, so have no portal-method mean.") +
+                  title = "Coverage of the species means") +
     ggplot2::theme_classic(base_size = 10) +
     ggplot2::theme(legend.position = "bottom", legend.direction = "vertical")
 }
@@ -161,11 +157,11 @@ plot_product_overview <- function(coverage, obs_mod_pairs, fits, layers) {
 #' Write the figure set to `dir`; returns the file paths. The #24 comparison
 #' figures and per-trait community maps are written by their own targets and
 #' copied here so the set is in one place.
-write_figure_set <- function(portal, geometric, modelled, fits, obs_mod, layers,
+write_figure_set <- function(geometric, modelled, fits, obs_mod, layers,
                              comparison_files, community_map_files,
                              dir = "outputs/figures") {
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
-  coverage <- coverage_table(portal, geometric, modelled)
+  coverage <- coverage_table(geometric, modelled)
   readr::write_csv(coverage, file.path(dir, "coverage_by_product.csv"))
   made <- c(
     save_figure(plot_coverage(coverage), file.path(dir, "coverage_by_product"),

@@ -5,13 +5,11 @@ data/climate
 data-processed/*
 data/NVISv7.0
 data/data-ausplants
-# data/austraits and data/portal hold large inputs, git-ignored, beside the
-# small tracked files that pin or document them
+# data/austraits holds large inputs, git-ignored, beside the small tracked
+# file that documents them
 data/austraits/*
 !data/austraits/README.md
-data/portal/*
-!data/portal/README.md
-!data/portal/trait_groups_for_portal.csv
+data/portal/
 *.html
 *.docx
 outputs
